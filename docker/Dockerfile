@@ -24,10 +24,14 @@ RUN apt-get update && apt-get install -y curl ffmpeg libsm6 libxext6 git ninja-b
 # Install MMDetection deps
 WORKDIR /
 RUN git clone https://github.com/csuhan/s2anet.git dummdet
+WORKDIR /dummdet
 ENV FORCE_CUDA="1"
+RUN /opt/conda/bin/conda install pytorch=1.3 torchvision cudatoolkit=10.0 -c pytorch
 RUN /opt/conda/bin/pip install -r /dummdet/requirements.txt
-RUN /opt/conda/bin/pip install wandb
-#RUN /opt/conda/bin/pip install --no-cache-dir -e .
+RUN /opt/conda/bin/python setup.py develop
+WORKDIR /dummdet/DOTA_devkit/polyiou
+RUN swig -c++ -python csrc/polyiou.i
+RUN /opt/conda/bin/python setup.py build_ext --inplace
 
 # Install MMCV
 WORKDIR /
