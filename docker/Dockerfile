@@ -8,11 +8,11 @@ ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
 ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
 ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
 
-RUN apt-get update && apt-get install -y git curl ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 swig \
+RUN apt-get update && apt-get install -y curl ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 swig \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-RUN conda clean --all
-RUN conda install cython
+#RUN conda clean --all
+#RUN conda install cython
 
 ## Install OBB_Anns
 #WORKDIR /
@@ -27,7 +27,7 @@ RUN git clone https://github.com/csuhan/s2anet.git dummdet
 ENV FORCE_CUDA="1"
 RUN /opt/conda/bin/pip install -r /dummdet/requirements.txt
 RUN /opt/conda/bin/pip install wandb
-#RUN pip install --no-cache-dir -e .
+#RUN /opt/conda/bin/pip install --no-cache-dir -e .
 
 # Install MMCV
 WORKDIR /
@@ -38,7 +38,7 @@ RUN /opt/conda/bin/pip install -e .
 
 # Install s2anet
 WORKDIR /s2anet
-RUN conda create -n s2anet python=3.7 -y
+#RUN conda create -n s2anet python=3.7 -y
 
 
 # Make mountpoint for disk sharing
