@@ -120,3 +120,7 @@ work_dirs/
 # Pytorch
 *.pth
 demo_results
+
+
+
+docker/.*
