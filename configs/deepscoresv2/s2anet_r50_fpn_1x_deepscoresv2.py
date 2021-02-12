@@ -83,10 +83,12 @@ test_cfg = dict(
     nms=dict(type='nms_rotated', iou_thr=0.1),
     max_per_img=2000)
 # dataset settings
-dataset_type = 'DotaDataset'
-data_root = 'data/dota_1024/'
+dataset_type = 'DeepScoresV2Dataset'
+data_root = 'data/deep_scores_dense/'
 img_norm_cfg = dict(
-    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+    mean=[240.15232515949037, 240.15229097456378, 240.15232515949037],
+    std=[57.178083212078896, 57.178143244444556, 57.178083212078896],
+    to_rgb=False)
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
@@ -113,26 +115,26 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=2,
-    workers_per_gpu=2,
+    imgs_per_gpu=4,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
-        ann_file=data_root + 'trainval_split/trainval_s2anet.pkl',
-        img_prefix=data_root + 'trainval_split/images/',
+        ann_file=data_root + 'deepscores_train.json',
+        img_prefix=data_root + 'images_png/',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'trainval_split/trainval_s2anet.pkl',
-        img_prefix=data_root + 'trainval_split/images/',
+        ann_file=data_root + 'deepscores_val.json',
+        img_prefix=data_root + 'images_png/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'test_split/test_s2anet.pkl',
-        img_prefix=data_root + 'test_split/images/',
+        ann_file=data_root + 'deepscores_small.json',
+        img_prefix=data_root + 'images_png/',
         pipeline=test_pipeline))
-evaluation = dict(
-    gt_dir='data/dota/test/labelTxt/', # change it to valset for offline validation
-    imagesetfile='data/dota/test/test.txt')
+# evaluation = dict(
+#     gt_dir='data/dota/test/labelTxt/', # change it to valset for offline validation
+#     imagesetfile='data/dota/test/test.txt')
 # optimizer
 optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
@@ -148,7 +150,15 @@ log_config = dict(
     interval=50,
     hooks=[
         dict(type='TextLoggerHook'),
+        dict(type='WandbLoggerHook'),
     ])
+# wandb settings
+wandb_cfg = dict(
+    entity='raember',
+    project='s2anet',
+    dryrun=False
+)
+
 # runtime settings
 total_epochs = 12
 dist_params = dict(backend='nccl')
