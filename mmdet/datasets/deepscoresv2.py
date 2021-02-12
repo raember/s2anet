@@ -16,7 +16,7 @@ import json
 from obb_anns import OBBAnns
 
 @DATASETS.register_module
-class DeepScoresV2Dataset(CustomDataset):
+class DeepScoresV2Dataset(CocoDataset):
 
 
     def load_annotations(self, ann_file):
