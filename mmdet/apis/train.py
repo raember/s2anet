@@ -55,9 +55,9 @@ def train_detector(model,
 
     # start training
     if distributed:
-        _dist_train(model, dataset, cfg, validate=validate)
+        _dist_train(model, dataset, cfg, logger, validate=validate)
     else:
-        _non_dist_train(model, dataset, cfg, validate=validate)
+        _non_dist_train(model, dataset, cfg, logger,  validate=validate)
 
 
 def build_optimizer(model, optimizer_cfg):
@@ -192,7 +192,7 @@ def _dist_train(model, dataset, cfg, validate=False):
     runner.run(data_loaders, cfg.workflow, cfg.total_epochs)
 
 
-def _non_dist_train(model, dataset, cfg, validate=False):
+def _non_dist_train(model, dataset, cfg,logger, validate=False):
     if validate:
         raise NotImplementedError('Built-in validation is not implemented '
                                   'yet in not-distributed training. Use '
@@ -213,8 +213,7 @@ def _non_dist_train(model, dataset, cfg, validate=False):
 
     # build runner
     optimizer = build_optimizer(model, cfg.optimizer)
-    runner = Runner(model, batch_processor, optimizer, cfg.work_dir,
-                    cfg.log_level)
+    runner = Runner(model, batch_processor, optimizer, cfg.work_dir, logger)
     # fp16 setting
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
