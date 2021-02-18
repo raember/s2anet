@@ -66,7 +66,7 @@ class DeepScoresV2Dataset(CocoDataset):
         self.obb = OBBAnns(ann_file)
         self.obb.load_annotations()
         self.obb.set_annotation_set_filter(['deepscores'])
-        self.obb.set_class_blacklist(["staff"])
+        # self.obb.set_class_blacklist(["staff"])
         self.cat_ids = list(self.obb.get_cats().keys())
         self.cat2label = {
             cat_id: i
@@ -94,14 +94,14 @@ class DeepScoresV2Dataset(CocoDataset):
         img_info, ann_info = img_info[0], ann_info[0]
         gt_bboxes = []
         gt_labels = []
-        gt_bboxes_ignore = np.zeros((0, 4), dtype=np.float32)
+        gt_bboxes_ignore = np.zeros((0, 8 if self.use_oriented_bboxes else 4), dtype=np.float32)
 
         for i, ann in ann_info.iterrows():
             # we have no ignore feature
             if ann['area'] <= 0:
                 continue
 
-            bbox = ann['a_bbox']
+            bbox = ann['o_bbox' if self.use_oriented_bboxes else 'a_bbox']
             gt_bboxes.append(bbox)
             gt_labels.append(self.cat2label[ann['cat_id'][0]])
 
