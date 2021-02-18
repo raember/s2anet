@@ -18,6 +18,20 @@ from obb_anns import OBBAnns
 @DATASETS.register_module
 class DeepScoresV2Dataset(CocoDataset):
 
+    def __init__(self,
+                 ann_file,
+                 pipeline,
+                 classes=None,
+                 data_root=None,
+                 img_prefix='',
+                 seg_prefix=None,
+                 proposal_file=None,
+                 test_mode=False,
+                 filter_empty_gt=True,
+                 use_oriented_bboxes=True):
+        super(DeepScoresV2Dataset, self).__init__(ann_file, pipeline, classes, data_root, img_prefix, seg_prefix, proposal_file, test_mode, filter_empty_gt)
+        self.use_oriented_bboxes = use_oriented_bboxes
+
 
     def load_annotations(self, ann_file):
         self.obb = OBBAnns(ann_file)
