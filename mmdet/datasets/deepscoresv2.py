@@ -10,6 +10,8 @@ Author:
 Created on:
     November 23, 2019
 """
+import mmcv
+
 from .coco import *
 import os
 import json
@@ -29,8 +31,35 @@ class DeepScoresV2Dataset(CocoDataset):
                  test_mode=False,
                  filter_empty_gt=True,
                  use_oriented_bboxes=True):
-        super(DeepScoresV2Dataset, self).__init__(ann_file, pipeline, classes, data_root, img_prefix, seg_prefix, proposal_file, test_mode, filter_empty_gt)
+        self.filter_empty_gt = filter_empty_gt
+        super(DeepScoresV2Dataset, self).__init__(ann_file, pipeline, data_root, img_prefix, seg_prefix, proposal_file, test_mode)
+        self.CLASSES = self.get_classes(classes)
         self.use_oriented_bboxes = use_oriented_bboxes
+
+    @classmethod
+    def get_classes(cls, classes=None):
+        """Get class names of current dataset.
+        Args:
+            classes (Sequence[str] | str | None): If classes is None, use
+                default CLASSES defined by builtin dataset. If classes is a
+                string, take it as a file name. The file contains the name of
+                classes where each line contains one class name. If classes is
+                a tuple or list, override the CLASSES defined by the dataset.
+        Returns:
+            tuple[str] or list[str]: Names of categories of the dataset.
+        """
+        if classes is None:
+            return cls.CLASSES
+
+        if isinstance(classes, str):
+            # take it as a file path
+            class_names = mmcv.list_from_file(classes)
+        elif isinstance(classes, (tuple, list)):
+            class_names = classes
+        else:
+            raise ValueError(f'Unsupported type {type(classes)} of classes.')
+
+        return class_names
 
 
     def load_annotations(self, ann_file):
