@@ -379,6 +379,12 @@ class S2ANetHead(nn.Module):
             num_total_samples=num_total_samples,
             cfg=cfg.odm_cfg)
 
+        self.last_vals = dict(
+            gt_bboxes=gt_bboxes,
+            gt_labels=gt_labels,
+            img_metas=img_metas,
+        )
+
         return dict(loss_fam_cls=losses_fam_cls,
                     loss_fam_bbox=losses_fam_bbox,
                     loss_odm_cls=losses_odm_cls,
@@ -628,3 +634,8 @@ class AlignConv(nn.Module):
         offset_tensor = torch.stack(offset_list, dim=0)
         x = self.relu(self.deform_conv(x, offset_tensor))
         return x
+
+    def get_visualization(self, input_img, classes, test_cfg):
+        #TODO add visualization of input and prediction
+        stitched = "nonew3"
+        return [{"name": "stitched_img", "image": stitched}]

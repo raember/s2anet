@@ -1,5 +1,5 @@
 import torch.nn as nn
-from mmcv.cnn.weight_init import normal_init, xavier_init
+from mmcv.cnn import normal_init, xavier_init
 
 from .bbox_head_rotated import BBoxHeadRotated
 from ..backbones.resnet import Bottleneck
