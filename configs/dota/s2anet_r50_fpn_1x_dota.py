@@ -148,6 +148,7 @@ log_config = dict(
     interval=50,
     hooks=[
         dict(type='TextLoggerHook'),
+        # dict(type='WandbLoggerHook'),
     ])
 # runtime settings
 total_epochs = 12

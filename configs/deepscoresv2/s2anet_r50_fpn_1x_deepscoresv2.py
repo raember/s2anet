@@ -150,7 +150,7 @@ log_config = dict(
     interval=50,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='WandbLoggerHook'),
+        # dict(type='WandbLoggerHook'),
     ])
 # wandb settings
 wandb_cfg = dict(
