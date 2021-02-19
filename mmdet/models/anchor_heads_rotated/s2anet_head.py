@@ -554,10 +554,10 @@ class S2ANetHead(nn.Module):
         #Image.fromarray(img).show()
         from mmdet.core import rotated_box_to_poly_np
         gt = rotated_box_to_poly_np(self.last_vals['gt_bboxes'][0].cpu().numpy())
-
+        #TODO classes are wrong for deepscores
         img_gt = imshow_det_bboxes(img.copy(),gt,
                                         self.last_vals['gt_labels'][0].cpu().numpy()-1,
-                                        class_names=classes, show=False, show_label=True, rotated=True)
+                                        class_names=None, show=False, show_label=True, rotated=True)
         #Image.fromarray(img_gt).show()
         return [{"name": "stitched_img", "image": img_gt}]
 

@@ -150,17 +150,18 @@ lr_config = dict(
     step=[8, 11])
 checkpoint_config = dict(interval=1)
 log_config = dict(
-    interval=50,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
-        # dict(type='WandbLoggerHook'),
+        dict(type='WandbVisualLoggerHook'),
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity='raember',
-    project='s2anet',
+    entity="tuggeluk",
+    project='wfcos-testing',
     dryrun=False
 )
+
 
 # runtime settings
 total_epochs = 12
