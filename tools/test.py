@@ -125,7 +125,7 @@ def parse_args():
     # add dataset type for more dataset eval other than coco
     parser.add_argument(
         '--data',
-        choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc'],
+        choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024'],
         default='dota',
         type=str,
         help='eval dataset type')
