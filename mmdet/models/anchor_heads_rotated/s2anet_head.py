@@ -13,6 +13,11 @@ from ..utils import ConvModule, bias_init_with_prob
 from ...ops import DeformConv
 from ...ops.orn import ORConv2d, RotationInvariantPooling
 
+# Visualization imports
+import debugging.visualization_tools as vt
+from mmcv.visualization import imshow_det_bboxes
+from mmcv.image import tensor2imgs
+import numpy as np
 
 @HEADS.register_module
 class S2ANetHead(nn.Module):
@@ -541,6 +546,20 @@ class S2ANetHead(nn.Module):
                                                         cfg.max_per_img)
         return det_bboxes, det_labels
 
+    def get_visualization(self, input_img, classes, test_cfg):
+        stitched = "nonew3"
+        batch_size = input_img.shape[0]
+        img = tensor2imgs(input_img, **self.last_vals['img_metas'][0]['img_norm_cfg'])[0] #get input image
+        from PIL import Image
+        #Image.fromarray(img).show()
+        from mmdet.core import rotated_box_to_poly_np
+        gt = rotated_box_to_poly_np(self.last_vals['gt_bboxes'][0].cpu().numpy())
+
+        img_gt = imshow_det_bboxes(img.copy(),gt,
+                                        self.last_vals['gt_labels'][0].cpu().numpy()-1,
+                                        class_names=classes, show=False, show_label=True, rotated=True)
+        #Image.fromarray(img_gt).show()
+        return [{"name": "stitched_img", "image": img_gt}]
 
 def bbox_decode(
         bbox_preds,
@@ -635,7 +654,3 @@ class AlignConv(nn.Module):
         x = self.relu(self.deform_conv(x, offset_tensor))
         return x
 
-    def get_visualization(self, input_img, classes, test_cfg):
-        #TODO add visualization of input and prediction
-        stitched = "nonew3"
-        return [{"name": "stitched_img", "image": stitched}]
