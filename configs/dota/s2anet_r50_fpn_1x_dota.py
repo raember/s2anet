@@ -148,7 +148,7 @@ log_config = dict(
     interval=50,
     hooks=[
         dict(type='TextLoggerHook'),
-        # dict(type='WandbLoggerHook'),
+        dict(type='WandbVisualLoggerHook'),
     ])
 # runtime settings
 total_epochs = 12
@@ -157,3 +157,9 @@ log_level = 'INFO'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]
+# wandb settings
+wandb_cfg = dict(
+    entity="tuggeluk",
+    project='wfcos-testing',
+    dryrun=False
+)
