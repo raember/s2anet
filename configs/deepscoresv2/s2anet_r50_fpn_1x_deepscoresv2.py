@@ -158,8 +158,8 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="tuggeluk",
-    project='wfcos-testing',
+    entity='raember',
+    project='s2anet',
     dryrun=False
 )
 
