@@ -306,64 +306,127 @@ class Normalize(object):
 @PIPELINES.register_module
 class RandomCrop(object):
     """Random crop the image & bboxes & masks.
-
     Args:
         crop_size (tuple): Expected size after cropping, (h, w).
+        allow_negative_crop (bool): Whether to allow a crop that does not
+            contain any bbox area. Default to False.
+        bbox_clip_border (bool, optional): Whether clip the objects outside
+            the border of the image. Defaults to True.
+    Note:
+        - If the image is smaller than the crop size, return the original image
+        - The keys for bboxes, labels and masks must be aligned. That is,
+          `gt_bboxes` corresponds to `gt_labels` and `gt_masks`, and
+          `gt_bboxes_ignore` corresponds to `gt_labels_ignore` and
+          `gt_masks_ignore`.
+        - If the crop does not contain any gt-bbox region and
+          `allow_negative_crop` is set to False, skip this image.
     """
 
-    def __init__(self, crop_size):
+    def __init__(self,
+                 crop_size,
+                 allow_negative_crop=False,
+                 bbox_clip_border=True):
+        assert crop_size[0] > 0 and crop_size[1] > 0
         self.crop_size = crop_size
+        self.allow_negative_crop = allow_negative_crop
+        self.bbox_clip_border = bbox_clip_border
+        # The key correspondence from bboxes to labels and masks.
+        self.bbox2label = {
+            'gt_bboxes': 'gt_labels',
+            'gt_bboxes_ignore': 'gt_labels_ignore'
+        }
+        self.bbox2mask = {
+            'gt_bboxes': 'gt_masks',
+            'gt_bboxes_ignore': 'gt_masks_ignore'
+        }
 
     def __call__(self, results):
-        img = results['img']
-        margin_h = max(img.shape[0] - self.crop_size[0], 0)
-        margin_w = max(img.shape[1] - self.crop_size[1], 0)
-        offset_h = np.random.randint(0, margin_h + 1)
-        offset_w = np.random.randint(0, margin_w + 1)
-        crop_y1, crop_y2 = offset_h, offset_h + self.crop_size[0]
-        crop_x1, crop_x2 = offset_w, offset_w + self.crop_size[1]
+        """Call function to randomly crop images, bounding boxes, masks,
+        semantic segmentation maps.
+        Args:
+            results (dict): Result dict from loading pipeline.
+        Returns:
+            dict: Randomly cropped results, 'img_shape' key in result dict is
+                updated according to crop size.
+        """
 
-        # crop the image
-        img = img[crop_y1:crop_y2, crop_x1:crop_x2, :]
-        img_shape = img.shape
-        results['img'] = img
+        for key in results.get('img_fields', ['img']):
+            img = results[key]
+            margin_h = max(img.shape[0] - self.crop_size[0], 0)
+            margin_w = max(img.shape[1] - self.crop_size[1], 0)
+            offset_h = np.random.randint(0, margin_h + 1)
+            offset_w = np.random.randint(0, margin_w + 1)
+            crop_y1, crop_y2 = offset_h, offset_h + self.crop_size[0]
+            crop_x1, crop_x2 = offset_w, offset_w + self.crop_size[1]
+
+            # crop the image
+            img = img[crop_y1:crop_y2, crop_x1:crop_x2, ...]
+            img_shape = img.shape
+            results[key] = img
         results['img_shape'] = img_shape
 
         # crop bboxes accordingly and clip to the image boundary
         for key in results.get('bbox_fields', []):
-            bbox_offset = np.array([offset_w, offset_h, offset_w, offset_h],
+            # e.g. gt_bboxes and gt_bboxes_ignore
+            bbox_offset = np.array([offset_w, offset_h, offset_w, offset_h, offset_w, offset_h, offset_w, offset_h],
                                    dtype=np.float32)
             bboxes = results[key] - bbox_offset
-            bboxes[:, 0::2] = np.clip(bboxes[:, 0::2], 0, img_shape[1] - 1)
-            bboxes[:, 1::2] = np.clip(bboxes[:, 1::2], 0, img_shape[0] - 1)
-            results[key] = bboxes
-
-        # filter out the gt bboxes that are completely cropped
-        if 'gt_bboxes' in results:
-            gt_bboxes = results['gt_bboxes']
-            valid_inds = (gt_bboxes[:, 2] > gt_bboxes[:, 0]) & (
-                gt_bboxes[:, 3] > gt_bboxes[:, 1])
-            # if no gt bbox remains after cropping, just skip this image
-            if not np.any(valid_inds):
+            if self.bbox_clip_border:
+                one_dim_bbox_shape = bboxes[:, 0::2].shape
+                one_dim_ones = np.ones(one_dim_bbox_shape)
+                x = one_dim_ones * img_shape[0]
+                y = one_dim_ones * img_shape[1]
+                zeros = np.zeros(one_dim_bbox_shape)
+                # Find which coords are outside the crop.
+                # If sum = 4, all points are too far away.
+                # If sum = 0, the points are within th particular boundary condition.
+                # If sum in [1, 2, 3], it might be an edge case.
+                too_high = (bboxes[:, 0::2] < zeros).sum(axis=1)
+                too_low = (bboxes[:, 0::2] > x).sum(axis=1)
+                too_left = (bboxes[:, 1::2] < zeros).sum(axis=1)
+                too_right = (bboxes[:, 1::2] > y).sum(axis=1)
+                # Bbox is outside if the points are outside in any direction
+                outside = ((too_high == 4) + (too_low == 4) + (too_left == 4) + (too_right == 4)) == 1
+                # Bbox is inside if the points are inside in all directions
+                inside = (too_high == 0) * (too_low == 0) * (too_left == 0) * (too_right == 0)
+                # If the bbox is neither completely inside nor outside, it's an edge case and needs to be handles separately
+                edge_cases = ((1 - outside) + (1 - inside)) == 2
+                for o_bbox, is_edge_case in zip(bboxes, edge_cases):
+                    if not is_edge_case:
+                        continue
+                    # TODO: Crop bboxes in edge cases (overlapping with borders)
+                bboxes[:, 0::2] = np.clip(bboxes[:, 0::2], 0, img_shape[1])
+                bboxes[:, 1::2] = np.clip(bboxes[:, 1::2], 0, img_shape[0])
+            valid_inds = (bboxes[:, 2] > bboxes[:, 0]) & (
+                bboxes[:, 3] > bboxes[:, 1])
+            # If the crop does not contain any gt-bbox area and
+            # self.allow_negative_crop is False, skip this image.
+            if (key == 'gt_bboxes' and not valid_inds.any()
+                    and not self.allow_negative_crop):
                 return None
-            results['gt_bboxes'] = gt_bboxes[valid_inds, :]
-            if 'gt_labels' in results:
-                results['gt_labels'] = results['gt_labels'][valid_inds]
+            results[key] = bboxes[valid_inds, :]
+            # label fields. e.g. gt_labels and gt_labels_ignore
+            label_key = self.bbox2label.get(key)
+            if label_key in results:
+                results[label_key] = results[label_key][valid_inds]
 
-            # filter and crop the masks
-            if 'gt_masks' in results:
-                valid_gt_masks = []
-                for i in np.where(valid_inds)[0]:
-                    gt_mask = results['gt_masks'][i][crop_y1:crop_y2, crop_x1:
-                                                     crop_x2]
-                    valid_gt_masks.append(gt_mask)
-                results['gt_masks'] = valid_gt_masks
+            # mask fields, e.g. gt_masks and gt_masks_ignore
+            mask_key = self.bbox2mask.get(key)
+            if mask_key in results:
+                results[mask_key] = results[mask_key][
+                    valid_inds.nonzero()[0]].crop(
+                        np.asarray([crop_x1, crop_y1, crop_x2, crop_y2]))
+
+        # crop semantic seg
+        for key in results.get('seg_fields', []):
+            results[key] = results[key][crop_y1:crop_y2, crop_x1:crop_x2]
 
         return results
 
     def __repr__(self):
-        return self.__class__.__name__ + '(crop_size={})'.format(
-            self.crop_size)
+        repr_str = self.__class__.__name__ + f'(crop_size={self.crop_size}), '
+        repr_str += f'bbox_clip_border={self.bbox_clip_border})'
+        return repr_str
 
 
 @PIPELINES.register_module
