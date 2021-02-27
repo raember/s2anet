@@ -394,14 +394,14 @@ class RandomCrop(object):
                         continue
 
                     # Crop bbox
-                    cropped_bbox = self.crop_bbox(o_bbox, inside_point_indices, img_shape)
+                    cropped_bbox = self.crop_bbox(points, inside_point_indices, img_shape)
                     if not cropped_bbox:
                         # The cropped bbox is faulty (i.e. too small)
                         # Treat as if outside as to discard it
                         edge_cases[i] = False
                         outside[i] = True
                     else:
-                        bboxes[i] = cropped_bbox
+                        bboxes[i] = cropped_bbox.view((8,))
 
             # If the crop does not contain any gt-bbox area and
             # self.allow_negative_crop is False, skip this image.
@@ -507,6 +507,7 @@ class RandomCrop(object):
             # Find the intersect of the diagonal of the bbox with the border
             #   -> New corner
             # Calculate parallell intersections with the adjacent corners
+            # Correct corners in case intersection with the adjacent corners falls outside the boundary
             pass
         elif n_inside == 2:
             # TODO: Calculate sideways downscaling
