@@ -1,4 +1,5 @@
 import inspect
+from typing import Tuple, Optional, List, Generator
 
 import albumentations
 import mmcv
@@ -303,6 +304,219 @@ class Normalize(object):
         return repr_str
 
 
+class OBBox:
+    """Toolbox for handling orianted bboxes"""
+    @staticmethod
+    def get_inside_outside_edge_mask(bboxes: np.ndarray, img_shape: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Calculate which bounding boxes are completely inside, completely outside or intersecting a given shape.
+
+        Edge cases can be bboxes that have 0-3 points inside the boundary.
+
+        :param img_shape: Shape of the crop.
+        :type img_shape: Tuple[int]
+        :param bboxes: List of 8 dimensional bounding boxes.
+        :type bboxes: np.ndarray
+        :return: A tuple containing boolean masks for the corresponding bbox being inside, outside or an edge case.
+        :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray]
+        """
+        assert bboxes.shape[1] == 8
+        one_dim_bbox_shape = bboxes[:, 0::2].shape
+        one_dim_ones = np.ones(one_dim_bbox_shape)
+        x = one_dim_ones * img_shape[0]
+        y = one_dim_ones * img_shape[1]
+        zeros = np.zeros(one_dim_bbox_shape)
+        # Find which coords are outside the crop.
+        # If sum = 4, all points are too far away.
+        # If sum = 0, the points are within the particular boundary condition.
+        # If sum in [1, 2, 3], it might be an edge case.
+        too_high = (bboxes[:, 0::2] < zeros).sum(axis=1)
+        too_low = (bboxes[:, 0::2] > x).sum(axis=1)
+        too_left = (bboxes[:, 1::2] < zeros).sum(axis=1)
+        too_right = (bboxes[:, 1::2] > y).sum(axis=1)
+        # Bbox is outside if the points are outside in any direction
+        outside = ((too_high == 4) + (too_low == 4) + (too_left == 4) + (too_right == 4)) == 1
+        # Bbox is inside if the points are inside in all directions
+        inside = (too_high == 0) * (too_low == 0) * (too_left == 0) * (too_right == 0)
+        # If the bbox is neither completely inside nor outside, it's an edge case and needs to be handles separately
+        edge_cases = ((1 - outside) + (1 - inside)) == 2
+        return inside, outside, edge_cases
+
+    @staticmethod
+    def is_point_inside(point: np.ndarray, img_shape: Tuple[int, int]) -> bool:
+        """
+        Test whether a point is inside a shape.
+
+        :param point: The point to test.
+        :type point: np.ndarray
+        :param img_shape: The shape to test for.
+        :type img_shape: Tuple[int]
+        :return: True if the point is inside the shape. False otherwise.
+        :rtype: bool
+        """
+        assert point.shape == (2,)
+        x, y = point
+        if x < 0 or x > img_shape[0]:
+            return False
+        if y < 0 or y > img_shape[1]:
+            return False
+        return True
+
+    @staticmethod
+    def crop_bbox(points: np.ndarray, img_shape: Tuple[int, int], threshold: float = 0.6) -> Optional[np.ndarray]:
+        """
+        Crop bounding box along a given shape.
+
+        Find the intersecting edges and shorten them so the rectangle fits inside the border.
+
+        :param points: The corners of the bbox.
+        :type points: np.ndarray
+        :param img_shape: The border shape of the image.
+        :type img_shape: Tuple[int]
+        :param threshold: The threshold of the new area divided by the old area under which to dismiss bboxes.
+        :type threshold: float
+        :return: The cropped bbox.
+        :rtype: Optional[np.ndarray]
+        """
+        assert points.shape == (4, 2)
+        orig_area = OBBox.get_area(points)
+        last_area = orig_area
+        cur_area = 0.0
+        while cur_area != last_area:
+            last_area = cur_area
+            points = OBBox._retract_one_side(points, img_shape)
+            cur_area = OBBox.get_area(points)
+        if orig_area * threshold > cur_area:
+            # newly cropped bbox too small to be useful
+            return None
+        return points
+
+    @staticmethod
+    def _retract_one_side(bbox_points: np.ndarray, img_shape: Tuple[int, int]) -> np.ndarray:
+        """
+        Searches for one side to be contracted as to make the bbox fit isnide the boundary
+
+        :param bbox_points: The points of the bbox
+        :type bbox_points: np.ndarray
+        :param img_shape: The shape of the image boundary
+        :type img_shape: Tuple[int, int]
+        :return: A bbox with one side corrected
+        :rtype: np.ndarray
+        """
+        assert bbox_points.shape == (4, 2)
+        old_points = bbox_points.copy()
+        inside_indices = []
+        for point in bbox_points:
+            inside_indices.append(OBBox.is_point_inside(point, img_shape))
+        if sum(inside_indices) == 0:
+            return bbox_points
+        # Identify which edge crosses to the outside to shorten them
+        for i in range(4):
+            if not inside_indices[i]:
+                # This point is not inside so is not a viable anchor point to shorten an edge
+                continue
+            point = old_points[i]
+            next_idx = (i + 1) % 4
+            last_idx = (i - 1) % 4
+            if not inside_indices[next_idx]:
+                # Next point is outside while the current point is inside. Found a border-crossing edge
+                intersec = OBBox.intersect(point, old_points[next_idx], img_shape)
+                # Apply offset to the next point and the point after that.
+                offset = old_points[next_idx] - intersec
+                bbox_points[next_idx] -= offset
+                bbox_points[(next_idx + 1) % 4] -= offset
+                return bbox_points
+            if not inside_indices[last_idx]:
+                # Point prior to this one is outside while the current point is inside. Found a border-crossing edge
+                intersec = OBBox.intersect(point, old_points[last_idx], img_shape)
+                # Apply offset to the last point and the point prior to it.
+                offset = old_points[last_idx] - intersec
+                bbox_points[last_idx] -= offset
+                bbox_points[(last_idx - 1) % 4] -= offset
+                return bbox_points
+        return bbox_points
+
+    @staticmethod
+    def get_area(bbox_points: np.ndarray) -> float:
+        """
+        Calculate the area of a bounding box based on its corners.
+
+        :param bbox_points: The four corners of the bbox.
+        :type bbox_points: np.ndarray
+        :return: The area encased by the bbox corners
+        :rtype: float
+        """
+        assert bbox_points.shape == (4, 2)
+        w = np.linalg.norm(bbox_points[1] - bbox_points[0])
+        h = np.linalg.norm(bbox_points[3] - bbox_points[0])
+        return w * h
+
+    @staticmethod
+    def intersect(point_inside: np.ndarray, point_outside: np.ndarray, img_shape: Tuple[int, int]) -> np.ndarray:
+        """
+        Find the intersection of the given edge and the border.
+
+        :param point_inside: The point of the edge that is inside
+        :type point_inside: np.ndarray
+        :param point_outside: The point of the edge that is outside
+        :type point_outside: np.ndarray
+        :param img_shape: The shape that defines the border
+        :type img_shape: Tuple[int, int]
+        :return: The intersecting point of the given edge and the border
+        :rtype: np.ndarray
+        """
+        assert point_inside.shape == (2,)
+        assert point_outside.shape == (2,)
+        len_e = np.linalg.norm(point_outside - point_inside)
+        # In case the dimensions are mixed up, fix here:
+        border_corners = [
+            np.array((0, 0)),
+            np.array((img_shape[0], 0)),
+            np.array((img_shape[0], img_shape[1])),
+            np.array((0, img_shape[1])),
+        ]
+        for i in range(4):
+            border_a = border_corners[i]
+            border_b = border_corners[(i + 1) % 4]
+            intersec = OBBox._seg_intersect(point_inside, point_outside, border_a, border_b)
+            if intersec is None:  # If the dge and the border are parallel, there's no intersection
+                continue
+            if 0 < np.linalg.norm(intersec - point_inside) < len_e:
+                return intersec
+        raise Exception("No intersection was found")
+
+    @staticmethod
+    def _seg_intersect(a1: np.ndarray, a2: np.ndarray, b1: np.ndarray, b2: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Calculate the intersection point of two lines.
+
+        https://stackoverflow.com/questions/3252194/numpy-and-line-intersections#3252222
+
+        :param a1: Start point of the first line
+        :type a1: np.ndarray
+        :param a2: End point of the first line
+        :type a2: np.ndarray
+        :param b1: Start point of the second line
+        :type b1: np.ndarray
+        :param b2: End point of the second line
+        :type b2: np.ndarray
+        :return: Intersection point of found
+        :rtype: Optional[np.ndarray]
+        """
+        da = a2 - a1
+        db = b2 - b1
+        dp = a1 - b1
+        dap = np.empty_like(da)
+        dap[0] = -da[1]
+        dap[1] = da[0]
+        denom = np.dot(dap, db)
+        if denom == 0.0:
+            return None
+        num = np.dot(dap, dp)
+        return (num / denom.astype(float)) * db + b1
+
+
+
 @PIPELINES.register_module
 class RandomCrop(object):
     """Random crop the image & bboxes & masks.
@@ -372,37 +586,33 @@ class RandomCrop(object):
                                    dtype=np.float32)
             bboxes = results[key] - bbox_offset
             if self.bbox_clip_border:
-                inside, outside, edge_cases = self.get_inside_outside_edge_mask(bboxes, img_shape)
+                inside, outside, edge_cases = OBBox.get_inside_outside_edge_mask(bboxes, img_shape)
                 for i, (o_bbox, is_edge_case) in enumerate(zip(bboxes, edge_cases)):
                     if not is_edge_case:
                         continue
                     # TODO: Crop bboxes in edge cases (overlapping with borders)
-                    points = o_bbox.view((4, 2))
+                    points = o_bbox.reshape((4, 2))
 
                     # Test whether bbox is actually outside
                     # A bbox can overlap on a corner of the border without having one point inside it
                     actually_outside = False
-                    inside_point_indices = [False, False, False, False]
                     for point in points:
-                        is_inside = self.is_point_inside(point, img_shape)
-                        actually_outside |= not is_inside
-                        if is_inside:
-                            inside_point_indices[j] = True
+                        actually_outside |= not OBBox.is_point_inside(point, img_shape)
                     if actually_outside:
                         edge_cases[i] = False
                         outside[i] = True
                         continue
 
                     # Crop bbox
-                    cropped_bbox = self.crop_bbox(points, inside_point_indices, img_shape)
-                    if not cropped_bbox:
+                    cropped_bbox = OBBox.crop_bbox(points, img_shape)
+                    if cropped_bbox is None:
                         # The cropped bbox is faulty (i.e. too small)
                         # Treat as if outside as to discard it
                         edge_cases[i] = False
                         outside[i] = True
                     else:
-                        bboxes[i] = cropped_bbox.view((8,))
-
+                        bboxes[i] = cropped_bbox.reshape((8,))
+            valid_inds = inside | edge_cases
             # If the crop does not contain any gt-bbox area and
             # self.allow_negative_crop is False, skip this image.
             if (key == 'gt_bboxes' and not valid_inds.any()
@@ -426,116 +636,6 @@ class RandomCrop(object):
             results[key] = results[key][crop_y1:crop_y2, crop_x1:crop_x2]
 
         return results
-
-    @staticmethod
-    def get_inside_outside_edge_mask(bboxes: np.ndarray, img_shape: Tuple[int]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Calculate which bounding boxes are completely inside, completely outside or intersecting a given shape.
-
-        Edge cases can be bboxes that have 0-3 points inside the boundary.
-
-        :param img_shape: Shape of the crop.
-        :type img_shape: Tuple[int]
-        :param bboxes: List of 8 dimensional bounding boxes.
-        :type bboxes: np.ndarray
-        :return: A tuple containing boolean masks for the corresponding bbox being inside, outside or an edge case.
-        :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray]
-        """
-        one_dim_bbox_shape = bboxes[:, 0::2].shape
-        one_dim_ones = np.ones(one_dim_bbox_shape)
-        x = one_dim_ones * img_shape[0]
-        y = one_dim_ones * img_shape[1]
-        zeros = np.zeros(one_dim_bbox_shape)
-        # Find which coords are outside the crop.
-        # If sum = 4, all points are too far away.
-        # If sum = 0, the points are within the particular boundary condition.
-        # If sum in [1, 2, 3], it might be an edge case.
-        too_high = (bboxes[:, 0::2] < zeros).sum(axis=1)
-        too_low = (bboxes[:, 0::2] > x).sum(axis=1)
-        too_left = (bboxes[:, 1::2] < zeros).sum(axis=1)
-        too_right = (bboxes[:, 1::2] > y).sum(axis=1)
-        # Bbox is outside if the points are outside in any direction
-        outside = ((too_high == 4) + (too_low == 4) + (too_left == 4) + (too_right == 4)) == 1
-        # Bbox is inside if the points are inside in all directions
-        inside = (too_high == 0) * (too_low == 0) * (too_left == 0) * (too_right == 0)
-        # If the bbox is neither completely inside nor outside, it's an edge case and needs to be handles separately
-        edge_cases = ((1 - outside) + (1 - inside)) == 2
-        return inside, outside, edge_cases
-
-    @staticmethod
-    def is_point_inside(point: np.ndarray, img_shape: Tuple[int]) -> bool:
-        """
-        Test whether a point is inside a shape.
-
-        :param point: The point to test.
-        :type point: np.ndarray
-        :param img_shape: The shape to test for.
-        :type img_shape: Tuple[int]
-        :return: True if the point is inside the shape. False otherwise.
-        :rtype: bool
-        """
-        x, y = point
-        if x < 0 or x > img_shape[0]:
-            return False
-        if y < 0 or y > img_shape[1]:
-            return False
-        return True
-
-    @staticmethod
-    def crop_bbox(points: np.ndarray, inside_indices: List[bool], img_shape: Tuple[int], threshold = 0.6) -> Optional[np.ndarray]:
-        """
-        Crop bounding box along a given shape.
-
-        Find the intersecting edges and shorten them so the rectangle fits inside the border.
-
-        :param points: The corners of the bbox.
-        :type points: np.ndarray
-        :param inside_indices: Indication whether a point is inside or outside of the border. True if inside.
-        :type inside_indices: List[bool]
-        :param img_shape: The border shape of the image.
-        :type img_shape: Tuple[int]
-        :return: The cropped bbox.
-        :rtype: Optional[np.ndarray]
-        """
-        orig_area = self.get_area(points)
-        n_inside = sum(inside_indices)
-        if n_inside == 1 or n_inside == 3:
-            # TODO: Calculate diagonal intersection to downscale the bbox
-            # Find the inside/outside corner
-            # Find opposite corner
-            # Find adjacent corners which are either both inside or outside
-            # Find the intersect of the diagonal of the bbox with the border
-            #   -> New corner
-            # Calculate parallell intersections with the adjacent corners
-            # Correct corners in case intersection with the adjacent corners falls outside the boundary
-            pass
-        elif n_inside == 2:
-            # TODO: Calculate sideways downscaling
-            # Find the two inside corners
-            # Find the corresponding corners on the outside
-            # Shorten the edges so they meet the border
-            # Take the shortest edge as new side length
-            # Construct missing corner
-            pass
-        else:
-            raise ValueError(f"Amount of corners inside outside of expectations: {n_inside}")
-        new_area = self.get_area(points)
-        if orig_area * threshold < new_area:
-            # newly cropped bbox too small to be useful
-            return None
-        return points
-
-    @staticmethod
-    def get_area(bbox_points: np.ndarray) -> float:
-        """
-        Calculate the area of a bounding box based on its corners.
-
-        :param bbox_points: The four corners of the bbox.
-        :type bbox_points: np.ndarray
-        :return: The area encased by the bbox corners
-        :rtype: float
-        """
-        # TODO: Calculate the area encased by the four corners
 
     def __repr__(self):
         repr_str = self.__class__.__name__ + f'(crop_size={self.crop_size}), '
