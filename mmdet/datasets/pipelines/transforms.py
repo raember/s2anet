@@ -394,7 +394,9 @@ class OBBox:
     @staticmethod
     def _retract_one_side(bbox_points: np.ndarray, img_shape: Tuple[int, int]) -> np.ndarray:
         """
-        Searches for one side to be contracted as to make the bbox fit isnide the boundary
+        Search for one side to be contracted as to make the bbox fit inside the boundary.
+
+        Make sure to return the retraction with the lowest area loss.
 
         :param bbox_points: The points of the bbox
         :type bbox_points: np.ndarray
@@ -405,6 +407,7 @@ class OBBox:
         """
         assert bbox_points.shape == (4, 2)
         old_points = bbox_points.copy()
+        retraction_candidates = {}
         inside_indices = []
         for point in bbox_points:
             inside_indices.append(OBBox.is_point_inside(point, img_shape))
@@ -420,26 +423,31 @@ class OBBox:
             last_idx = (i - 1) % 4
             if not inside_indices[next_idx]:
                 # Next point is outside while the current point is inside. Found a border-crossing edge
-                intersec = OBBox.intersect(point, old_points[next_idx], img_shape)
+                intersec = OBBox._intersect(point, old_points[next_idx], img_shape)
                 # Apply offset to the next point and the point after that.
                 offset = old_points[next_idx] - intersec
-                bbox_points[next_idx] -= offset
-                bbox_points[(next_idx + 1) % 4] -= offset
-                return bbox_points
+                new_points = bbox_points.copy()
+                new_points[next_idx] -= offset
+                new_points[(next_idx + 1) % 4] -= offset
+                retraction_candidates[OBBox.get_area(new_points)] = new_points
             if not inside_indices[last_idx]:
                 # Point prior to this one is outside while the current point is inside. Found a border-crossing edge
-                intersec = OBBox.intersect(point, old_points[last_idx], img_shape)
+                intersec = OBBox._intersect(point, old_points[last_idx], img_shape)
                 # Apply offset to the last point and the point prior to it.
                 offset = old_points[last_idx] - intersec
+                new_points = bbox_points.copy()
                 bbox_points[last_idx] -= offset
                 bbox_points[(last_idx - 1) % 4] -= offset
-                return bbox_points
-        return bbox_points
+                retraction_candidates[OBBox.get_area(new_points)] = new_points
+        highest_area = max(retraction_candidates.keys())
+        return retraction_candidates[highest_area]
 
     @staticmethod
     def get_area(bbox_points: np.ndarray) -> float:
         """
         Calculate the area of a bounding box based on its corners.
+
+        Assumption of a rectangle is acceptable, as the area is only used for comparison, apart from thresholding.
 
         :param bbox_points: The four corners of the bbox.
         :type bbox_points: np.ndarray
@@ -452,7 +460,7 @@ class OBBox:
         return w * h
 
     @staticmethod
-    def intersect(point_inside: np.ndarray, point_outside: np.ndarray, img_shape: Tuple[int, int]) -> np.ndarray:
+    def _intersect(point_inside: np.ndarray, point_outside: np.ndarray, img_shape: Tuple[int, int]) -> np.ndarray:
         """
         Find the intersection of the given edge and the border.
 
@@ -479,7 +487,7 @@ class OBBox:
             border_a = border_corners[i]
             border_b = border_corners[(i + 1) % 4]
             intersec = OBBox._seg_intersect(point_inside, point_outside, border_a, border_b)
-            if intersec is None:  # If the dge and the border are parallel, there's no intersection
+            if intersec is None:  # If the edge and the border are parallel, there's no intersection
                 continue
             if 0 < np.linalg.norm(intersec - point_inside) < len_e:
                 return intersec
