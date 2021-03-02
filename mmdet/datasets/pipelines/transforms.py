@@ -386,7 +386,7 @@ class OBBox:
             last_area = cur_area
             points = OBBox._retract_one_side(points, img_shape)
             cur_area = OBBox.get_area(points)
-        if orig_area * threshold > cur_area:
+        if cur_area < orig_area * threshold:
             # newly cropped bbox too small to be useful
             return None
         return points
