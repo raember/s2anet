@@ -436,9 +436,12 @@ class OBBox:
                 # Apply offset to the last point and the point prior to it.
                 offset = old_points[last_idx] - intersec
                 new_points = bbox_points.copy()
-                bbox_points[last_idx] -= offset
-                bbox_points[(last_idx - 1) % 4] -= offset
+                new_points[last_idx] -= offset
+                new_points[(last_idx - 1) % 4] -= offset
                 retraction_candidates[OBBox.get_area(new_points)] = new_points
+        if len(retraction_candidates) == 0:
+            # No side left to retract
+            return bbox_points
         highest_area = max(retraction_candidates.keys())
         return retraction_candidates[highest_area]
 
