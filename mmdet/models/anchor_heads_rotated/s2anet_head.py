@@ -388,6 +388,11 @@ class S2ANetHead(nn.Module):
             gt_bboxes=gt_bboxes,
             gt_labels=gt_labels,
             img_metas=img_metas,
+            fam_cls_scores=fam_cls_scores,
+            fam_bbox_preds=fam_bbox_preds,
+            refine_anchors=refine_anchors,
+            odm_cls_scores=odm_cls_scores,
+            odm_bbox_preds=odm_bbox_preds,
         )
 
         return dict(loss_fam_cls=losses_fam_cls,
@@ -558,8 +563,26 @@ class S2ANetHead(nn.Module):
         img_gt = imshow_det_bboxes(img.copy(),gt,
                                         self.last_vals['gt_labels'][0].cpu().numpy()-1,
                                         class_names=None, show=False, show_label=True, rotated=True)
-        #Image.fromarray(img_gt).show()
-        return [{"name": "stitched_img", "image": img_gt}]
+
+        det_boxes_labels = self.get_bboxes(fam_cls_scores=self.last_vals['fam_cls_scores'],
+                   fam_bbox_preds=self.last_vals['fam_bbox_preds'],
+                   refine_anchors=self.last_vals['refine_anchors'],
+                   odm_cls_scores=self.last_vals['odm_cls_scores'],
+                   odm_bbox_preds=self.last_vals['odm_bbox_preds'],
+                   img_metas=self.last_vals['img_metas'],
+                   cfg=test_cfg)[0]
+        det_boxes = rotated_box_to_poly_np(det_boxes_labels[0].cpu().numpy())
+        det_labels = det_boxes_labels[1].cpu().numpy()
+        if len(det_boxes)>0:
+            img_det = imshow_det_bboxes(img.copy(),det_boxes,
+                                            det_labels,
+                                            class_names=None, show=False, show_label=True, rotated=True)
+        else:
+            img_det = img.copy()
+        stitched = vt.stitch_big_image([[img_gt],
+                                        [img_det]])
+
+        return [{"name": "stitched_img", "image": stitched}]
 
 def bbox_decode(
         bbox_preds,
