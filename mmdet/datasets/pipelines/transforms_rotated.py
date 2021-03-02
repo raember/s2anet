@@ -33,11 +33,12 @@ class RotatedResize(Resize):
     def _resize_bboxes(self, results):
         img_shape = results['img_shape']
         for key in results.get('bbox_fields', []):
-            if len(results[key]) > 0 and results[key].shape[1] == 8:
+            if results[key].shape[-1] == 5:
+                polys = rotated_box_to_poly_np(results[key])  # to 8 points
+            elif results[key].shape[-1] == 8:
                 polys = results[key]  # it's already 8 points
             else:
                 polys = rotated_box_to_poly_np(results[key])  # to 8 points
-
             polys = polys * results['scale_factor']
             if polys.shape[0] != 0:
                 polys[:, 0::2] = np.clip(polys[:, 0::2], 0, img_shape[1] - 1)

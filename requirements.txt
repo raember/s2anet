@@ -2,7 +2,7 @@ cython
 numpy
 albumentations
 imagecorruptions
-mmcv==0.2.14
+mmcv==1.1.6
 matplotlib
 terminaltables
 six

@@ -18,7 +18,7 @@ model = dict(
         num_outs=5),
     bbox_head=dict(
         type='S2ANetHead',
-        num_classes=16,
+        num_classes=136,
         in_channels=256,
         feat_channels=256,
         stacked_convs=2,
@@ -86,14 +86,15 @@ test_cfg = dict(
 dataset_type = 'DeepScoresV2Dataset'
 data_root = 'data/deep_scores_dense/'
 img_norm_cfg = dict(
-    mean=[240.15232515949037, 240.15229097456378, 240.15232515949037],
-    std=[57.178083212078896, 57.178143244444556, 57.178083212078896],
+    mean = [240, 240, 240],
+    std = [57, 57, 57],
     to_rgb=False)
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='RandomCrop', crop_size=(1400, 1400)),
     dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
-    dict(type='RotatedRandomFlip', flip_ratio=0.5),
+    dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
@@ -157,8 +158,8 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="tuggeluk",
-    project='wfcos-testing',
+    entity='raember',
+    project='s2anet',
     dryrun=False
 )
 
