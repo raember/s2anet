@@ -494,6 +494,7 @@ class OBBox:
                 continue
             if 0 < np.linalg.norm(intersec - point_inside) < len_e:
                 return intersec
+        # TODO: Fix bboxes not getting cropped by failure to find an intersection of a side and a border
         raise Exception("No intersection was found")
 
     @staticmethod
