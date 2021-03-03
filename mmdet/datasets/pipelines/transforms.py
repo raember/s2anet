@@ -386,10 +386,53 @@ class OBBox:
             last_area = cur_area
             corners = OBBox._retract_one_side(corners, crop_shape)
             cur_area = OBBox.get_area(corners)
+        # TODO: Consider taking _get_diagonal_candidates into account
         if cur_area < orig_area * threshold:
             # newly cropped bbox too small to be useful
             return None
         return corners
+
+    @staticmethod
+    def _get_diagonal_candidates(corners: np.ndarray, crop_shape: Tuple[int, int]) -> List[np.ndarray]:
+        """
+        Find bbox candidates derived by the diagonal of opposing corners
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param crop_shape: The shape of the crop
+        :type crop_shape: Tuple[int, int]
+        :return:
+        :rtype: List[np.ndarray]
+        """
+        assert corners.shape == (4, 2)
+        old_corners = corners.copy()
+        diagonal_candidates = []
+        inside_indices = []
+        for corner in corners:
+            inside_indices.append(OBBox.is_corner_inside(corner, crop_shape))
+        if sum(inside_indices) in (0, 4):
+            return []
+        for i in range(4):
+            if not inside_indices[i]:
+                continue
+            corner = old_corners[i]
+            opposite_idx = (i + 2) % 4
+            if not inside_indices[opposite_idx]:
+                opposite_corner = old_corners[opposite_idx]
+                intersec = OBBox._intersect(corner, opposite_corner, crop_shape)
+                if intersec is not None:
+                    new_corners = corners.copy()
+                    rel_reduction = np.linalg.norm(intersec - corner) / np.linalg.norm(opposite_corner - corner)
+                    new_corners[opposite_idx] = intersec
+                    edge_vec_1 = corners[i + 1] - corner
+                    edge_vec_2 = corners[i - 1] - corner
+                    new_corners[i + 1] = corner + edge_vec_1 * rel_reduction
+                    new_corners[i - 1] = corner + edge_vec_2 * rel_reduction
+                    diagonal_candidates.append(new_corners)
+        return diagonal_candidates
+
+
+
 
     @staticmethod
     def _retract_one_side(corners: np.ndarray, crop_shape: Tuple[int, int]) -> np.ndarray:
