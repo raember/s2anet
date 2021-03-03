@@ -604,7 +604,7 @@ class RandomCrop(object):
                                    dtype=np.float32)
             bboxes = results[key] - bbox_offset
             if self.bbox_clip_border:
-                inside, outside, edge_cases = OBBox.get_inside_outside_edge_mask(bboxes, img_shape)
+                inside, outside, edge_cases = OBBox.get_inside_outside_edge_mask(bboxes, self.crop_size)
                 for i, (o_bbox, is_edge_case) in enumerate(zip(bboxes, edge_cases)):
                     if not is_edge_case:
                         continue
@@ -615,14 +615,14 @@ class RandomCrop(object):
                     # A bbox can overlap on a corner of the border without having one point inside it
                     actually_outside = False
                     for point in points:
-                        actually_outside |= not OBBox.is_point_inside(point, img_shape)
+                        actually_outside |= not OBBox.is_point_inside(point, self.crop_size)
                     if actually_outside:
                         edge_cases[i] = False
                         outside[i] = True
                         continue
 
                     # Crop bbox
-                    cropped_bbox = OBBox.crop_bbox(points, img_shape)
+                    cropped_bbox = OBBox.crop_bbox(points, self.crop_size)
                     if cropped_bbox is None:
                         # The cropped bbox is faulty (i.e. too small)
                         # Treat as if outside as to discard it
