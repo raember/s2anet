@@ -305,7 +305,7 @@ class Normalize(object):
 
 
 class OBBox:
-    """Toolbox for handling orianted bboxes"""
+    """Toolbox for handling oriented bboxes"""
     @staticmethod
     def get_inside_outside_edge_mask(bboxes: np.ndarray, crop_shape: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
