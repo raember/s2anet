@@ -32,15 +32,6 @@ class RandomCropTest(unittest.TestCase):
         ), dtype='float64')
         np.testing.assert_equal(OBBox.crop_bbox(bbox, self.BOUNDARY), bbox)
 
-    def test_orthogonal_bbox_corners_one_side_out(self):
-        bbox = np.array((
-            (0, 3),
-            (5, 3),
-            (5, 10),
-            (0, 10),
-        ), dtype='float64')
-        np.testing.assert_equal(OBBox.crop_bbox(bbox, self.BOUNDARY), bbox)
-
     def test_orthogonal_bbox_two_corners_out(self):
         bbox = np.array((
             (3, 3),
