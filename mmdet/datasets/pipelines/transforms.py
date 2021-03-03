@@ -424,21 +424,23 @@ class OBBox:
             if not inside_indices[next_idx]:
                 # Next point is outside while the current point is inside. Found a border-crossing edge
                 intersec = OBBox._intersect(point, old_points[next_idx], img_shape)
-                # Apply offset to the next point and the point after that.
-                offset = old_points[next_idx] - intersec
-                new_points = bbox_points.copy()
-                new_points[next_idx] -= offset
-                new_points[(next_idx + 1) % 4] -= offset
-                retraction_candidates[OBBox.get_area(new_points)] = new_points
+                if intersec is not None:
+                    # Apply offset to the next point and the point after that.
+                    offset = old_points[next_idx] - intersec
+                    new_points = bbox_points.copy()
+                    new_points[next_idx] -= offset
+                    new_points[(next_idx + 1) % 4] -= offset
+                    retraction_candidates[OBBox.get_area(new_points)] = new_points
             if not inside_indices[last_idx]:
                 # Point prior to this one is outside while the current point is inside. Found a border-crossing edge
                 intersec = OBBox._intersect(point, old_points[last_idx], img_shape)
-                # Apply offset to the last point and the point prior to it.
-                offset = old_points[last_idx] - intersec
-                new_points = bbox_points.copy()
-                new_points[last_idx] -= offset
-                new_points[(last_idx - 1) % 4] -= offset
-                retraction_candidates[OBBox.get_area(new_points)] = new_points
+                if intersec is not None:
+                    # Apply offset to the last point and the point prior to it.
+                    offset = old_points[last_idx] - intersec
+                    new_points = bbox_points.copy()
+                    new_points[last_idx] -= offset
+                    new_points[(last_idx - 1) % 4] -= offset
+                    retraction_candidates[OBBox.get_area(new_points)] = new_points
         if len(retraction_candidates) == 0:
             # No side left to retract
             return bbox_points
@@ -463,7 +465,7 @@ class OBBox:
         return w * h
 
     @staticmethod
-    def _intersect(point_inside: np.ndarray, point_outside: np.ndarray, img_shape: Tuple[int, int]) -> np.ndarray:
+    def _intersect(point_inside: np.ndarray, point_outside: np.ndarray, img_shape: Tuple[int, int]) -> Optional[np.ndarray]:
         """
         Find the intersection of the given edge and the border.
 
@@ -492,10 +494,14 @@ class OBBox:
             intersec = OBBox._seg_intersect(point_inside, point_outside, border_a, border_b)
             if intersec is None:  # If the edge and the border are parallel, there's no intersection
                 continue
-            if 0 < np.linalg.norm(intersec - point_inside) < len_e:
+            offset_vec = intersec - point_inside
+            edge_vec = point_outside - point_inside
+            dist = np.linalg.norm(offset_vec)
+            offset_unit_vec = offset_vec/dist
+            edge_unit_vec = edge_vec/np.linalg.norm(edge_vec)
+            if 0 < dist < len_e and np.allclose(offset_unit_vec, edge_unit_vec):
                 return intersec
-        # TODO: Fix bboxes not getting cropped by failure to find an intersection of a side and a border
-        raise Exception("No intersection was found")
+        return None
 
     @staticmethod
     def _seg_intersect(a1: np.ndarray, a2: np.ndarray, b1: np.ndarray, b2: np.ndarray) -> Optional[np.ndarray]:
