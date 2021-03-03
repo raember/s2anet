@@ -411,7 +411,7 @@ class OBBox:
         inside_indices = []
         for point in bbox_points:
             inside_indices.append(OBBox.is_point_inside(point, img_shape))
-        if sum(inside_indices) == 0:
+        if sum(inside_indices) in (0, 4):
             return bbox_points
         # Identify which edge crosses to the outside to shorten them
         for i in range(4):
