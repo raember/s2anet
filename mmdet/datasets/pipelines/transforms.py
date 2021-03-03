@@ -608,7 +608,6 @@ class RandomCrop(object):
                 for i, (o_bbox, is_edge_case) in enumerate(zip(bboxes, edge_cases)):
                     if not is_edge_case:
                         continue
-                    # TODO: Crop bboxes in edge cases (overlapping with borders)
                     corners = o_bbox.reshape((4, 2))
 
                     # Test whether bbox is actually outside
