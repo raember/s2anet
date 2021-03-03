@@ -450,7 +450,7 @@ class OBBox:
         """
         Calculate the area of a bounding box based on its corners.
 
-        Assumption of a rectangle is acceptable, as the area is only used for comparison, apart from thresholding.
+        Assumption of a rectangle is acceptable, as the area is only used for comparisons.
 
         :param bbox_points: The four corners of the bbox.
         :type bbox_points: np.ndarray
