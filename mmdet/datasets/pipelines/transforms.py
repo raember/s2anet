@@ -343,19 +343,21 @@ class OBBox:
         return inside, outside, edge_cases
 
     @staticmethod
-    def is_corner_inside(corner: np.ndarray, crop_shape: Tuple[int, int]) -> bool:
+    def is_point_inside(point: np.ndarray, crop_shape: Tuple[int, int]) -> bool:
         """
-        Test whether a corner is inside a shape.
+        Test whether a point is inside a crop.
 
-        :param corner: The corner to test.
-        :type corner: np.ndarray
-        :param crop_shape: The shape to test for.
+        Regard points on the border to be inside as well.
+
+        :param point: The point to test.
+        :type point: np.ndarray
+        :param crop_shape: The crop shape to test for.
         :type crop_shape: Tuple[int]
-        :return: True if the corner is inside the shape. False otherwise.
+        :return: True if the point is inside the crop. False otherwise.
         :rtype: bool
         """
-        assert corner.shape == (2,)
-        x, y = corner
+        assert point.shape == (2,)
+        x, y = point
         if x < 0 or x > crop_shape[0]:
             return False
         if y < 0 or y > crop_shape[1]:
@@ -409,7 +411,7 @@ class OBBox:
         diagonal_candidates = []
         inside_indices = []
         for corner in corners:
-            inside_indices.append(OBBox.is_corner_inside(corner, crop_shape))
+            inside_indices.append(OBBox.is_point_inside(corner, crop_shape))
         if sum(inside_indices) in (0, 4):
             return []
         for i in range(4):
@@ -431,9 +433,7 @@ class OBBox:
                     diagonal_candidates.append(new_corners)
         return diagonal_candidates
 
-
-
-
+    # noinspection DuplicatedCode
     @staticmethod
     def _retract_one_side(corners: np.ndarray, crop_shape: Tuple[int, int]) -> np.ndarray:
         """
@@ -449,46 +449,63 @@ class OBBox:
         :rtype: np.ndarray
         """
         assert corners.shape == (4, 2)
-        old_corners = corners.copy()
-        retraction_candidates = {}
-        inside_indices = []
-        for corner in corners:
-            inside_indices.append(OBBox.is_corner_inside(corner, crop_shape))
-        if sum(inside_indices) in (0, 4):
+        if all(map(OBBox.is_point_inside, corners, [crop_shape for _ in range(4)])):
             return corners
-        # Identify which edge crosses to the outside to shorten them
+        retraction_candidates = {}
+        # Identify which edge crosses the crop border to shorten them
         for i in range(4):
-            if not inside_indices[i]:
-                # This corner is not inside so is not a viable anchor corner to shorten an edge
-                continue
-            corner = old_corners[i]
-            next_idx = (i + 1) % 4
-            last_idx = (i - 1) % 4
-            if not inside_indices[next_idx]:
-                # Next corner is outside while the current corner is inside. Found a border-crossing edge
-                intersec = OBBox._intersect(corner, old_corners[next_idx], crop_shape)
-                if intersec is not None:
-                    # Apply offset to the next corner and the corner after that.
-                    offset = old_corners[next_idx] - intersec
-                    new_corners = corners.copy()
-                    new_corners[next_idx] -= offset
-                    new_corners[(next_idx + 1) % 4] -= offset
-                    retraction_candidates[OBBox.get_area(new_corners)] = new_corners
-            if not inside_indices[last_idx]:
-                # Corner prior to this one is outside while the current corner is inside. Found a border-crossing edge
-                intersec = OBBox._intersect(corner, old_corners[last_idx], crop_shape)
-                if intersec is not None:
-                    # Apply offset to the last corner and the corner prior to it.
-                    offset = old_corners[last_idx] - intersec
-                    new_corners = corners.copy()
-                    new_corners[last_idx] -= offset
-                    new_corners[(last_idx - 1) % 4] -= offset
-                    retraction_candidates[OBBox.get_area(new_corners)] = new_corners
+            corner = corners[i]
+            forward_idx = (i + 1) % 4
+            backward_idx = (i - 1) % 4
+            opposite_idx = (i + 2) % 4
+
+            forward_intersection = OBBox._intersect(corner, corners[forward_idx], crop_shape)
+            if forward_intersection is not None:
+                if OBBox.is_point_inside(corner, crop_shape):
+                    retract_idx = forward_idx
+                    adj_idx = opposite_idx
+                else:
+                    retract_idx = i
+                    adj_idx = backward_idx
+                new_corners = OBBox._retract_to_intersection(corners.copy(), forward_intersection, retract_idx, adj_idx)
+                retraction_candidates[OBBox.get_area(new_corners)] = new_corners
+
+            backward_intersection = OBBox._intersect(corner, corners[backward_idx], crop_shape)
+            if backward_intersection is not None:
+                if OBBox.is_point_inside(corner, crop_shape):
+                    retract_idx = backward_idx
+                    adj_idx = opposite_idx
+                else:
+                    retract_idx = i
+                    adj_idx = forward_idx
+                new_corners = OBBox._retract_to_intersection(corners.copy(), backward_intersection, retract_idx, adj_idx)
+                retraction_candidates[OBBox.get_area(new_corners)] = new_corners
         if len(retraction_candidates) == 0:
             # No side left to retract
             return corners
         highest_area = max(retraction_candidates.keys())
         return retraction_candidates[highest_area]
+
+    @staticmethod
+    def _retract_to_intersection(corners: np.ndarray, intersec: np.ndarray, corner_idx: int, adj_corner_idx: int) -> np.ndarray:
+        """
+        Retract corners from indexed croner to intersection.
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param intersec: The intersection to retract to
+        :type intersec: np.ndarray
+        :param corner_idx: The index or the corner from which to retract from
+        :type corner_idx: int
+        :param adj_corner_idx: The index or the adjacent corner to include in the retraction
+        :type adj_corner_idx: int
+        :return: The resulting bbox
+        :rtype: np.ndarray
+        """
+        offset = intersec - corners[corner_idx]
+        corners[corner_idx] += offset
+        corners[adj_corner_idx] += offset
+        return corners
 
     @staticmethod
     def get_area(corners: np.ndarray) -> float:
@@ -508,22 +525,23 @@ class OBBox:
         return w * h
 
     @staticmethod
-    def _intersect(corner_inside: np.ndarray, corner_outside: np.ndarray, crop_shape: Tuple[int, int]) -> Optional[np.ndarray]:
+    def _intersect(start_corner: np.ndarray, end_corner: np.ndarray, crop_shape: Tuple[int, int]) -> Optional[np.ndarray]:
         """
-        Find the intersection of the given edge and the border.
+        Find the intersection of the given edge and the border closest to the first corner.
 
-        :param corner_inside: The corner of the edge that is inside
-        :type corner_inside: np.ndarray
-        :param corner_outside: The corner of the edge that is outside
-        :type corner_outside: np.ndarray
+        :param start_corner: The corner of the edge that is inside
+        :type start_corner: np.ndarray
+        :param end_corner: The corner of the edge that is outside
+        :type end_corner: np.ndarray
         :param crop_shape: The shape that defines the border
         :type crop_shape: Tuple[int, int]
         :return: The intersecting corner of the given edge and the border
         :rtype: np.ndarray
         """
-        assert corner_inside.shape == (2,)
-        assert corner_outside.shape == (2,)
-        len_e = np.linalg.norm(corner_outside - corner_inside)
+        assert start_corner.shape == (2,)
+        assert end_corner.shape == (2,)
+        max_dist = np.linalg.norm(end_corner - start_corner)
+        intersecs = {}
         # In case the dimensions are mixed up, fix here:
         border_corners = [
             np.array((0, 0)),
@@ -534,17 +552,19 @@ class OBBox:
         for i in range(4):
             border_a = border_corners[i]
             border_b = border_corners[(i + 1) % 4]
-            intersec = OBBox._seg_intersect(corner_inside, corner_outside, border_a, border_b)
-            if intersec is None:  # If the edge and the border are parallel, there's no intersection
+            intersection = OBBox._seg_intersect(start_corner, end_corner, border_a, border_b)
+            if intersection is None:  # If the edge and the border are parallel, there's no intersection
                 continue
-            offset_vec = intersec - corner_inside
-            edge_vec = corner_outside - corner_inside
+            offset_vec = intersection - start_corner
+            edge_vec = end_corner - start_corner
             dist = np.linalg.norm(offset_vec)
             offset_unit_vec = offset_vec/dist
             edge_unit_vec = edge_vec/np.linalg.norm(edge_vec)
-            if 0 < dist < len_e and np.allclose(offset_unit_vec, edge_unit_vec):
-                return intersec
-        return None
+            if 0 < dist < max_dist and np.allclose(offset_unit_vec, edge_unit_vec):
+                intersecs[dist] = intersection
+        if len(intersecs) == 0:
+            return None
+        return intersecs[min(intersecs.keys())]
 
     @staticmethod
     def _seg_intersect(a1: np.ndarray, a2: np.ndarray, b1: np.ndarray, b2: np.ndarray) -> Optional[np.ndarray]:
@@ -657,7 +677,7 @@ class RandomCrop(object):
                     # A bbox can overlap on a corner of the border without having one corner inside it
                     actually_outside = False
                     for corner in corners:
-                        actually_outside |= not OBBox.is_corner_inside(corner, self.crop_size)
+                        actually_outside |= not OBBox.is_point_inside(corner, self.crop_size)
                     if actually_outside:
                         edge_cases[i] = False
                         outside[i] = True
