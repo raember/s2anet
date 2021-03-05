@@ -80,6 +80,21 @@ class RandomCropTest(unittest.TestCase):
         ), dtype='float64')
         self.assertIsNone(OBBox.crop_bbox(bbox, self.BOUNDARY, threshold=0.7))
 
+    def test_orthogonal_bbox_four_corners_out(self):
+        bbox = np.array((
+            (-1, 2),
+            (11, 2),
+            (11, 7),
+            (-1, 7),
+        ), dtype='float64')
+        new_bbox = np.array((
+            (0, 2),
+            (10, 2),
+            (10, 7),
+            (0, 7),
+        ), dtype='float64')
+        np.testing.assert_equal(OBBox.crop_bbox(bbox, self.BOUNDARY, threshold=0.5), new_bbox)
+
     def test_oriented_bbox_all_corners_inside(self):
         bbox = np.array((
             (2, 3),
@@ -186,6 +201,21 @@ class RandomCropTest(unittest.TestCase):
             (5, 2),
         ), dtype='float64')
         np.testing.assert_almost_equal(OBBox.crop_bbox(bbox, self.BOUNDARY, threshold=0.0), new_bbox)
+
+    def test_oriented_bbox_four_outside(self):
+        bbox = np.array((
+            (-2, 7),
+            (11, 4),
+            (12, 7),
+            (-1, 10),
+        ), dtype='float64')
+        new_bbox = np.array((
+            (0, 6.5384615),
+            (9, 4.4615384),
+            (10, 7.4615384),
+            (1, 9.5384615),
+        ), dtype='float64')
+        np.testing.assert_almost_equal(OBBox.crop_bbox(bbox, self.BOUNDARY, threshold=0.5), new_bbox)
 
 
 if __name__ == '__main__':
