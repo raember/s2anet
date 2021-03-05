@@ -365,7 +365,11 @@ class OBBox:
         return True
 
     @staticmethod
-    def crop_bbox(corners: np.ndarray, crop_shape: Tuple[int, int], threshold: float = 0.6) -> Optional[np.ndarray]:
+    def crop_bbox(
+            corners: np.ndarray,
+            crop_shape: Tuple[int, int],
+            threshold_rel: float = 0.6,
+            threshold_abs: float = 20.0) -> Optional[np.ndarray]:
         """
         Crop bounding box along a given shape.
 
@@ -375,8 +379,10 @@ class OBBox:
         :type corners: np.ndarray
         :param crop_shape: The border shape of the image.
         :type crop_shape: Tuple[int]
-        :param threshold: The threshold of the new area divided by the old area under which to dismiss bboxes.
-        :type threshold: float
+        :param threshold_rel: The threshold of the new area divided by the old area under which to dismiss bboxes.
+        :type threshold_rel: float
+        :param threshold_abs: The threshold of the new area over which to accept crops even if they'e below the relative threshold.
+        :type threshold_abs: float
         :return: The cropped bbox.
         :rtype: Optional[np.ndarray]
         """
@@ -389,7 +395,7 @@ class OBBox:
             corners = OBBox._retract_one_side(corners, crop_shape)
             cur_area = OBBox.get_area(corners)
         # TODO: Consider taking _get_diagonal_candidates into account
-        if cur_area < orig_area * threshold:
+        if cur_area < orig_area * threshold_rel and cur_area < threshold_abs:
             # newly cropped bbox too small to be useful
             return None
         return corners
@@ -620,9 +626,13 @@ class RandomCrop(object):
     def __init__(self,
                  crop_size,
                  allow_negative_crop=False,
-                 bbox_clip_border=True):
+                 bbox_clip_border=True,
+                 threshold_rel=0.6,
+                 threshold_abs=20.0):
         assert crop_size[0] > 0 and crop_size[1] > 0
         self.crop_size = crop_size
+        self.threshold_rel = threshold_rel
+        self.threshold_abs = threshold_abs
         self.allow_negative_crop = allow_negative_crop
         self.bbox_clip_border = bbox_clip_border
         # The key correspondence from bboxes to labels and masks.
@@ -674,7 +684,12 @@ class RandomCrop(object):
                     corners = o_bbox.reshape((4, 2))
 
                     # Crop bbox
-                    cropped_bbox = OBBox.crop_bbox(corners, self.crop_size)
+                    cropped_bbox = OBBox.crop_bbox(
+                        corners,
+                        self.crop_size,
+                        threshold_rel=self.threshold_rel,
+                        threshold_abs=self.threshold_abs,
+                    )
                     if cropped_bbox is None:
                         # The cropped bbox is faulty (i.e. too small)
                         # Treat as if outside as to discard it
