@@ -673,16 +673,6 @@ class RandomCrop(object):
                         continue
                     corners = o_bbox.reshape((4, 2))
 
-                    # Test whether bbox is actually outside
-                    # A bbox can overlap on a corner of the border without having one corner inside it
-                    actually_outside = False
-                    for corner in corners:
-                        actually_outside |= not OBBox.is_point_inside(corner, self.crop_size)
-                    if actually_outside:
-                        edge_cases[i] = False
-                        outside[i] = True
-                        continue
-
                     # Crop bbox
                     cropped_bbox = OBBox.crop_bbox(corners, self.crop_size)
                     if cropped_bbox is None:
