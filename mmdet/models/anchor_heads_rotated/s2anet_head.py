@@ -190,7 +190,7 @@ class S2ANetHead(nn.Module):
             init_anchors = self.anchor_generators[num_level].grid_anchors(
                 featmap_size, self.anchor_strides[num_level], device=device)
             self.base_anchors[(num_level, featmap_size)] = init_anchors
-
+        #TODO only works with fixed amount of anchors
         refine_anchor = bbox_decode(
             fam_bbox_pred.detach(),
             init_anchors,
