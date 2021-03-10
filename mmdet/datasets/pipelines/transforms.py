@@ -388,8 +388,8 @@ class OBBox:
         """
         assert corners.shape == (4, 2)
         orig_area = OBBox.get_area(corners)
-        last_area = orig_area
-        cur_area = 0.0
+        last_area = 0.0
+        cur_area = orig_area
         while cur_area != last_area:
             last_area = cur_area
             corners = OBBox._retract_one_side(corners, crop_shape)
