@@ -23,12 +23,15 @@ model = dict(
         feat_channels=256,
         stacked_convs=2,
         with_orconv=True,
-        # anchor_ratios=[1.0],
-        # anchor_strides=[8, 16, 32, 64, 128],
-        # anchor_scales=[4],
-        anchor_ratios=[0.05, 0.3, 0.73, 2.5],
+        # Original config from s2anet
+        anchor_ratios=[1.0],
         anchor_strides=[8, 16, 32, 64, 128],
-        anchor_scales=[1.0, 2.0, 12.0],
+        anchor_scales=[4],
+        # Working config form RCNN
+        # anchor_ratios=[0.05, 0.3, 0.73, 2.5],
+        # anchor_strides=[8, 16, 32, 64, 128],
+        # anchor_scales=[1.0, 2.0, 12.0],
+
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
@@ -119,7 +122,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=1,
+    imgs_per_gpu=4,
     workers_per_gpu=0,
     train=dict(
         type=dataset_type,
@@ -154,7 +157,7 @@ lr_config = dict(
     step=[8, 11])
 checkpoint_config = dict(interval=1)
 log_config = dict(
-    interval=1,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
@@ -169,7 +172,7 @@ wandb_cfg = dict(
 
 
 # runtime settings
-total_epochs = 12
+total_epochs = 120
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
