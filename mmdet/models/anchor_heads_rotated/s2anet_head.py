@@ -312,6 +312,11 @@ class S2ANetHead(nn.Module):
              gt_bboxes_ignore=None):
         featmap_sizes = [featmap.size()[-2:] for featmap in odm_cls_scores]
         assert len(featmap_sizes) == len(self.anchor_generators)
+
+        # check for size zero boxes
+        zero_inds = gt_bboxes[0][:, 2:4] == 0
+        gt_bboxes[0][:, 2:4][zero_inds] = 1
+
         device = odm_cls_scores[0].device
 
         anchors_list, valid_flag_list = self.get_init_anchors(
@@ -583,7 +588,7 @@ class S2ANetHead(nn.Module):
                                         [img_det]])
 
         return [{"name": "stitched_img", "image": stitched}]
-
+        # Image.fromarray(stitched).show()
 def bbox_decode(
         bbox_preds,
         anchors,
