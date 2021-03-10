@@ -697,6 +697,7 @@ class RandomCrop(object):
                         outside[i] = True
                     else:
                         bboxes[i] = cropped_bbox.reshape((8,))
+            assert bboxes.shape[0] == inside.sum() + outside.sum() + edge_cases.sum()
             valid_inds = inside | edge_cases
             # If the crop does not contain any gt-bbox area and
             # self.allow_negative_crop is False, skip this image.
