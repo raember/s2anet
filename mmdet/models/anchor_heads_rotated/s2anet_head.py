@@ -314,8 +314,9 @@ class S2ANetHead(nn.Module):
         assert len(featmap_sizes) == len(self.anchor_generators)
 
         # check for size zero boxes
-        zero_inds = gt_bboxes[0][:, 2:4] == 0
-        gt_bboxes[0][:, 2:4][zero_inds] = 1
+        for img_nr in range(len(gt_bboxes)):
+            zero_inds = gt_bboxes[img_nr][:, 2:4] == 0
+            gt_bboxes[img_nr][:, 2:4][zero_inds] = 1
 
         device = odm_cls_scores[0].device
 
@@ -399,7 +400,11 @@ class S2ANetHead(nn.Module):
             odm_cls_scores=odm_cls_scores,
             odm_bbox_preds=odm_bbox_preds,
         )
-
+        if sum(losses_fam_cls) > 1E10 or \
+           sum(losses_fam_bbox) > 1E10 or \
+           sum(losses_odm_cls) > 1E10 or \
+           sum(losses_odm_bbox) > 1E10:
+            print("bad loss")
         return dict(loss_fam_cls=losses_fam_cls,
                     loss_fam_bbox=losses_fam_bbox,
                     loss_odm_cls=losses_odm_cls,

@@ -158,7 +158,7 @@ lr_config = dict(
     step=[50, 100])
 checkpoint_config = dict(interval=20)
 log_config = dict(
-    interval=100,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
