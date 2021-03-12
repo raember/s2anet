@@ -1,5 +1,5 @@
 import inspect
-from typing import Tuple, Optional, List, Generator
+from typing import Tuple, Optional, List, Union
 
 import albumentations
 import mmcv
@@ -408,57 +408,144 @@ class OBBox:
         :rtype: Optional[np.ndarray]
         """
         assert corners.shape == (4, 2)
+        if OBBox.is_bbox_inside(corners, crop_shape):
+            return corners
         orig_area = OBBox.get_area(corners)
-        last_area = 0.0
-        cur_area = orig_area
-        while cur_area != last_area:
-            last_area = cur_area
-            corners = OBBox._retract_one_side(corners, crop_shape)
-            cur_area = OBBox.get_area(corners)
-        # TODO: Consider taking _get_diagonal_candidates into account
-        if cur_area < orig_area * threshold_rel and cur_area < threshold_abs:
-            # newly cropped bbox too small to be useful
+        bboxes_by_area = {}
+        for bbox in OBBox._get_possible_crop_solutions(corners, crop_shape):
+            if not OBBox.is_bbox_inside(bbox, crop_shape):
+                continue
+            area = OBBox.get_area(bbox)
+            if area > orig_area * threshold_rel or area > threshold_abs:
+                bboxes_by_area[area] = bbox
+        if len(bboxes_by_area) == 0:
+            # No suitable crop available
             return None
-        return corners
+        highest_area = max(bboxes_by_area.keys())
+        return bboxes_by_area[highest_area]
 
     @staticmethod
-    def _get_diagonal_candidates(corners: np.ndarray, crop_shape: Tuple[int, int]) -> List[np.ndarray]:
+    def _get_possible_crop_solutions(corners: np.ndarray, crop_shape: Tuple[int, int]) -> List[np.ndarray]:
         """
-        Find bbox candidates derived by the diagonal of opposing corners
+        Find possible crops that lie inside the crop boundary
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param crop_shape: The shape of the crop boundary
+        :type crop_shape: Tuple[int, int]
+        :return: A list of all possible crops
+        :rtype: List[np.ndarray]
+        """
+        return OBBox._get_possible_side_truncated_crops(corners, crop_shape) + \
+               OBBox._get_possible_diagonal_crops(corners, crop_shape)
+
+    @staticmethod
+    def _get_possible_diagonal_crops(corners: np.ndarray, crop_shape: Tuple[int, int]) -> List[np.ndarray]:
+        """
+        Find possible crops that lie inside the crop boundary by truncating along the diagonal
 
         :param corners: The corners of the bbox
         :type corners: np.ndarray
         :param crop_shape: The shape of the crop
         :type crop_shape: Tuple[int, int]
-        :return:
+        :return: A list of possible crops
         :rtype: List[np.ndarray]
         """
-        assert corners.shape == (4, 2)
-        old_corners = corners.copy()
-        diagonal_candidates = []
-        inside_indices = []
-        for corner in corners:
-            inside_indices.append(OBBox.is_point_inside(corner, crop_shape))
-        if sum(inside_indices) in (0, 4):
-            return []
+        truncated = []
         for i in range(4):
-            if not inside_indices[i]:
+            corner = corners[i]
+            if not OBBox.is_point_inside(corner, crop_shape):
                 continue
-            corner = old_corners[i]
+            forward_idx = (i + 1) % 4
+            backward_idx = (i - 1) % 4
             opposite_idx = (i + 2) % 4
-            if not inside_indices[opposite_idx]:
-                opposite_corner = old_corners[opposite_idx]
-                intersec = OBBox._intersect(corner, opposite_corner, crop_shape)
-                if intersec is not None:
-                    new_corners = corners.copy()
-                    rel_reduction = np.linalg.norm(intersec - corner) / np.linalg.norm(opposite_corner - corner)
-                    new_corners[opposite_idx] = intersec
-                    edge_vec_1 = corners[i + 1] - corner
-                    edge_vec_2 = corners[i - 1] - corner
-                    new_corners[i + 1] = corner + edge_vec_1 * rel_reduction
-                    new_corners[i - 1] = corner + edge_vec_2 * rel_reduction
-                    diagonal_candidates.append(new_corners)
-        return diagonal_candidates
+            opposite = corners[opposite_idx]
+            if not OBBox.is_point_inside(opposite, crop_shape):
+                intersec = OBBox._intersect(corner, opposite, crop_shape)
+                if intersec is None:
+                    continue
+                new_corners = corners.copy()
+                new_corners[opposite_idx] = intersec
+                # Get intersections of the edges shifted to the new opposite corner
+                forward_ext = intersec - (opposite - corners[forward_idx])
+                backward_ext = intersec - (opposite - corners[backward_idx])
+                new_corners[forward_idx] = OBBox._seg_intersect(corner, corners[forward_idx], intersec, forward_ext)
+                new_corners[backward_idx] = OBBox._seg_intersect(corner, corners[backward_idx], intersec, backward_ext)
+                truncated.append(new_corners)
+        for i, bbox in enumerate(truncated):
+            if not OBBox.is_bbox_inside(bbox, crop_shape):
+                # Although this is not a solution, recurse to possibly find a better solution based off of it
+                truncated.pop(i)
+                # Recurse
+                truncated += OBBox._get_possible_crop_solutions(bbox, crop_shape)
+        return truncated
+
+    @staticmethod
+    def _get_possible_side_truncated_crops(corners: np.ndarray, crop_shape: Tuple[int, int]) -> List[np.ndarray]:
+        """
+        Find possible crops that lie inside the crop boundary by truncating along the edges.
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param crop_shape: The shape of the crop
+        :type crop_shape: Tuple[int, int]
+        :return: A list of possible crops
+        :rtype: List[np.ndarray]
+        """
+        truncated = []
+        # Identify which edge crosses the crop border to shorten them
+        for i in range(4):
+            corner = corners[i]
+            forward_idx = (i + 1) % 4
+            backward_idx = (i - 1) % 4
+            opposite_idx = (i + 2) % 4
+
+            forward_intersection = OBBox._intersect(corner, corners[forward_idx], crop_shape)
+            if forward_intersection is not None:
+                # The current corner and the next corner are separated by the crop border
+                if OBBox.is_point_inside(corner, crop_shape):
+                    # The current corner is inside
+                    # The next corner along with the corner opposite of it need to be shifted
+                    retract_idx = forward_idx
+                    adj_idx = opposite_idx
+                else:
+                    # The current corner is outside
+                    # Itself and the corner before it need to be shifted
+                    retract_idx = i
+                    adj_idx = backward_idx
+                new_bbox = OBBox._retract_to_intersection(corners.copy(), forward_intersection, retract_idx, adj_idx)
+                is_new = True
+                for bbox in truncated:
+                    is_new &= not np.allclose(bbox, new_bbox)
+                if is_new:
+                    truncated.append(new_bbox)
+
+            backward_intersection = OBBox._intersect(corner, corners[backward_idx], crop_shape)
+            if backward_intersection is not None:
+                # The current corner and the last corner are separated by the crop border
+                if OBBox.is_point_inside(corner, crop_shape):
+                    # The current corner is inside
+                    # The last corner along with the corner opposite of it need to be shifted
+                    retract_idx = backward_idx
+                    adj_idx = opposite_idx
+                else:
+                    # The current corner is outside
+                    # Itself and the corner after it need to be shifted
+                    retract_idx = i
+                    adj_idx = forward_idx
+                new_bbox = OBBox._retract_to_intersection(corners.copy(), backward_intersection, retract_idx, adj_idx)
+                is_new = True
+                for bbox in truncated:
+                    is_new &= not np.allclose(bbox, new_bbox)
+                if is_new:
+                    truncated.append(new_bbox)
+        for i, bbox in enumerate(truncated):
+            if not OBBox.is_bbox_inside(bbox, crop_shape):
+                # Although this is not a solution, recurse to possibly find a better solution based off of it
+                truncated.pop(i)
+                # Recurse
+                truncated += OBBox._get_possible_crop_solutions(bbox, crop_shape)
+        return truncated
 
     # noinspection DuplicatedCode
     @staticmethod
@@ -476,7 +563,7 @@ class OBBox:
         :rtype: np.ndarray
         """
         assert corners.shape == (4, 2)
-        if all(map(OBBox.is_point_inside, corners, [crop_shape for _ in range(4)])):
+        if OBBox.is_bbox_inside(corners, crop_shape):
             return corners
         retraction_candidates = {}
         # Identify which edge crosses the crop border to shorten them
@@ -567,7 +654,11 @@ class OBBox:
         """
         assert start_corner.shape == (2,)
         assert end_corner.shape == (2,)
-        max_dist = np.linalg.norm(end_corner - start_corner)
+        if OBBox.is_point_inside(start_corner, crop_shape) and OBBox.is_point_inside(end_corner, crop_shape):
+            return None
+        edge_vec = end_corner - start_corner
+        max_dist = np.float32(np.linalg.norm(edge_vec))
+        edge_unit_vec = edge_vec/np.linalg.norm(edge_vec)
         intersecs = {}
         # In case the dimensions are mixed up, fix here:
         border_corners = [
@@ -582,13 +673,19 @@ class OBBox:
             intersection = OBBox._seg_intersect(start_corner, end_corner, border_a, border_b)
             if intersection is None:  # If the edge and the border are parallel, there's no intersection
                 continue
-            offset_vec = intersection - start_corner
-            edge_vec = end_corner - start_corner
-            dist = np.linalg.norm(offset_vec)
-            offset_unit_vec = offset_vec/dist
-            edge_unit_vec = edge_vec/np.linalg.norm(edge_vec)
-            if 0 < dist < max_dist and np.allclose(offset_unit_vec, edge_unit_vec):
-                intersecs[dist] = intersection
+            if min(border_a[0], border_b[0]) <= intersection[0] <= max(border_a[0], border_b[0]) and \
+                min(border_a[1], border_b[1]) <= intersection[1] <= max(border_a[1], border_b[1]):
+                if (intersection == start_corner).all() or (intersection == end_corner).all():
+                    # Do no pursue the path of total despair, for only the darkest monsters dwell within those crevices
+                    continue
+                offset_vec = intersection - start_corner
+                if offset_vec[0] == 0.0 and offset_vec[1] == 0.0:
+                    # Intersection and corner coincide
+                    continue
+                dist = np.float32(np.linalg.norm(offset_vec))  # Floaty bois be floaty
+                offset_unit_vec = offset_vec/dist
+                if 0 < dist < max_dist and np.allclose(offset_unit_vec, edge_unit_vec):
+                    intersecs[dist] = intersection
         if len(intersecs) == 0:
             return None
         return intersecs[min(intersecs.keys())]
