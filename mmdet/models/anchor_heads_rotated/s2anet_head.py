@@ -87,6 +87,10 @@ class S2ANetHead(nn.Module):
         self.training = True
         # anchor cache
         self.base_anchors = dict()
+
+        self.num_anchors = len(self.anchor_ratios) * len(self.anchor_scales)
+
+
         self._init_layers()
 
     def _init_layers(self):
@@ -110,10 +114,10 @@ class S2ANetHead(nn.Module):
                     stride=1,
                     padding=1))
 
-        self.fam_reg = nn.Conv2d(self.feat_channels, 5, 1)
-        self.fam_cls = nn.Conv2d(self.feat_channels, self.cls_out_channels, 1)
+        self.fam_reg = nn.Conv2d(self.feat_channels, self.num_anchors * 5, 1)
+        self.fam_cls = nn.Conv2d(self.feat_channels, self.num_anchors *self.cls_out_channels, 1)
 
-        self.align_conv = AlignConv(self.feat_channels, self.feat_channels, kernel_size=3)
+        self.align_conv = AlignConv(self.feat_channels, self.feat_channels, kernel_size=3, anchor_num=self.num_anchors)
 
         if self.with_orconv:
             self.or_conv = ORConv2d(self.feat_channels, int(
@@ -144,8 +148,8 @@ class S2ANetHead(nn.Module):
                     padding=1))
 
         self.odm_cls = nn.Conv2d(
-            self.feat_channels, self.cls_out_channels, 3, padding=1)
-        self.odm_reg = nn.Conv2d(self.feat_channels, 5, 3, padding=1)
+            self.feat_channels, self.num_anchors * self.cls_out_channels, 3, padding=1)
+        self.odm_reg = nn.Conv2d(self.feat_channels, self.num_anchors *5, 3, padding=1)
 
     def init_weights(self):
         for m in self.fam_reg_convs:
@@ -195,7 +199,8 @@ class S2ANetHead(nn.Module):
             fam_bbox_pred.detach(),
             init_anchors,
             self.target_means,
-            self.target_stds)
+            self.target_stds,
+            self.num_anchors)
 
         align_feat = self.align_conv(x, refine_anchor.clone(), stride)
 
@@ -598,7 +603,8 @@ def bbox_decode(
         bbox_preds,
         anchors,
         means=[0, 0, 0, 0, 0],
-        stds=[1, 1, 1, 1, 1]):
+        stds=[1, 1, 1, 1, 1],
+        num_anchors=1):
     """
     Decode bboxes from deltas
     :param bbox_preds: [N,5,H,W]
@@ -615,7 +621,7 @@ def bbox_decode(
         bbox_delta = bbox_pred.permute(1, 2, 0).reshape(-1, 5)
         bboxes = delta2bbox_rotated(
             anchors, bbox_delta, means, stds, wh_ratio_clip=1e-6)
-        bboxes = bboxes.reshape(H, W, 5)
+        bboxes = bboxes.reshape(num_anchors,H, W, 5)
         bboxes_list.append(bboxes)
     return torch.stack(bboxes_list, dim=0)
 
@@ -626,7 +632,8 @@ class AlignConv(nn.Module):
                  in_channels,
                  out_channels,
                  kernel_size=3,
-                 deformable_groups=1):
+                 deformable_groups=1,
+                 anchor_num = 1):
         super(AlignConv, self).__init__()
         self.kernel_size = kernel_size
         self.deform_conv = DeformConv(in_channels,
@@ -635,6 +642,7 @@ class AlignConv(nn.Module):
                                       padding=(kernel_size - 1) // 2,
                                       deformable_groups=deformable_groups)
         self.relu = nn.ReLU(inplace=True)
+        self.anchor_num = anchor_num
 
     def init_weights(self):
         normal_init(self.deform_conv, std=0.01)
@@ -687,3 +695,15 @@ class AlignConv(nn.Module):
         x = self.relu(self.deform_conv(x, offset_tensor))
         return x
 
+    # def forward(self, x, anchors, stride):
+    #     num_imgs, H, W = anchors.shape[:3]
+    #     out = list()
+    #     for i in range(self.anchor_num):
+    #         offset_list = [self.get_offset(anchors[ii,i,...].reshape(-1,5), (H,W), stride)
+    #                        for ii in range(num_imgs)]
+    #         offset_tensor = torch.stack(offset_list, dim=0)
+    #         out.append(self.relu(self.deform_conv(x, offset_tensor)))
+    #     # TODO: max-pooling over multi anchor to get feature
+    #     out = torch.stack(out, dim=1)
+    #     out, _ = torch.max(out, dim=1, keepdim=False)
+    #     return out
