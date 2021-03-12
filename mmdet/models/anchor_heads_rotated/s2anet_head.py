@@ -685,25 +685,26 @@ class AlignConv(nn.Module):
         offset = offset.reshape(anchors.size(0), -1).permute(1, 0).reshape(-1, feat_h, feat_w)
         return offset
 
-    def forward(self, x, anchors, stride):
-        num_imgs, H, W = anchors.shape[:3]
-        offset_list = [
-            self.get_offset(anchors[i].reshape(-1, 5), (H, W), stride)
-            for i in range(num_imgs)
-        ]
-        offset_tensor = torch.stack(offset_list, dim=0)
-        x = self.relu(self.deform_conv(x, offset_tensor))
-        return x
-
     # def forward(self, x, anchors, stride):
     #     num_imgs, H, W = anchors.shape[:3]
-    #     out = list()
-    #     for i in range(self.anchor_num):
-    #         offset_list = [self.get_offset(anchors[ii,i,...].reshape(-1,5), (H,W), stride)
-    #                        for ii in range(num_imgs)]
-    #         offset_tensor = torch.stack(offset_list, dim=0)
-    #         out.append(self.relu(self.deform_conv(x, offset_tensor)))
-    #     # TODO: max-pooling over multi anchor to get feature
-    #     out = torch.stack(out, dim=1)
-    #     out, _ = torch.max(out, dim=1, keepdim=False)
-    #     return out
+    #     offset_list = [
+    #         self.get_offset(anchors[i].reshape(-1, 5), (H, W), stride)
+    #         for i in range(num_imgs)
+    #     ]
+    #     offset_tensor = torch.stack(offset_list, dim=0)
+    #     x = self.relu(self.deform_conv(x, offset_tensor))
+    #     return x
+
+    def forward(self, x, anchors, stride):
+        num_imgs = anchors.shape[0]
+        H, W = anchors.shape[2:4]
+        out = list()
+        for i in range(self.anchor_num):
+            offset_list = [self.get_offset(anchors[ii,i,...].reshape(-1,5), (H,W), stride)
+                           for ii in range(num_imgs)]
+            offset_tensor = torch.stack(offset_list, dim=0)
+            out.append(self.relu(self.deform_conv(x, offset_tensor)))
+        # TODO: max-pooling over multi anchor to get feature
+        out = torch.stack(out, dim=1)
+        out, _ = torch.max(out, dim=1, keepdim=False)
+        return out
