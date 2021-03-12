@@ -365,6 +365,27 @@ class OBBox:
         return True
 
     @staticmethod
+    def is_bbox_inside(bbox: Union[List[Tuple[float, float]], np.ndarray], crop_shape: Tuple[int, int]) -> bool:
+        """
+        Test whether a bounding box is inside a crop.
+
+        Regard points on the border to be inside as well.
+
+        :param bbox: The coordinates of the bbox.
+        :type bbox: Union[List[Tuple[float, float]], np.ndarray]
+        :param crop_shape: The crop shape to test for.
+        :type crop_shape: Tuple[int]
+        :return: True if bbox is inside the crop. False otherwise.
+        :rtype: bool
+        """
+        if isinstance(bbox, np.ndarray) and bbox.shape != (4, 2):
+            bbox = bbox.copy().reshape((4, 2))
+        for point in bbox:
+            if not OBBox.is_point_inside(point, crop_shape):
+                return False
+        return True
+
+    @staticmethod
     def crop_bbox(
             corners: np.ndarray,
             crop_shape: Tuple[int, int],
