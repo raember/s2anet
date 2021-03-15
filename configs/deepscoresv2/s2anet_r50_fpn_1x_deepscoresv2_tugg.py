@@ -154,10 +154,10 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[8, 11])
+    step=[50, 100])
 checkpoint_config = dict(interval=1)
 log_config = dict(
-    interval=10,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),

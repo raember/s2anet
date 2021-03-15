@@ -98,7 +98,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RandomCrop', crop_size=(512, 512), threshold_rel=0.6, threshold_abs=200.0),
+    dict(type='RandomCrop', crop_size=(1024, 1024), threshold_rel=0.6, threshold_abs=200.0),
     dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
