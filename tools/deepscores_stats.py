@@ -247,9 +247,11 @@ if args.flag_outliers:
         img = Image.open(img_fp)
         draw = ImageDraw.Draw(img)
         cats = set(map(lambda tpl: tpl[0], bboxes))
+        print(f"Visualized {len(bboxes)} outliers in {osp.basename(filename)} from the categories: {cats}")
         for cat, bbox, idx in bboxes:
             draw.line(bbox + bbox[:2], fill='#F03C22', width=3)
-            text = f"{{{cat}}} {dataset.obb.cat_info[cat]['name']} [{idx}]"
+            text = f"[{idx}] {dataset.obb.cat_info[cat]['name']}({cat}): {OBBox.get_area(np.array(bbox).reshape((4, 2)))}"
+            print(f"  * {text}")
             position = np.array(bbox).reshape((4, 2)).max(axis=0)
             x1, y1 = ImageFont.load_default().getsize(text)
             x1 += position[0] + 4
@@ -258,7 +260,6 @@ if args.flag_outliers:
             draw.text((position[0] + 2, position[1] + 2), text, '#F03C22')
             outlier_stats[cat] = outlier_stats.get(cat, 0) + 1
         img.save(osp.join('out_debug', filename))
-        print(f"Visualized {len(bboxes)} outliers in {osp.basename(filename)} from the categories: {cats}")
     for cat, number in sorted(outlier_stats.items(), reverse=True, key=lambda kvp: kvp[1]):
         print(f"{dataset.obb.cat_info[cat]['name']} ({cat}): {number}")
     print("Done")
