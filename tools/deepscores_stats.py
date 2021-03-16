@@ -21,8 +21,7 @@ parser.add_argument('-f', '--flag-outliers', dest='flag_outliers', action='store
 args = parser.parse_args()
 
 deviation = {
-    1: 6.0,  # brace
-    2: 5.0,  # ledgerLine
+    2: 10.0,  # ledgerLine
     25: 10.0,  # noteheadBlackOnLine
     27: 6.0,  # noteheadBlackInSpace
     31: 10.0,  # noteheadHalfInSpace
@@ -38,11 +37,11 @@ deviation = {
     119: 3.0,  # fingering4
     121: 10.0,  # slur
     122: 20.0,  # beam
-    123: 7.0,  # tie
     134: 3.0,  # tupletBracket
     135: 5.0,  # staff
 }
 ignore = {
+    1,  # brace
     3,  # repeatDot
     4,  # segno
     5,  # coda
@@ -119,12 +118,14 @@ ignore = {
     108,  # stringsDownBow
     109,  # stringsDownBow
     110,  # arpeggiato
+    111,  # keaboardPedalPed
     112,  # keyboardPedalUp
     114,  # tuplet6
     115,  # fingering0
     116,  # fingering1
     117,  # fingering2
     120,  # fingering5
+    123,  # tie
     125,  # dynamicCrescendoHairpin
     126,  # dynamicDiminuendoHairpin
     129,  # tuplet4
