@@ -44,6 +44,8 @@ deviation = {
 }
 ignore = {
     3,  # repeatDot
+    4,  # segno
+    5,  # coda
     6,  # clefG
     7,  # clefCAlto
     8,  # clefCTenor
@@ -54,10 +56,12 @@ ignore = {
     15,  # timeSig2
     16,  # timeSig3
     17,  # timeSig4
+    18,  # timeSig18
     19,  # timeSig6
     20,  # timeSig7
     21,  # timeSig8
     22,  # timeSig9
+    23,  # timeSigCommon
     24,  # timeSigCutCommon
     29,  # noteheadHalfOnLine
     37,  # noteheadDoubleWholeOnLine
@@ -116,12 +120,14 @@ ignore = {
     109,  # stringsDownBow
     110,  # arpeggiato
     112,  # keyboardPedalUp
+    114,  # tuplet6
     115,  # fingering0
     116,  # fingering1
     117,  # fingering2
     120,  # fingering5
     125,  # dynamicCrescendoHairpin
     126,  # dynamicDiminuendoHairpin
+    129,  # tuplet4
     136,  # ottavaBracket
 }
 default = 1.0
