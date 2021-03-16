@@ -21,41 +21,34 @@ parser.add_argument('-f', '--flag-outliers', dest='flag_outliers', action='store
 args = parser.parse_args()
 
 deviation = {
-    1: 3.0,  # brace
+    1: 6.0,  # brace
     2: 5.0,  # ledgerLine
-    6: 2.5,  # clefG
-    25: 4.0,  # noteheadBlackOnLine
-    27: 4.0,  # noteheadBlackInSpace
-    29: 3.5,  # noteheadHalfOnLine
-    31: 3.0,  # noteheadHalfInSpace
+    25: 10.0,  # noteheadBlackOnLine
+    27: 6.0,  # noteheadBlackInSpace
+    31: 10.0,  # noteheadHalfInSpace
     33: 3.0,  # noteheadWholeOnLine
-    35: 2.0,  # noteheadWholeInSpace
-    37: 2.0,  # noteheadDoubleWholeOnLine
-    39: 2.0,  # noteheadDoubleWholeInSpace
-    41: 2.1,  # augmentationDot
-    42: 6.0,  # stem
-    60: 2.5,  # accidentialFlat
-    64: 2.0,  # accidentialSharp
+    35: 3.0,  # noteheadWholeInSpace
+    42: 20.0,  # stem
+    64: 3.0,  # accidentialSharp
     70: 3.0,  # keySharp
-    86: 1.5,  # restHalf
     88: 2.0,  # rest8th
     90: 2.0,  # rest32nd
-    110: 2.0,  # arpeggiato
-    113: 3.0,  # tuplet3
+    113: 10.0,  # tuplet3
     118: 3.0,  # fingering3
     119: 3.0,  # fingering4
-    121: 5.0,  # slur
-    122: 5.0,  # beam
-    123: 5.0,  # tie
-    125: 3.0,  # dynamicCrescendoHairpin
-    126: 3.0,  # dynamicDiminuendoHairpin
+    121: 10.0,  # slur
+    122: 20.0,  # beam
+    123: 7.0,  # tie
     134: 3.0,  # tupletBracket
-    135: 3.5,  # staff
+    135: 5.0,  # staff
 }
 ignore = {
     3,  # repeatDot
+    6,  # clefG
     7,  # clefCAlto
     8,  # clefCTenor
+    9,  # clefF
+    11,  # clef8
     13,  # timeSig0
     14,  # timeSig1
     15,  # timeSig2
@@ -65,6 +58,11 @@ ignore = {
     20,  # timeSig7
     21,  # timeSig8
     22,  # timeSig9
+    24,  # timeSigCutCommon
+    29,  # noteheadHalfOnLine
+    37,  # noteheadDoubleWholeOnLine
+    39,  # noteheadDoubleWholeInSpace
+    41,  # augmentationDot
     43,  # tremolo1
     44,  # tremolo2
     45,  # tremolo3
@@ -79,6 +77,7 @@ ignore = {
     57,  # flag32ndDown
     58,  # flag64thDown
     59,  # flag128thDown
+    60,  # accidentialFlat
     62,  # accidentialNatural
     66,  # accidentialDoubleSharp
     67,  # accidentialDoubleFlat
@@ -98,6 +97,7 @@ ignore = {
     82,  # fermataBelow
     83,  # caesura
     84,  # restDoubleWhole
+    86,  # restHalf
     87,  # restQuarter
     89,  # rest16th
     91,  # rest64th
@@ -114,11 +114,15 @@ ignore = {
     107,  # ornamentMordent
     108,  # stringsDownBow
     109,  # stringsDownBow
+    110,  # arpeggiato
     112,  # keyboardPedalUp
     115,  # fingering0
     116,  # fingering1
     117,  # fingering2
     120,  # fingering5
+    125,  # dynamicCrescendoHairpin
+    126,  # dynamicDiminuendoHairpin
+    136,  # ottavaBracket
 }
 default = 1.0
 def flag_area(stats: dict, area: float) -> bool:
@@ -168,7 +172,6 @@ if args.plot_stats:
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
         if cat_id in {'41'}:
             plot(cat_id, sts)
-
 
 dataset = DeepScoresV2Dataset(
     ann_file='data/deep_scores_dense/deepscores_train.json',
