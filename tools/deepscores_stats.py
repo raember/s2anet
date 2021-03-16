@@ -131,7 +131,7 @@ def flag_area(stats: dict, area: float) -> bool:
     mean = stats['mean']
     median = stats['median']
     std = stats['std']
-    return (area - median) < deviation.get(int(stats['id']), default) * std  # or area == 0.0
+    return abs(area - median) > deviation.get(int(stats['id']), default) * std  # or area == 0.0
 
 def flag_outlier(bbox: np.ndarray, cat_id: int, stats: dict) -> bool:
     if isinstance(bbox, list):
