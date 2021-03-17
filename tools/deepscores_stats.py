@@ -177,8 +177,8 @@ if args.plot_stats:
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
-        if cat_id in {'85'}:
-            plot(cat_id, sts)
+        # if cat_id in {'64'}:
+        plot(cat_id, sts)
 
 dataset = DeepScoresV2Dataset(
     ann_file='data/deep_scores_dense/deepscores_train.json',
