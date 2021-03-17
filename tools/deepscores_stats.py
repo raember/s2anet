@@ -29,6 +29,7 @@ deviation = {
     42: 20.0,  # stem
     64: 3.0,  # accidentialSharp
     70: 3.0,  # keySharp
+    85: 2.0,  # restWhole
     88: 2.0,  # rest8th
     90: 2.0,  # rest32nd
     113: 10.0,  # tuplet3
@@ -177,7 +178,7 @@ if args.plot_stats:
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
-        if cat_id in {'41'}:
+        if cat_id in {'85'}:
             plot(cat_id, sts)
 
 dataset = DeepScoresV2Dataset(
