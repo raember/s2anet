@@ -36,7 +36,6 @@ deviation = {
     119: 3.0,  # fingering4
     121: 10.0,  # slur
     122: 20.0,  # beam
-    134: 3.0,  # tupletBracket
     135: 5.0,  # staff
 }
 ignore = {
@@ -129,6 +128,7 @@ ignore = {
     125,  # dynamicCrescendoHairpin
     126,  # dynamicDiminuendoHairpin
     129,  # tuplet4
+    134,  # tupletBracket
     136,  # ottavaBracket
 }
 default = 1.0
