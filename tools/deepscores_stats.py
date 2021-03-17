@@ -32,8 +32,6 @@ deviation = {
     88: 2.0,  # rest8th
     90: 2.0,  # rest32nd
     113: 10.0,  # tuplet3
-    118: 3.0,  # fingering3
-    119: 3.0,  # fingering4
     122: 20.0,  # beam
     135: 5.0,  # staff
 }
@@ -122,6 +120,8 @@ ignore = {
     115,  # fingering0
     116,  # fingering1
     117,  # fingering2
+    118,  # fingering3
+    119,  # fingering4
     120,  # fingering5
     121,  # slur
     123,  # tie
