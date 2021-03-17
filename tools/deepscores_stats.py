@@ -34,7 +34,6 @@ deviation = {
     113: 10.0,  # tuplet3
     118: 3.0,  # fingering3
     119: 3.0,  # fingering4
-    121: 10.0,  # slur
     122: 20.0,  # beam
     135: 5.0,  # staff
 }
@@ -124,6 +123,7 @@ ignore = {
     116,  # fingering1
     117,  # fingering2
     120,  # fingering5
+    121,  # slur
     123,  # tie
     125,  # dynamicCrescendoHairpin
     126,  # dynamicDiminuendoHairpin
