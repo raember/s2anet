@@ -29,7 +29,6 @@ deviation = {
     42: 20.0,  # stem
     64: 3.0,  # accidentialSharp
     70: 3.0,  # keySharp
-    85: 2.0,  # restWhole
     88: 2.0,  # rest8th
     90: 2.0,  # rest32nd
     113: 10.0,  # tuplet3
