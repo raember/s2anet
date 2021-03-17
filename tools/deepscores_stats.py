@@ -26,7 +26,6 @@ deviation = {
     27: 6.0,  # noteheadBlackInSpace
     31: 10.0,  # noteheadHalfInSpace
     33: 3.0,  # noteheadWholeOnLine
-    35: 3.0,  # noteheadWholeInSpace
     42: 20.0,  # stem
     64: 3.0,  # accidentialSharp
     70: 3.0,  # keySharp
@@ -63,6 +62,7 @@ ignore = {
     23,  # timeSigCommon
     24,  # timeSigCutCommon
     29,  # noteheadHalfOnLine
+    35,  # noteheadWholeInSpace
     37,  # noteheadDoubleWholeOnLine
     39,  # noteheadDoubleWholeInSpace
     41,  # augmentationDot
