@@ -180,46 +180,103 @@ if args.plot_stats:
         # if cat_id in {'64'}:
         plot(cat_id, sts)
 
-dataset = DeepScoresV2Dataset(
+pipeline = [
+    {'type': 'LoadImageFromFile'},
+    {'type': 'LoadAnnotations', 'with_bbox': True},
+    {'type': 'RandomCrop', 'crop_size': (1400, 1400), 'threshold_rel': 0.6, 'threshold_abs': 20.0},
+    {'type': 'RotatedResize', 'img_scale': (1024, 1024), 'keep_ratio': True},
+    {'type': 'RotatedRandomFlip', 'flip_ratio': 0.0},
+    {'type': 'Normalize', 'mean': [240, 240, 240], 'std': [57, 57, 57], 'to_rgb': False},
+    {'type': 'Pad', 'size_divisor': 32},
+    {'type': 'DefaultFormatBundle'},
+    {'type': 'Collect', 'keys': ['img', 'gt_bboxes', 'gt_labels']}
+]
+dataset_train = DeepScoresV2Dataset(
     ann_file='data/deep_scores_dense/deepscores_train.json',
     img_prefix='data/deep_scores_dense/images/',
-    pipeline=[
-        {'type': 'LoadImageFromFile'},
-        {'type': 'LoadAnnotations', 'with_bbox': True},
-        {'type': 'RandomCrop', 'crop_size': (1400, 1400), 'threshold_rel': 0.6, 'threshold_abs': 20.0},
-        {'type': 'RotatedResize', 'img_scale': (1024, 1024), 'keep_ratio': True},
-        {'type': 'RotatedRandomFlip', 'flip_ratio': 0.0},
-        {'type': 'Normalize', 'mean': [240, 240, 240], 'std': [57, 57, 57], 'to_rgb': False},
-        {'type': 'Pad', 'size_divisor': 32},
-        {'type': 'DefaultFormatBundle'},
-        {'type': 'Collect', 'keys': ['img', 'gt_bboxes', 'gt_labels']}
-    ],
+    pipeline=pipeline,
     use_oriented_bboxes=True,
 )
+dataset_test = DeepScoresV2Dataset(
+    ann_file='data/deep_scores_dense/deepscores_test.json',
+    img_prefix='data/deep_scores_dense/images/',
+    pipeline=pipeline,
+    use_oriented_bboxes=True,
+)
+cat_info = dataset_train.obb.cat_info
 
-if args.compile:
-    stats = {}
+def extract_areas(dataset: DeepScoresV2Dataset):
     areas_by_cat = {}
-    print("Gathering the stats")
     for cat_id, o_bbox in zip(dataset.obb.ann_info['cat_id'], dataset.obb.ann_info['o_bbox']):
         cat = int(cat_id[0])
         bbox = np.array(o_bbox).reshape((4, 2))
         area = OBBox.get_area(bbox)
         areas_by_cat[cat] = np.append(areas_by_cat.get(cat, np.array([])), area)
-    print("Calculating the stats")
-    for cat, areas in areas_by_cat.items():
+    return areas_by_cat
+
+def extract_stats(cat_to_area: dict, cat_info: dict, stats: dict):
+    for cat, area_lst in cat_to_area.items():
         # cat = int(cat_id[0])
         stats[int(cat)] = {
             'id': int(cat),
-            'name': dataset.obb.cat_info[cat]['name'],
-            'min': min(areas),
-            'max': max(areas),
-            'mean': np.mean(areas),
-            'median': np.median(areas),
-            'std': np.std(areas),
-            'length': areas.size,
-            'sorted_areas': sorted(areas, reverse=True)
+            'name': cat_info[cat]['name'],
+            'min': min(area_lst),
+            'max': max(area_lst),
+            'mean': np.mean(area_lst),
+            'median': np.median(area_lst),
+            'std': np.std(area_lst),
+            'length': area_lst.size,
+            'sorted_areas': sorted(area_lst, reverse=True)
         }
+
+def filter_bboxes(dataset: DeepScoresV2Dataset, stats: dict) -> dict:
+    imgs = {}
+    img_dir = osp.join(osp.split(dataset.obb.ann_file)[0], 'images')
+    for cat_id, o_bbox, img_id, idx in zip(
+            dataset.obb.ann_info['cat_id'],
+            dataset.obb.ann_info['o_bbox'],
+            dataset.obb.ann_info['img_id'],
+            dataset.obb.ann_info.index,
+    ):
+        cat = int(cat_id[0])
+        if flag_outlier(o_bbox, cat, stats):
+            # print(f"Found outlier '{cat_info[cat]['name']}'({cat})")
+            if img_id not in imgs.keys():
+                img_info, _ = dataset.obb.get_img_ann_pair(idxs=None, ids=[int(img_id)])
+                filename = img_info[0]['filename']
+                imgs[img_id] = (osp.join(img_dir, filename), [])
+            imgs[img_id][1].append((cat, o_bbox, idx))
+    return imgs
+
+def draw_outliers(imgs: dict, cat_info: dict) -> dict:
+    outlier_stats = {}
+    for img_id, (img_fp, bboxes) in sorted(imgs.items(), reverse=True, key=lambda kvp: len(kvp[1])):
+        img = Image.open(img_fp)
+        draw = ImageDraw.Draw(img)
+        cats = set(map(lambda tpl: tpl[0], bboxes))
+        print(f"Visualized {len(bboxes)} outliers in {osp.basename(img_fp)} from the categories: {cats}")
+        for cat, bbox, idx in bboxes:
+            draw.line(bbox + bbox[:2], fill='#F03C22', width=3)
+            text = f"[{idx}] {cat_info[cat]['name']}({cat}): {OBBox.get_area(np.array(bbox).reshape((4, 2)))}"
+            print(f"  * {text}")
+            position = np.array(bbox).reshape((4, 2)).max(axis=0)
+            x1, y1 = ImageFont.load_default().getsize(text)
+            x1 += position[0] + 4
+            y1 += position[1] + 4
+            draw.rectangle((position[0], position[1], x1, y1), fill='#DCDCDC')
+            draw.text((position[0] + 2, position[1] + 2), text, '#F03C22')
+            outlier_stats[cat] = outlier_stats.get(cat, 0) + 1
+        img.save(osp.join('out_debug', osp.basename(img_fp)))
+    return outlier_stats
+
+if args.compile:
+    stats = {}
+    print("Gathering the stats")
+    cat_to_area_train = extract_areas(dataset_train)
+    cat_to_area_test = extract_areas(dataset_test)
+    print("Calculating the stats")
+    extract_stats(cat_to_area_train, cat_info, stats)
+    extract_stats(cat_to_area_test, cat_info, stats)
     print("Saving the stats")
     with open(STAT_FILE, 'w') as fp:
         json.dump(stats, fp, indent=4)
@@ -232,41 +289,15 @@ if args.flag_outliers:
             stats = json.load(fp)
     imgs = {}
     print("Searching for outliers")
-    for cat_id, o_bbox, img_id, idx in zip(
-            dataset.obb.ann_info['cat_id'],
-            dataset.obb.ann_info['o_bbox'],
-            dataset.obb.ann_info['img_id'],
-            dataset.obb.ann_info.index,
-    ):
-        cat = int(cat_id[0])
-        if flag_outlier(o_bbox, cat, stats):
-            # print(f"Found outlier '{dataset.obb.cat_info[cat]['name']}'({cat})")
-            if img_id not in imgs.keys():
-                imgs[img_id] = []
-            imgs[img_id].append((cat, o_bbox, idx))
-    img_dir = osp.join(osp.split(dataset.obb.ann_file)[0], 'images')
+    imgs_train = filter_bboxes(dataset_train, stats)
+    imgs_test = filter_bboxes(dataset_test, stats)
     print("Drawing outliers and saving them to disk")
-    outlier_stats = {}
-    for img_id, bboxes in sorted(imgs.items(), reverse=True, key=lambda kvp: len(kvp[1])):
-        img_info, _ = dataset.obb.get_img_ann_pair(idxs=None, ids=[int(img_id)])
-        filename = img_info[0]['filename']
-        img_fp = osp.join(img_dir, filename)
-        img = Image.open(img_fp)
-        draw = ImageDraw.Draw(img)
-        cats = set(map(lambda tpl: tpl[0], bboxes))
-        print(f"Visualized {len(bboxes)} outliers in {osp.basename(filename)} from the categories: {cats}")
-        for cat, bbox, idx in bboxes:
-            draw.line(bbox + bbox[:2], fill='#F03C22', width=3)
-            text = f"[{idx}] {dataset.obb.cat_info[cat]['name']}({cat}): {OBBox.get_area(np.array(bbox).reshape((4, 2)))}"
-            print(f"  * {text}")
-            position = np.array(bbox).reshape((4, 2)).max(axis=0)
-            x1, y1 = ImageFont.load_default().getsize(text)
-            x1 += position[0] + 4
-            y1 += position[1] + 4
-            draw.rectangle((position[0], position[1], x1, y1), fill='#DCDCDC')
-            draw.text((position[0] + 2, position[1] + 2), text, '#F03C22')
-            outlier_stats[cat] = outlier_stats.get(cat, 0) + 1
-        img.save(osp.join('out_debug', filename))
-    for cat, number in sorted(outlier_stats.items(), reverse=True, key=lambda kvp: kvp[1]):
-        print(f"{dataset.obb.cat_info[cat]['name']} ({cat}): {number}")
-    print("Done")
+    outlier_stats_train = draw_outliers(imgs_train, cat_info)
+    print(f"{'#'*10} TEST DATASET {'#'*10}")
+    outlier_stats_test = draw_outliers(imgs_test, cat_info)
+    print("Train stats:")
+    for cat, number in sorted(outlier_stats_train.items(), reverse=True, key=lambda kvp: kvp[1]):
+        print(f"{cat_info[cat]['name']} ({cat}): {number}")
+    print("Test stats:")
+    for cat, number in sorted(outlier_stats_test.items(), reverse=True, key=lambda kvp: kvp[1]):
+        print(f"{cat_info[cat]['name']} ({cat}): {number}")
