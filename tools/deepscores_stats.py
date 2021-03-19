@@ -22,7 +22,7 @@ args = parser.parse_args()
 
 deviation = {
     2: 10.0,  # ledgerLine
-    25: 10.0,  # noteheadBlackOnLine
+    25: 5.1,  # noteheadBlackOnLine
     27: 6.0,  # noteheadBlackInSpace
     31: 10.0,  # noteheadHalfInSpace
     33: 3.0,  # noteheadWholeOnLine
@@ -177,8 +177,8 @@ if args.plot_stats:
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
-        # if cat_id in {'64'}:
-        plot(cat_id, sts)
+        if cat_id in {'25'}:
+            plot(cat_id, sts)
 
 pipeline = [
     {'type': 'LoadImageFromFile'},
