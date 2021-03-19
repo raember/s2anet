@@ -205,14 +205,12 @@ dataset_test = DeepScoresV2Dataset(
 )
 cat_info = dataset_train.obb.cat_info
 
-def extract_areas(dataset: DeepScoresV2Dataset):
-    areas_by_cat = {}
+def extract_areas(dataset: DeepScoresV2Dataset, areas_by_cat: dict):
     for cat_id, o_bbox in zip(dataset.obb.ann_info['cat_id'], dataset.obb.ann_info['o_bbox']):
         cat = int(cat_id[0])
         bbox = np.array(o_bbox).reshape((4, 2))
         area = OBBox.get_area(bbox)
         areas_by_cat[cat] = np.append(areas_by_cat.get(cat, np.array([])), area)
-    return areas_by_cat
 
 def extract_stats(cat_to_area: dict, cat_info: dict, stats: dict):
     for cat, area_lst in cat_to_area.items():
@@ -272,11 +270,11 @@ def draw_outliers(imgs: dict, cat_info: dict) -> dict:
 if args.compile:
     stats = {}
     print("Gathering the stats")
-    cat_to_area_train = extract_areas(dataset_train)
-    cat_to_area_test = extract_areas(dataset_test)
+    cat_to_areas = {}
+    extract_areas(dataset_train, cat_to_areas)
+    extract_areas(dataset_test, cat_to_areas)
     print("Calculating the stats")
-    extract_stats(cat_to_area_train, cat_info, stats)
-    extract_stats(cat_to_area_test, cat_info, stats)
+    extract_stats(cat_to_areas, cat_info, stats)
     print("Saving the stats")
     with open(STAT_FILE, 'w') as fp:
         json.dump(stats, fp, indent=4)
@@ -295,9 +293,9 @@ if args.flag_outliers:
     outlier_stats_train = draw_outliers(imgs_train, cat_info)
     print(f"{'#'*10} TEST DATASET {'#'*10}")
     outlier_stats_test = draw_outliers(imgs_test, cat_info)
-    print("Train stats:")
+    print("[Train stats]")
     for cat, number in sorted(outlier_stats_train.items(), reverse=True, key=lambda kvp: kvp[1]):
         print(f"{cat_info[cat]['name']} ({cat}): {number}")
-    print("Test stats:")
+    print("[Test stats]")
     for cat, number in sorted(outlier_stats_test.items(), reverse=True, key=lambda kvp: kvp[1]):
         print(f"{cat_info[cat]['name']} ({cat}): {number}")
