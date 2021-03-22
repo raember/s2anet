@@ -230,8 +230,9 @@ def extract_stats(cat_to_area: dict, cat_info: dict, stats: dict):
 def filter_bboxes(dataset: DeepScoresV2Dataset, stats: dict) -> dict:
     imgs = {}
     img_dir = osp.join(osp.split(dataset.obb.ann_file)[0], 'images')
-    for cat_id, o_bbox, img_id, idx in zip(
+    for cat_id, a_bbox, o_bbox, img_id, idx in zip(
             dataset.obb.ann_info['cat_id'],
+            dataset.obb.ann_info['a_bbox'],
             dataset.obb.ann_info['o_bbox'],
             dataset.obb.ann_info['img_id'],
             dataset.obb.ann_info.index,
@@ -243,7 +244,7 @@ def filter_bboxes(dataset: DeepScoresV2Dataset, stats: dict) -> dict:
                 img_info, _ = dataset.obb.get_img_ann_pair(idxs=None, ids=[int(img_id)])
                 filename = img_info[0]['filename']
                 imgs[img_id] = (osp.join(img_dir, filename), [])
-            imgs[img_id][1].append((cat, o_bbox, idx))
+            imgs[img_id][1].append((cat, a_bbox, o_bbox, idx))
     return imgs
 
 def draw_outliers(imgs: dict, cat_info: dict) -> dict:
@@ -253,7 +254,8 @@ def draw_outliers(imgs: dict, cat_info: dict) -> dict:
         draw = ImageDraw.Draw(img)
         cats = set(map(lambda tpl: tpl[0], bboxes))
         print(f"Visualized {len(bboxes)} outliers in {osp.basename(img_fp)} from the categories: {cats}")
-        for cat, bbox, idx in bboxes:
+        for cat, a_bbox, bbox, idx in bboxes:
+            draw.rectangle(a_bbox, outline='#223CF0', width=3)
             draw.line(bbox + bbox[:2], fill='#F03C22', width=3)
             text = f"[{idx}] {cat_info[cat]['name']}({cat}): {OBBox.get_area(np.array(bbox).reshape((4, 2)))}"
             print(f"  * {text}")
