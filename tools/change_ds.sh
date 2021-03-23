@@ -34,7 +34,7 @@ echo
 
 echo "Saving a_bbox:"
 echo "  [$a_bbox]"
-echo "saving o_bbox:"
+echo "Saving o_bbox:"
 echo "  [$o_bbox]"
 
 read -p "Press [Enter] to continue"
