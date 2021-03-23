@@ -205,7 +205,7 @@ if args.to_geogebra:
     print('ggbApplet.evalCommand("d : Line(C, yAxis)")')
     print('ggbApplet.evalCommand("B = Intersect(a, d)")')
     print('ggbApplet.evalCommand("D = Intersect(b, c)")')
-    print(f'ggbApplet.evalCommand("a_bbox = Polygon(A, B, C, D)")')
+    print(f'ggbApplet.evalCommand("abbox = Polygon(A, B, C, D)")')
     chars = []
     for p in o_bbox:
         char = chr(i)
@@ -213,7 +213,7 @@ if args.to_geogebra:
         print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
         chars.append(char)
         i += 1
-    print(f'ggbApplet.evalCommand("o_bbox = Polygon({", ".join(chars)})")')
+    print(f'ggbApplet.evalCommand("obbox = Polygon({", ".join(chars)})")')
     print("\033[m")
 
 if not args.flag_outliers and not args.compile:
