@@ -18,6 +18,8 @@ parser.add_argument('-p', '--plot-stats', dest='plot_stats', action='store_true'
                     help='Plots statistics')
 parser.add_argument('-f', '--flag-outliers', dest='flag_outliers', action='store_true', default=False,
                     help='Flags outliers using past statistics')
+parser.add_argument('-g', '--geogebra', dest='to_geogebra', action='store', default=None,
+                    help='Converts json annotation to geogebra inputs')
 args = parser.parse_args()
 
 deviation = {
@@ -179,6 +181,43 @@ if args.plot_stats:
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
         if cat_id in {'25'}:
             plot(cat_id, sts)
+
+if args.to_geogebra:
+    print("Converting to geogebra")
+    print("\033[1m")
+    # data = json.loads(input("JSON: "))
+    data = json.loads(args.to_geogebra)
+    # data = {"a_bbox":[1218,1047,1261,1125],"o_bbox":[1261,1125,1235.844482421875,1045.1585693359375,1215.930908203125,1051.4327392578125,1241.08642578125,1131.274169921875],"cat_id":["25","157"],"area":284,"img_id":"1550","comments":"instance:#00020d;duration:8*2/3;rel_position:0;"}
+    # a_bbox = OBBox.expand_corners(np.array(data['a_bbox'])).reshape((4, 2))
+    a_bbox = np.array(data['a_bbox']).reshape((2, 2))
+    o_bbox = np.array(data['o_bbox']).reshape((4, 2))
+    i = 65
+    chars = []
+    for p in a_bbox:
+        char = chr(i)
+        print(f'ggbApplet.deleteObject("{char}")')
+        print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
+        chars.append(char)
+        i += 2
+    print('ggbApplet.evalCommand("a : Line(A, xAxis)")')
+    print('ggbApplet.evalCommand("b : Line(C, xAxis)")')
+    print('ggbApplet.evalCommand("c : Line(A, yAxis)")')
+    print('ggbApplet.evalCommand("d : Line(C, yAxis)")')
+    print('ggbApplet.evalCommand("B = Intersect(a, d)")')
+    print('ggbApplet.evalCommand("D = Intersect(b, c)")')
+    print(f'ggbApplet.evalCommand("a_bbox = Polygon(A, B, C, D)")')
+    chars = []
+    for p in o_bbox:
+        char = chr(i)
+        print(f'ggbApplet.deleteObject("{char}")')
+        print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
+        chars.append(char)
+        i += 1
+    print(f'ggbApplet.evalCommand("o_bbox = Polygon({", ".join(chars)})")')
+    print("\033[m")
+
+if not args.flag_outliers and not args.compile:
+    exit(0)
 
 pipeline = [
     {'type': 'LoadImageFromFile'},
