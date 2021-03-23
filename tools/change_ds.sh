@@ -21,9 +21,12 @@ echo
 echo -e "\033[1m[ggbApplet.getXcoord('A'), -ggbApplet.getYcoord('A'), ggbApplet.getXcoord('C'), -ggbApplet.getYcoord('C')].join(', ')\033[m"
 echo
 read -p "new a_bbox coords: " a_bbox
-if ! jq -ec ".annotations.\"$ID\".a_bbox = [$a_bbox]" $FP > tmp.json && mv tmp.json $FP; then
+echo "jq -ec \".annotations.\\\"$ID\\\".a_bbox = [$a_bbox]\" $FP > tmp.json"
+if ! jq -ec ".annotations.\"$ID\".a_bbox = [$a_bbox]" $FP > tmp.json; then
     echo "Failed saving new coords"
     exit 1
+else
+    mv tmp.json $FP
 fi
 echo "Done"
 echo
@@ -33,8 +36,11 @@ echo
 echo -e "\033[1m[ggbApplet.getXcoord('E'), -ggbApplet.getYcoord('E'), ggbApplet.getXcoord('F'), -ggbApplet.getYcoord('F'), ggbApplet.getXcoord('G'), -ggbApplet.getYcoord('G'), ggbApplet.getXcoord('H'), -ggbApplet.getYcoord('H')].join(', ')\033[m"
 echo
 read -p "new o_bbox coords: " o_bbox
-if ! jq -ec ".annotations.\"$ID\".o_bbox = [$o_bbox]" $FP > tmp.json && mv tmp.json $FP; then
+echo "jq -ec \".annotations.\\\"$ID\\\".o_bbox = [$o_bbox]\" $FP > tmp.json"
+if ! jq -ec ".annotations.\"$ID\".o_bbox = [$o_bbox]" $FP > tmp.json; then
     echo "Failed saving new coords"
     exit 1
+else
+    mv tmp.json $FP
 fi
 echo "Done"
