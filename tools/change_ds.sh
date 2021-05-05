@@ -16,6 +16,14 @@ if ! json="$(jq -ec ".annotations.\"$ID\"" "$FP")"; then
 fi
 python tools/deepscores_stats.py -g "$json"
 
+echo "Loading meta data"
+data=($(jq ".images[] | select(.ann_ids[] | select(. == \"$ID\")) | .filename, .width, .height" "$FP"))
+echo "filepath: ${data[0]}"
+#echo -e "\033[1mggbApplet.deleteObject(\"I\")\033[m"
+echo -e "\033[1mggbApplet.evalCommand(\"I = (0, -${data[2]})\")\033[m"
+#echo -e "\033[1mggbApplet.deleteObject(\"J\")\033[m"
+echo -e "\033[1mggbApplet.evalCommand(\"J = (${data[1]}, -${data[2]})\")\033[m"
+
 echo "Use JS to retreive the new a_bbox coords:"
 echo
 echo -e "\033[1m[ggbApplet.getXcoord('A'), -ggbApplet.getYcoord('A'), ggbApplet.getXcoord('C'), -ggbApplet.getYcoord('C')].join(', ')\033[m"
