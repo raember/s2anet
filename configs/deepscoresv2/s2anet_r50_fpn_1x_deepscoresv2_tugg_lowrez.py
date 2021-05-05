@@ -87,7 +87,7 @@ test_cfg = dict(
     min_bbox_size=0,
     score_thr=0.05,
     nms=dict(type='nms_rotated', iou_thr=0.1),
-    max_per_img=2000)
+    max_per_img=2000) 
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
 data_root = 'data/deep_scores_dense/'
