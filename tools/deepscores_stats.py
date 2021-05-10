@@ -195,7 +195,7 @@ if args.to_geogebra:
     chars = []
     for p in a_bbox:
         char = chr(i)
-        print(f'ggbApplet.deleteObject("{char}")')
+        # print(f'ggbApplet.deleteObject("{char}")')
         print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
         chars.append(char)
         i += 2
@@ -209,7 +209,7 @@ if args.to_geogebra:
     chars = []
     for p in o_bbox:
         char = chr(i)
-        print(f'ggbApplet.deleteObject("{char}")')
+        # print(f'ggbApplet.deleteObject("{char}")')
         print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
         chars.append(char)
         i += 1
