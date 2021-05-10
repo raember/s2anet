@@ -12,7 +12,7 @@
 * The cli output from the dataset statistics script ([deepscores_stats.py](deepscores_stats.py), execute first with the `-c` flag, then with the `-f` flag, use `-h` flag to print usage) is available to the user.
 * Your current python environment has PIL and other libraries installed (The conda environment for s2anet will suffice)
 * You have have access to the dataset images (will be put in [out_debug](../out_debug) by [deepscores_stats.py](deepscores_stats.py))
-* You have opened the web version of [GeoGebra](https://www.geogebra.org/classic)
+* You have opened the web version of [GeoGebra](https://www.geogebra.org/classic) - **The language of the tool has to be set to "English (US)" (can be set in the settings)**
 
 
 # Workflow
