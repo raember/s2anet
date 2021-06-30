@@ -11,7 +11,7 @@ class MultiScaleFlipAug(object):
         self.transforms = Compose(transforms)
         self.img_scale = img_scale if isinstance(img_scale,
                                                  list) else [img_scale]
-        assert mmcv.is_list_of(self.img_scale, tuple)
+        assert mmcv.is_list_of(self.img_scale, tuple) or mmcv.is_list_of(self.img_scale, float)
         self.flip = flip
 
     def __call__(self, results):

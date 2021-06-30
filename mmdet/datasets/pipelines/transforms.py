@@ -22,7 +22,8 @@ class Resize(object):
     scale in the init method is used.
 
     `img_scale` can either be a tuple (single-scale) or a list of tuple
-    (multi-scale). There are 3 multiscale modes:
+    (multi-scale) or a single scalar.
+    There are 3 multiscale modes:
     - `ratio_range` is not None: randomly sample a ratio from the ratio range
         and multiply it with the image scale.
     - `ratio_range` is None and `multiscale_mode` == "range": randomly sample a
@@ -31,7 +32,7 @@ class Resize(object):
         scale from multiple scales.
 
     Args:
-        img_scale (tuple or list[tuple]): Images scales for resizing.
+        img_scale (tuple or list[tuple] or scalar): Images scales for resizing.
         multiscale_mode (str): Either "range" or "value".
         ratio_range (tuple[float]): (min_ratio, max_ratio)
         keep_ratio (bool): Whether to keep the aspect ratio when resizing the
@@ -50,7 +51,7 @@ class Resize(object):
                 self.img_scale = img_scale
             else:
                 self.img_scale = [img_scale]
-            assert mmcv.is_list_of(self.img_scale, tuple)
+            assert mmcv.is_list_of(self.img_scale, tuple) or mmcv.is_list_of(self.img_scale, float)
 
         if ratio_range is not None:
             # mode 1: given a scale and a range of image ratio
