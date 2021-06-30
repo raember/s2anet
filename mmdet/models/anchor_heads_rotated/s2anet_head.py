@@ -589,7 +589,7 @@ class S2ANetHead(nn.Module):
         det_boxes = rotated_box_to_poly_np(det_boxes_labels[0].cpu().numpy())
         det_labels = det_boxes_labels[1].cpu().numpy()
         if len(det_boxes)>0:
-            img_det = imshow_det_bboxes(img.copy(),det_boxes,
+            img_det = imshow_det_bboxes(img.copy(), det_boxes,
                                             det_labels,
                                             class_names=None, show=False, show_label=True, rotated=True)
         else:

@@ -14,7 +14,7 @@ from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
-
+from mmdet.core import rotated_box_to_poly_np
 
 def single_gpu_test(model, data_loader, show=False):
     model.eval()
@@ -23,10 +23,13 @@ def single_gpu_test(model, data_loader, show=False):
     prog_bar = mmcv.ProgressBar(len(dataset))
     for i, data in enumerate(data_loader):
         with torch.no_grad():
-            result = model(return_loss=False, rescale=not show, **data)
+            result, bbox_list = model(return_loss=False, rescale=not show, **data)
         results.append(result)
         if show:
-            model.module.show_result(data, result)
+            print("asdf")
+            #for nr, sub_list in enumerate(bbox_list):
+            #    bbox_list[nr] = [rotated_box_to_poly_np(sub_list[0].cpu().numpy()), sub_list[1].cpu().numpy()]
+            model.module.show_result(data, result,show=show, bbox_transorm = rotated_box_to_poly_np)
 
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
