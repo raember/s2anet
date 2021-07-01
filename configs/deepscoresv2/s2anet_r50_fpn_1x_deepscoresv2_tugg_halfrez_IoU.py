@@ -159,7 +159,7 @@ lr_config = dict(
     gamma=0.5)
 checkpoint_config = dict(interval=20)
 log_config = dict(
-    interval=1,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
