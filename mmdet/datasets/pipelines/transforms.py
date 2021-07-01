@@ -43,7 +43,8 @@ class Resize(object):
                  img_scale=None,
                  multiscale_mode='range',
                  ratio_range=None,
-                 keep_ratio=True):
+                 keep_ratio=True,
+                 max_size=None):
         if img_scale is None:
             self.img_scale = None
         else:
@@ -63,6 +64,7 @@ class Resize(object):
         self.multiscale_mode = multiscale_mode
         self.ratio_range = ratio_range
         self.keep_ratio = keep_ratio
+        self.max_size = max_size
 
     @staticmethod
     def random_select(img_scales):
@@ -111,12 +113,20 @@ class Resize(object):
         results['scale_idx'] = scale_idx
 
     def _resize_img(self, results):
+
+        resize_target = results['scale']
+        if self.max_size is not None:
+            if results['img'].shape[1] > self.max_size[0] or \
+                    results['img'].shape[0] > self.max_size[1]:
+                resize_target = self.max_size
+
         if self.keep_ratio:
             img, scale_factor = mmcv.imrescale(
-                results['img'], results['scale'], return_scale=True)
+                results['img'], resize_target, return_scale=True)
+
         else:
             img, w_scale, h_scale = mmcv.imresize(
-                results['img'], results['scale'], return_scale=True)
+                results['img'], resize_target, return_scale=True)
             scale_factor = np.array([w_scale, h_scale, w_scale, h_scale],
                                     dtype=np.float32)
         results['img'] = img
