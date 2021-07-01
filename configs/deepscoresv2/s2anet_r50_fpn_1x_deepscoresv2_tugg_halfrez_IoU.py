@@ -41,7 +41,7 @@ model = dict(
             alpha=0.25,
             loss_weight=1.0),
         loss_fam_bbox=dict(
-            type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
+            type='RotatedIoULoss', loss_weight=1.0),
         loss_odm_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
@@ -49,7 +49,7 @@ model = dict(
             alpha=0.25,
             loss_weight=1.0),
         loss_odm_bbox=dict(
-            type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0)))
+            type='RotatedIoULoss', loss_weight=1.0)))
 # training and testing settings
 train_cfg = dict(
     fam_cfg=dict(
@@ -79,15 +79,16 @@ train_cfg = dict(
                         target_means=(0., 0., 0., 0., 0.),
                         target_stds=(1., 1., 1., 1., 1.),
                         clip_border=True),
+        reg_decoded_bbox=True, # Set True to use IoULoss
         allowed_border=-1,
         pos_weight=-1,
         debug=False))
 test_cfg = dict(
-    nms_pre=8000,
+    nms_pre=2000,
     min_bbox_size=0,
-    score_thr=0.01,
+    score_thr=0.05,
     nms=dict(type='nms_rotated', iou_thr=0.1),
-    max_per_img=5000)
+    max_per_img=2000)
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
 data_root = 'data/deep_scores_dense/'
@@ -110,10 +111,10 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=1.0,
+        img_scale=0.5,
         flip=False,
         transforms=[
-            dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
+            dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
             dict(type='RotatedRandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
@@ -123,7 +124,7 @@ test_pipeline = [
 ]
 data = dict(
     imgs_per_gpu=1,
-    workers_per_gpu=0,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'deepscores_train.json',
@@ -158,7 +159,7 @@ lr_config = dict(
     gamma=0.5)
 checkpoint_config = dict(interval=20)
 log_config = dict(
-    interval=100,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
@@ -167,9 +168,8 @@ log_config = dict(
 wandb_cfg = dict(
     entity="tuggeluk",
     project='wfcos-testing',
-    dryrun=True
+    dryrun=False
 )
-
 
 # runtime settings
 total_epochs = 120
