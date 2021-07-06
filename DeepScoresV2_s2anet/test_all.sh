@@ -1,0 +1,5 @@
+#!/bin/bash
+python tools/test.py DeepScoresV2_s2anet/halfrez_nocrop/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_nocrop.py DeepScoresV2_s2anet/halfrez_nocrop/epoch_480.pth  --eval mAP --json_out DeepScoresV2_s2anet/halfrez_nocrop/evaluation.json
+python tools/test.py DeepScoresV2_s2anet/fullrez_nocrop/s2anet_r50_fpn_1x_deepscoresv2_tugg_fullrez_nocrop.py DeepScoresV2_s2anet/fullrez_nocrop/epoch_240.pth --eval mAP --json_out DeepScoresV2_s2anet/fullrez_nocrop/evaluation.json
+python tools/test.py DeepScoresV2_s2anet/IOU_halfrez_nocrop/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_IoU.py DeepScoresV2_s2anet/IOU_halfrez_nocrop/epoch_120.pth --eval mAP --json_out DeepScoresV2_s2anet/IOU_halfrez_nocrop/evaluation.json
+python tools/test.py DeepScoresV2_s2anet/cascade_IOU_halfrez_nocrop/cascade_s2anet_2s_r50_fpn_1x_deepscoresv2_halfrez_IoU.py DeepScoresV2_s2anet/cascade_IOU_halfrez_nocrop/epoch_120.pth --eval bbox --json_out DeepScoresV2_s2anet/cascade_IOU_halfrez_nocrop/evaluation.json
