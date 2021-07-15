@@ -576,8 +576,8 @@ class S2ANetHead(nn.Module):
         gt = rotated_box_to_poly_np(self.last_vals['gt_bboxes'][0].cpu().numpy())
         #TODO classes are wrong for deepscores
         img_gt = imshow_det_bboxes(img.copy(),gt,
-                                        self.last_vals['gt_labels'][0].cpu().numpy()-1,
-                                        class_names=None, show=False, show_label=True, rotated=True)
+                                        self.last_vals['gt_labels'][0].cpu().numpy(),
+                                        class_names=classes, show=False, show_label=True, rotated=True)
 
         det_boxes_labels = self.get_bboxes(fam_cls_scores=self.last_vals['fam_cls_scores'],
                    fam_bbox_preds=self.last_vals['fam_bbox_preds'],
@@ -590,8 +590,8 @@ class S2ANetHead(nn.Module):
         det_labels = det_boxes_labels[1].cpu().numpy()
         if len(det_boxes)>0:
             img_det = imshow_det_bboxes(img.copy(), det_boxes,
-                                            det_labels,
-                                            class_names=None, show=False, show_label=True, rotated=True)
+                                            det_labels.astype(np.int)+1,
+                                            class_names=classes, show=False, show_label=True, rotated=True)
         else:
             img_det = img.copy()
         stitched = vt.stitch_big_image([[img_gt],

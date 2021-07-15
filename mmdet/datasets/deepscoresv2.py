@@ -10,12 +10,13 @@ Author:
 Created on:
     November 23, 2019
 """
+import json
+
 import mmcv
+from obb_anns import OBBAnns
 
 from .coco import *
-import os
-import json
-from obb_anns import OBBAnns
+
 
 @DATASETS.register_module
 class DeepScoresV2Dataset(CocoDataset):
@@ -33,7 +34,7 @@ class DeepScoresV2Dataset(CocoDataset):
                  use_oriented_bboxes=True):
         self.filter_empty_gt = filter_empty_gt
         super(DeepScoresV2Dataset, self).__init__(ann_file, pipeline, data_root, img_prefix, seg_prefix, proposal_file, test_mode)
-        self.CLASSES = self.get_classes(classes)
+        #self.CLASSES = self.get_classes(classes)
         self.use_oriented_bboxes = use_oriented_bboxes
 
     @classmethod
@@ -126,8 +127,13 @@ class DeepScoresV2Dataset(CocoDataset):
                 for i in range(bboxes.shape[0]):
                     data = dict()
                     data['img_id'] = img_id
-                    data['bbox'] = [str(nr) for nr in bboxes[i][0:-1]]
-                    data['score'] = str(bboxes[i][-1])
+
+                    if len(bboxes[i]) == 8:
+                        data['bbox'] = [str(nr) for nr in bboxes[i]]
+                        data['score'] = 1
+                    else:
+                        data['bbox'] = [str(nr) for nr in bboxes[i][0:-1]]
+                        data['score'] = str(bboxes[i][-1])
                     data['cat_id'] = self.label2cat[label]
                     json_results["proposals"].append(data)
         return json_results
@@ -150,7 +156,8 @@ class DeepScoresV2Dataset(CocoDataset):
                  classwise=True,
                  proposal_nums=(100, 300, 1000),
                  iou_thrs=np.arange(0.5, 0.96, 0.05),
-                 average_thrs=False):
+                 average_thrs=False,
+                 work_dir = None):
         """Evaluation in COCO protocol.
 
         Args:
@@ -184,15 +191,18 @@ class DeepScoresV2Dataset(CocoDataset):
         self.obb.load_proposals(filename)
         metric_results = self.obb.calculate_metrics(iou_thrs=iou_thrs, classwise=classwise, average_thrs=average_thrs)
 
-        metric_results = {self.CLASSES[self.cat2label[key]]: value for (key, value) in metric_results.items()}
+        categories = self.obb.get_cats()
+        metric_results = {categories[key]['name']: value for (key, value) in metric_results.items()}
 
         # add occurences
         occurences_by_class = self.obb.get_class_occurences()
         for (key, value) in metric_results.items():
             value.update(no_occurences=occurences_by_class[key])
 
-        if True:
+        if work_dir is not None:
             import pickle
-            pickle.dump(metric_results, open('evaluation_renamed_rcnn.pickle', 'wb'))
+            import os
+            out_file = os.path.join(work_dir, "dsv2_metrics.pkl")
+            pickle.dump(metric_results, open(out_file, 'wb'))
         print(metric_results)
         return metric_results
