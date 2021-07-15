@@ -17,7 +17,7 @@ from .transforms_rotated import (norm_angle,
                                  rotated_box_to_poly, rotated_box_to_bbox_np, rotated_box_to_bbox,
                                  bbox2result_rotated, bbox_flip_rotated, bbox_mapping_rotated,
                                  bbox_mapping_back_rotated, bbox_to_rotated_box, roi_to_rotated_box, rotated_box_to_roi,
-                                 bbox2delta_rotated, delta2bbox_rotated)
+                                 bbox2delta_rotated, delta2bbox_rotated, outputs_rotated_box_to_poly_np)
 
 __all__ = [
     'BaseAssigner', 'MaxIoUAssigner', 'AssignResult',
@@ -32,5 +32,5 @@ __all__ = [
     'rotated_box_to_bbox_np', 'rotated_box_to_bbox', 'bbox_to_rotated_box', 'poly_to_rotated_box_single',
     'rotated_box_to_poly_single', 'roi_to_rotated_box', 'rotated_box_to_roi', 'norm_angle',
     'DeltaXYWHABBoxCoder', 'DeltaXYWHBBoxCoder', 'PseudoBBoxCoder',
-    'bbox_overlaps', 'bbox_overlaps_rotated', 'bbox_target_rotated'
+    'bbox_overlaps', 'bbox_overlaps_rotated', 'bbox_target_rotated', 'outputs_rotated_box_to_poly_np'
 ]
