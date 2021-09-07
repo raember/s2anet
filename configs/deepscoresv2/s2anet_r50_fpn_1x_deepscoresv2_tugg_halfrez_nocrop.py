@@ -31,7 +31,7 @@ model = dict(
         # anchor_ratios=[0.05, 0.3, 0.73, 2.5],
         # anchor_strides=[8, 16, 32, 64, 128],
         # anchor_scales=[1.0, 2.0, 12.0],
-
+=0.5,
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
