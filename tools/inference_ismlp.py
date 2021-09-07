@@ -19,7 +19,7 @@ checkpoint_file = 'DeepScoresV2_s2anet/fullrez_crop/epoch_500.pth'
 model_name = "s2anet_fullrez_crop"
 images_folder = "/home/tugg/Documents/RealScores/Realworld_Test"
 
-resize = 1.3
+resize = 1.0
 
 model = init_detector(config_file, checkpoint_file, device='cuda:0')
 
@@ -38,6 +38,6 @@ for img in images:
 
     img_det = imshow_det_bboxes(img_loaded, det_boxes,
                                 det_labels.astype(int) + 1,
-                                class_names=CLASSES, show=False, show_label=True, rotated=True)
+                                class_names=CLASSES, show=False, show_label=False, rotated=True)
 
     cv2.imwrite(os.path.join(images_folder, model_name, img), img_det)

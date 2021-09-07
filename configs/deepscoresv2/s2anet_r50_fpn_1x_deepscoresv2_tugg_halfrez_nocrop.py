@@ -85,7 +85,7 @@ train_cfg = dict(
 test_cfg = dict(
     nms_pre=2000,
     min_bbox_size=0,
-    score_thr=0.01,
+    score_thr=0.05,
     nms=dict(type='nms_rotated', iou_thr=0.1),
     max_per_img=2000)
 # dataset settings
@@ -99,7 +99,7 @@ train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
     #dict(type='RandomCrop', crop_size=(1024, 1024), threshold_rel=0.6, threshold_abs=200.0),
-    dict(type='RotatedResize', img_scale=0.5, keep_ratio=True, max_size=(300, 500)),
+    dict(type='RotatedResize', img_scale=0.5, keep_ratio=True, max_size=(2000, 2000)),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -126,13 +126,13 @@ data = dict(
     workers_per_gpu=0,
     train=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_train.json',
+        ann_file=data_root + 'deepscores_debug.json',
         img_prefix=data_root + 'images/',
         pipeline=train_pipeline,
         use_oriented_bboxes=True),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test.json',
+        ann_file=data_root + 'deepscores_debug.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True),
