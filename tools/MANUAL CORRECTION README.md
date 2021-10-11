@@ -11,7 +11,7 @@
     * stats.json
 * The cli output from the dataset statistics script ([deepscores_stats.py](deepscores_stats.py), execute first with the `-c` flag, then with the `-f` flag, use `-h` flag to print usage) is available to the user.
 * Your current python environment has PIL and other libraries installed (The conda environment for s2anet will suffice)
-* You have have access to the dataset images (will be put in [out_debug](../out_debug) by [deepscores_stats.py](deepscores_stats.py))
+* You have access to the dataset images (will be put in [out_debug](../out_debug) by [deepscores_stats.py](deepscores_stats.py))
 * You have opened the web version of [GeoGebra](https://www.geogebra.org/classic) - **The language of the tool has to be set to "English (US)" (can be set in the settings)**
 
 
@@ -67,5 +67,6 @@ This will set the coordinates of the **aligned bbox**
 [ggbApplet.getXcoord('E'), -ggbApplet.getYcoord('E'), ggbApplet.getXcoord('F'), -ggbApplet.getYcoord('F'), ggbApplet.getXcoord('G'), -ggbApplet.getYcoord('G'), ggbApplet.getXcoord('H'), -ggbApplet.getYcoord('H')].join(', ')
 ```
 This will set the coordinates of the **oriented bbox**.
+
 7. Now the script will display the new coordinates and ask for confirmation. Confirm with enter and the script will write the changes back to the dataset. You can also hit Ctrl-C to abort.
 8. Rinse and repeat
