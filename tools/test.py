@@ -14,19 +14,24 @@ from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
+from mmdet.core import rotated_box_to_poly_np
 
-
-def single_gpu_test(model, data_loader, show=False):
+def single_gpu_test(model, data_loader, show=False, cfg = None):
     model.eval()
     results = []
     dataset = data_loader.dataset
     prog_bar = mmcv.ProgressBar(len(dataset))
     for i, data in enumerate(data_loader):
         with torch.no_grad():
-            result = model(return_loss=False, rescale=not show, **data)
+            result, bbox_list = model(return_loss=False, rescale=not show, **data)
         results.append(result)
         if show:
-            model.module.show_result(data, result)
+            print("asdf")
+            #for nr, sub_list in enumerate(bbox_list):
+            #    bbox_list[nr] = [rotated_box_to_poly_np(sub_list[0].cpu().numpy()), sub_list[1].cpu().numpy()]
+
+            model.module.show_result(data, result, show=show, dataset=dataset.CLASSES,
+                                     bbox_transorm=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
 
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
@@ -125,7 +130,7 @@ def parse_args():
     # add dataset type for more dataset eval other than coco
     parser.add_argument(
         '--data',
-        choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024'],
+        choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024','dsv2'],
         default='dota',
         type=str,
         help='eval dataset type')
@@ -187,7 +192,7 @@ def main():
         model.CLASSES = dataset.CLASSES
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader, args.show)
+        outputs = single_gpu_test(model, data_loader, args.show, cfg)
     else:
         model = MMDistributedDataParallel(model.cuda())
         outputs = multi_gpu_test(model, data_loader, args.tmpdir)
@@ -220,6 +225,29 @@ def main():
             eval_kwargs = cfg.get('evaluation', {}).copy()
             work_dir = osp.dirname(args.out)
             dataset.evaluate(outputs, work_dir, **eval_kwargs)
+        elif data_name in ['dsv2']:
+            from mmdet.core import outputs_rotated_box_to_poly_np
+            # for page in outputs:
+            #     for cla in page:
+            #         for detec in cla:
+            #             if min(detec[:4]) < 0:
+            #                 detec[:4][detec[:4] < 0] = 0
+            #TODO: fix ugly hack to make the labels match
+            import numpy as np
+            for page in outputs:
+                page.insert(0, np.array([]))
+
+            outputs = outputs_rotated_box_to_poly_np(outputs)
+            work_dir = osp.dirname(args.out)
+            dataset.evaluate(outputs, work_dir = work_dir)
+            # print("asdfsdf")
+            # for page in outputs:
+            #     for cla in page:
+            #         for detec in cla:
+            #             if min(detec[:4]) < 0:
+            #                 print(detec)
+
+
 
     # Save predictions in the COCO json format
     if args.json_out and rank == 0:
