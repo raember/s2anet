@@ -2,6 +2,7 @@ from .compose import Compose
 from .formating import (Collect, ImageToTensor, ToDataContainer, ToTensor,
                         Transpose, to_tensor)
 from .loading import LoadAnnotations, LoadImageFromFile, LoadProposals
+from .scoreaug import ScoreAug
 from .test_aug import MultiScaleFlipAug
 from .transforms import (Albu, Expand, MinIoURandomCrop, Normalize, Pad,
                          PhotoMetricDistortion, RandomCrop, RandomFlip, Resize,
@@ -16,5 +17,6 @@ __all__ = [
     'LoadProposals', 'MultiScaleFlipAug', 'Resize', 'RandomFlip', 'Pad',
     'RandomCrop', 'Normalize', 'SegResizeFlipPadRescale', 'MinIoURandomCrop',
     'Expand', 'PhotoMetricDistortion', 'Albu', 'RotatedRandomFlip',
-    'RotatedResize', 'RandomRotate'
+    'RotatedResize', 'RandomRotate',
+    'ScoreAug'
 ]
