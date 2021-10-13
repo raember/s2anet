@@ -83,11 +83,11 @@ train_cfg = dict(
         pos_weight=-1,
         debug=False))
 test_cfg = dict(
-    nms_pre=8000,
+    nms_pre=5000,
     min_bbox_size=0,
     score_thr=0.3,
     nms=dict(type='nms_rotated', iou_thr=0.1),
-    max_per_img=5000)
+    max_per_img=1000)
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
 data_root = 'data/deep_scores_dense/'
@@ -122,8 +122,8 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=4,
-    workers_per_gpu=4,
+    imgs_per_gpu=1,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'deepscores_train.json',
@@ -161,7 +161,7 @@ log_config = dict(
     interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='WandbVisualLoggerHook'),
+        #dict(type='WandbVisualLoggerHook'),
     ])
 # wandb settings
 wandb_cfg = dict(
