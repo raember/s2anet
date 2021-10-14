@@ -57,7 +57,7 @@ class ScoreAug(object):
             bg_img = bg_img.transpose(Image_m.FLIP_TOP_BOTTOM)
 
         # maybe crop and resize
-        crop_resize = choice([True, False], p=[0.5, 0.5])
+        crop_resize = choice([True, False], p=[0.2, 0.8])
         if crop_resize:
             crop_factor = np.random.uniform(low=0.25, high=0.85)
             crop_size = (crop_factor * np.array(shape)).astype(np.int32)
@@ -76,7 +76,8 @@ class ScoreAug(object):
             # extend foreground
             img_extended = np.ones(shape[::-1] + (3,),dtype=np.uint8)*255
             half_pad = self.padding_length//2
-            img_extended[half_pad:-half_pad,half_pad:-half_pad] = results['img']
+            img_extended[half_pad:-half_pad, half_pad:-half_pad] = results['img']
+            results['img'] = img_extended
 
             # shift bounding boxes
             results['ann_info']['bboxes'] = results['ann_info']['bboxes'] + half_pad
@@ -110,7 +111,7 @@ class ScoreAug(object):
 
         fg_blur = choice([True, False], p=[0.4, 0.6])
         if fg_blur or True:
-            fg_img = fg_img.filter(ImageFilter.GaussianBlur(radius=np.random.randint(1, 4)))
+            fg_img = fg_img.filter(ImageFilter.GaussianBlur(radius=np.random.randint(1, 2)))
 
 
         # Merge
@@ -119,6 +120,7 @@ class ScoreAug(object):
         # plt.figure(figsize=(20, 30))
         # plt.imshow(results['img'], interpolation='nearest')
         # plt.show()
+        return results
 
     def __repr__(self):
         return f'{self.__class__.__name__}(blank_pages_path={self._blank_pages_path})'
