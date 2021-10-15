@@ -1,10 +1,10 @@
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 from numpy.random import choice
 import numpy as np
 from PIL.Image import Image, open as img_open
-from PIL import Image as Image_m, ImageEnhance, ImageFilter
-
+from PIL import Image as Image_m, ImageEnhance, ImageFilter, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 from ..registry import PIPELINES
 
 SEAMLESS = 'seamless'
@@ -16,8 +16,8 @@ class ScoreAug(object):
     Augment scores with real-world blank pages
     """
     _blank_pages_path: Path
-    _seamless_imgs: List[Image]
-    _seamed_imgs: List[Image]
+    _seamless_imgs: List[str]
+    _seamed_imgs: List[str]
 
     def __init__(self, blank_pages_path, padding_length = 200):
         self._blank_pages_path = Path(blank_pages_path)
@@ -29,11 +29,12 @@ class ScoreAug(object):
 
 
 
-    @staticmethod
-    def _load_images(path: Path) -> List[Image]:
+    def _load_images(self, path: Path) -> List[str]:
         assert path.exists(), f"Path to {path.name} blank pages must exist"
         assert path.is_dir(), f"Path to {path.name} blank pages must be a directory"
-        return list(map(img_open, path.glob('*.png')))
+
+        return [str(i) for i in path.glob('*.png')]
+        #return list(map(img_open, path.glob('*.png')))
 
 
     def __call__(self, results: dict):
@@ -43,8 +44,10 @@ class ScoreAug(object):
         else:
             bg_imgs = self._seamless_imgs
 
+
         # Random blank page background image
-        bg_img: Image = choice(bg_imgs)
+        bg_img = choice(bg_imgs)
+        bg_img = Image_m.open(bg_img)
         shape = results['img_shape'][1::-1]
         bg_img = bg_img.resize(shape)
 
