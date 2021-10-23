@@ -19,13 +19,14 @@ class ScoreAug(object):
     _seamless_imgs: List[str]
     _seamed_imgs: List[str]
 
-    def __init__(self, blank_pages_path, padding_length = 200):
+    def __init__(self, blank_pages_path, padding_length = 200, p_blur=0.5):
         self._blank_pages_path = Path(blank_pages_path)
         assert self._blank_pages_path.exists(), "Path to blank pages must exist"
         assert self._blank_pages_path.is_dir(), "Path to blank pages must be a directory"
         self._seamless_imgs = self._load_images(self._blank_pages_path / SEAMLESS)
         self._seamed_imgs = self._load_images(self._blank_pages_path / SEAMED)
         self.padding_length = padding_length
+        self.p_blur = p_blur
 
 
 
@@ -112,7 +113,7 @@ class ScoreAug(object):
             fg_img = Image_m.fromarray(fg_img.astype(np.uint8))
 
 
-        fg_blur = choice([True, False], p=[0.4, 0.6])
+        fg_blur = choice([True, False], p=[self.p_blur, 1-self.p_blur])
         if fg_blur or True:
             fg_img = fg_img.filter(ImageFilter.GaussianBlur(radius=np.random.randint(1, 2)))
 

@@ -60,6 +60,13 @@ def maybe_init_wandb(cfg):
         name = "{}_{}".format(osp.split(cfg.work_dir)[1],
                               time.strftime('%Y.%m.%d--%H.%M.%S'))
         entity = None
+
+        try:
+            name_prefix = cfg.wandb_cfg['name_prefix']
+            name = name_prefix + name
+        except AttributeError or KeyError:
+            pass
+
         try:
             project = cfg.wandb_cfg['project']
         except AttributeError or KeyError:
@@ -83,7 +90,6 @@ def maybe_init_wandb(cfg):
 
 
 def main():
-    wandb.init(project="uda", entity="adhirajghosh")
     args = parse_args()
 
     cfg = Config.fromfile(args.config)
@@ -136,7 +142,7 @@ def main():
             config=cfg.text,
             CLASSES=datasets[0].CLASSES)
 
-    #maybe_init_wandb(cfg)
+    maybe_init_wandb(cfg)
 
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
