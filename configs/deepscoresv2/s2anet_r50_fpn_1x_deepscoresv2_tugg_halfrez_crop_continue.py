@@ -169,7 +169,7 @@ wandb_cfg = dict(
     entity="tuggeluk",
     project='s2anet_augment',
     dryrun=False,
-    name_prefix = ""
+    name_prefix = "pretrained_"
 )
 
 
@@ -178,6 +178,6 @@ wandb_cfg = dict(
 total_epochs = 500 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None
-resume_from = None
+#load_from = "DeepScoresV2_s2anet/halfrez_crop/epoch_400.pth"
+resume_from = "/home/ubuntu/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop_continue/latest.pth"
 workflow = [('train', 1)]

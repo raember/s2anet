@@ -66,7 +66,7 @@ train_cfg = dict(
                         clip_border=True),
         allowed_border=-1,
         pos_weight=-1,
-        debug=False),
+        debug=False), 
     odm_cfg=dict(
         assigner=dict(
             type='MaxIoUAssigner',
@@ -98,7 +98,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0),
     dict(type='RandomCrop', crop_size=(2000, 2000), threshold_rel=0.6, threshold_abs=200.0),
     dict(type='RotatedResize', img_scale=(1000, 1000), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
@@ -169,7 +169,7 @@ wandb_cfg = dict(
     entity="tuggeluk",
     project='s2anet_augment',
     dryrun=False,
-    name_prefix = ""
+    name_prefix = "no_blur"
 )
 
 
@@ -178,6 +178,6 @@ wandb_cfg = dict(
 total_epochs = 500 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None
-resume_from = None
+#load_from = "DeepScoresV2_s2anet/halfrez_crop/epoch_400.pth"
+resume_from = "/home/ubuntu/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop_no_blur/latest.pth"
 workflow = [('train', 1)]
