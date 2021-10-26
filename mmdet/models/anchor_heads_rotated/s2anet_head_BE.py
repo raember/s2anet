@@ -390,35 +390,43 @@ class S2ANetHeadBE(S2ANetHead):
             losses_odm_bbox_list.append(losses_odm_bbox)
 
 
-        # Clumsy loss-addition
+        # Clumsy loss-mean
         
         losses_odm_cls = []
         for i in range(len(losses_odm_cls_list[0])):
             i_index_sum = 0
             for j in range(len(losses_odm_cls_list)):
                 i_index_sum += losses_odm_cls_list[j][i]
-            losses_odm_cls.append(i_index_sum)
+            losses_odm_cls.append(i_index_sum/len(losses_odm_cls_list))
+
+        #losses_odm_cls = list(torch.tensor(losses_odm_cls_list, requires_grad=True, device='cuda').mean(dim=0))
 
         losses_odm_bbox = []
         for i in range(len(losses_odm_bbox_list[0])):
             i_index_sum = 0
             for j in range(len(losses_odm_bbox_list)):
                 i_index_sum += losses_odm_bbox_list[j][i]
-            losses_odm_bbox.append(i_index_sum)
+            losses_odm_bbox.append(i_index_sum/len(losses_odm_bbox_list))
+
+        #losses_odm_bbox = list(torch.tensor(losses_odm_bbox_list, requires_grad=True, device='cuda').mean(dim=0))
 
         losses_fam_cls = []
         for i in range(len(losses_fam_cls_list[0])):
             i_index_sum = 0
             for j in range(len(losses_fam_cls_list)):
                 i_index_sum += losses_fam_cls_list[j][i]
-            losses_fam_cls.append(i_index_sum)
+            losses_fam_cls.append(i_index_sum/len(losses_fam_cls_list))
+
+        #losses_fam_cls = list(torch.tensor(losses_fam_cls_list, requires_grad=True, device='cuda').mean(dim=0))
 
         losses_fam_bbox = []
         for i in range(len(losses_fam_bbox_list[0])):
             i_index_sum = 0
             for j in range(len(losses_fam_bbox_list)):
                 i_index_sum += losses_fam_bbox_list[j][i]
-            losses_fam_bbox.append(i_index_sum)
+            losses_fam_bbox.append(i_index_sum/len(losses_fam_bbox_list))
+
+        #losses_fam_bbox = list(torch.tensor(losses_fam_bbox_list, requires_grad=True, device='cuda').mean(dim=0))
 
 
         self.last_vals = dict(
