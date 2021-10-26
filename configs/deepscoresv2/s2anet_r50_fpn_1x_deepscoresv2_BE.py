@@ -155,11 +155,12 @@ log_config = dict(
     hooks=[
         dict(type='TextLoggerHook'),
         # dict(type='WandbVisualLoggerHook'),
+        dict(type='WandbLoggerHook')
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity='gutu',
-    project='s2anet',
+    entity='rs-confidence',
+    project='urs',
     dryrun=False
 )
 

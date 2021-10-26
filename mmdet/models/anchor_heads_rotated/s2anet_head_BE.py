@@ -20,7 +20,6 @@ from .s2anet_head import S2ANetHead, AlignConv, bbox_decode
 import debugging.visualization_tools as vt
 from mmcv.visualization import imshow_det_bboxes
 from mmcv.image import tensor2imgs
-import numpy as np
 
 @HEADS.register_module
 class S2ANetHeadBE(S2ANetHead):
@@ -111,55 +110,59 @@ class S2ANetHeadBE(S2ANetHead):
         # normal_init(self.odm_cls, std=0.01, bias=bias_cls)
         # normal_init(self.odm_reg, std=0.01)
 
-    # def forward_single(self, x, stride):
-    #     fam_reg_feat = x
-    #     for fam_reg_conv in self.fam_reg_convs:
-    #         fam_reg_feat = fam_reg_conv(fam_reg_feat)
-    #     fam_bbox_pred = self.fam_reg(fam_reg_feat)
-    #
-    #     # only forward during training
-    #     if self.training:
-    #         fam_cls_feat = x
-    #         for fam_cls_conv in self.fam_cls_convs:
-    #             fam_cls_feat = fam_cls_conv(fam_cls_feat)
-    #         fam_cls_score = self.fam_cls(fam_cls_feat)
-    #     else:
-    #         fam_cls_score = None
-    #
-    #     num_level = self.anchor_strides.index(stride)
-    #     featmap_size = fam_bbox_pred.shape[-2:]
-    #     if (num_level, featmap_size) in self.base_anchors:
-    #         init_anchors = self.base_anchors[(num_level, featmap_size)]
-    #     else:
-    #         device = fam_bbox_pred.device
-    #         init_anchors = self.anchor_generators[num_level].grid_anchors(
-    #             featmap_size, self.anchor_strides[num_level], device=device)
-    #         self.base_anchors[(num_level, featmap_size)] = init_anchors
-    #
-    #     refine_anchor = bbox_decode(
-    #         fam_bbox_pred.detach(),
-    #         init_anchors,
-    #         self.target_means,
-    #         self.target_stds,
-    #         self.num_anchors)
-    #
-    #     align_feat = self.align_conv(x, refine_anchor.clone(), stride)
-    #
-    #     or_feat = self.or_conv(align_feat)
-    #     odm_reg_feat = or_feat
-    #     if self.with_orconv:
-    #         odm_cls_feat = self.or_pool(or_feat)
-    #     else:
-    #         odm_cls_feat = or_feat
-    #
-    #     for odm_reg_conv in self.odm_reg_convs:
-    #         odm_reg_feat = odm_reg_conv(odm_reg_feat)
-    #     for odm_cls_conv in self.odm_cls_convs:
-    #         odm_cls_feat = odm_cls_conv(odm_cls_feat)
-    #     odm_cls_score = self.odm_cls(odm_cls_feat)
-    #     odm_bbox_pred = self.odm_reg(odm_reg_feat)
-    #
-    #     return fam_cls_score, fam_bbox_pred, refine_anchor, odm_cls_score, odm_bbox_pred
+    def forward_single(self, x, stride):
+        fam_reg_feat = x
+        for fam_reg_conv in self.fam_reg_convs:
+            fam_reg_feat = fam_reg_conv(fam_reg_feat)
+        fam_bbox_pred = self.fam_reg(fam_reg_feat)  # Implemented BatchEnsemble here
+
+        # only forward during training
+        if self.training:
+            fam_cls_feat = x
+            for fam_cls_conv in self.fam_cls_convs:
+                fam_cls_feat = fam_cls_conv(fam_cls_feat)
+            fam_cls_score = self.fam_cls(fam_cls_feat)  # Implemented BatchEnsemble here
+        else:
+            fam_cls_score = None
+
+        num_level = self.anchor_strides.index(stride)
+        featmap_size = fam_bbox_pred.shape[-2:]
+        if (num_level, featmap_size) in self.base_anchors:
+            init_anchors = self.base_anchors[(num_level, featmap_size)]
+        else:
+            device = fam_bbox_pred.device
+            init_anchors = self.anchor_generators[num_level].grid_anchors(
+                featmap_size, self.anchor_strides[num_level], device=device)
+            self.base_anchors[(num_level, featmap_size)] = init_anchors
+
+        # Problem: fam_bbox_pred has ensemble-shape! -> could take 1st dim (i.e. 1st member) only...
+        fam_bbox_pred_1d = fam_bbox_pred.detach()
+        fam_bbox_pred_1d = fam_bbox_pred_1d[0:1, :, :, :]
+        refine_anchor = bbox_decode(
+            fam_bbox_pred_1d,
+            init_anchors,
+            self.target_means,
+            self.target_stds,
+            self.num_anchors)
+
+        align_feat = self.align_conv(x, refine_anchor.clone(), stride)
+
+        or_feat = self.or_conv(align_feat)
+        odm_reg_feat = or_feat
+        if self.with_orconv:
+            odm_cls_feat = self.or_pool(or_feat)
+        else:
+            odm_cls_feat = or_feat
+
+        for odm_reg_conv in self.odm_reg_convs:
+            odm_reg_feat = odm_reg_conv(odm_reg_feat)
+        for odm_cls_conv in self.odm_cls_convs:
+            odm_cls_feat = odm_cls_conv(odm_cls_feat)
+        odm_cls_score = self.odm_cls(odm_cls_feat)  # Implemented BatchEnsemble here
+        odm_bbox_pred = self.odm_reg(odm_reg_feat)  # Implemented BatchEnsemble here
+
+        # All outputs have ensemble-compatible shape except refine_anchor
+        return fam_cls_score, fam_bbox_pred, refine_anchor, odm_cls_score, odm_bbox_pred
     #
     # def forward(self, feats):
     #     return multi_apply(self.forward_single, feats, self.anchor_strides)
@@ -245,217 +248,278 @@ class S2ANetHeadBE(S2ANetHead):
     #     'fam_bbox_preds',
     #     'odm_cls_scores',
     #     'odm_bbox_preds'))
-    # def loss(self,
-    #          fam_cls_scores,
-    #          fam_bbox_preds,
-    #          refine_anchors,
-    #          odm_cls_scores,
-    #          odm_bbox_preds,
-    #          gt_bboxes,
-    #          gt_labels,
-    #          img_metas,
-    #          cfg,
-    #          gt_bboxes_ignore=None):
-    #     featmap_sizes = [featmap.size()[-2:] for featmap in odm_cls_scores]
-    #     assert len(featmap_sizes) == len(self.anchor_generators)
-    #
-    #     # check for size zero boxes
-    #     for img_nr in range(len(gt_bboxes)):
-    #         zero_inds = gt_bboxes[img_nr][:, 2:4] == 0
-    #         gt_bboxes[img_nr][:, 2:4][zero_inds] = 1
-    #
-    #     device = odm_cls_scores[0].device
-    #
-    #     anchor_list, valid_flag_list = self.get_init_anchors(
-    #         featmap_sizes, img_metas, device=device)
-    #
-    #     # anchor number of multi levels
-    #     num_level_anchors = [anchors.size(0) for anchors in anchor_list[0]]
-    #     # concat all level anchors and flags to a single tensor
-    #     concat_anchor_list = []
-    #     for i in range(len(anchor_list)):
-    #         concat_anchor_list.append(torch.cat(anchor_list[i]))
-    #     all_anchor_list = images_to_levels(concat_anchor_list,
-    #                                        num_level_anchors)
-    #
-    #     # Feature Alignment Module
-    #     label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
-    #     cls_reg_targets = anchor_target(
-    #         anchor_list,
-    #         valid_flag_list,
-    #         gt_bboxes,
-    #         img_metas,
-    #         self.target_means,
-    #         self.target_stds,
-    #         cfg.fam_cfg,
-    #         gt_bboxes_ignore_list=gt_bboxes_ignore,
-    #         gt_labels_list=gt_labels,
-    #         label_channels=label_channels,
-    #         sampling=self.sampling)
-    #     if cls_reg_targets is None:
-    #         return None
-    #     (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
-    #      num_total_pos, num_total_neg) = cls_reg_targets
-    #     num_total_samples = (
-    #         num_total_pos + num_total_neg if self.sampling else num_total_pos)
-    #
-    #     losses_fam_cls, losses_fam_bbox = multi_apply(
-    #         self.loss_fam_single,
-    #         fam_cls_scores,
-    #         fam_bbox_preds,
-    #         all_anchor_list,
-    #         labels_list,
-    #         label_weights_list,
-    #         bbox_targets_list,
-    #         bbox_weights_list,
-    #         num_total_samples=num_total_samples,
-    #         cfg=cfg.fam_cfg)
-    #
-    #     # Oriented Detection Module targets
-    #     refine_anchors_list, valid_flag_list = self.get_refine_anchors(
-    #         featmap_sizes, refine_anchors, img_metas, device=device)
-    #
-    #     # anchor number of multi levels
-    #     num_level_anchors = [anchors.size(0)
-    #                          for anchors in refine_anchors_list[0]]
-    #     # concat all level anchors and flags to a single tensor
-    #     concat_anchor_list = []
-    #     for i in range(len(refine_anchors_list)):
-    #         concat_anchor_list.append(torch.cat(refine_anchors_list[i]))
-    #     all_anchor_list = images_to_levels(concat_anchor_list,
-    #                                        num_level_anchors)
-    #
-    #     label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
-    #     cls_reg_targets = anchor_target(
-    #         refine_anchors_list,
-    #         valid_flag_list,
-    #         gt_bboxes,
-    #         img_metas,
-    #         self.target_means,
-    #         self.target_stds,
-    #         cfg.odm_cfg,
-    #         gt_bboxes_ignore_list=gt_bboxes_ignore,
-    #         gt_labels_list=gt_labels,
-    #         label_channels=label_channels,
-    #         sampling=self.sampling)
-    #     if cls_reg_targets is None:
-    #         return None
-    #     (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
-    #      num_total_pos, num_total_neg) = cls_reg_targets
-    #     num_total_samples = (
-    #         num_total_pos + num_total_neg if self.sampling else num_total_pos)
-    #
-    #     losses_odm_cls, losses_odm_bbox = multi_apply(
-    #         self.loss_odm_single,
-    #         odm_cls_scores,
-    #         odm_bbox_preds,
-    #         all_anchor_list,
-    #         labels_list,
-    #         label_weights_list,
-    #         bbox_targets_list,
-    #         bbox_weights_list,
-    #         num_total_samples=num_total_samples,
-    #         cfg=cfg.odm_cfg)
-    #
-    #     self.last_vals = dict(
-    #         gt_bboxes=gt_bboxes,
-    #         gt_labels=gt_labels,
-    #         img_metas=img_metas,
-    #         fam_cls_scores=fam_cls_scores,
-    #         fam_bbox_preds=fam_bbox_preds,
-    #         refine_anchors=refine_anchors,
-    #         odm_cls_scores=odm_cls_scores,
-    #         odm_bbox_preds=odm_bbox_preds,
-    #     )
-    #     if sum(losses_fam_cls) > 1E10 or \
-    #        sum(losses_fam_bbox) > 1E10 or \
-    #        sum(losses_odm_cls) > 1E10 or \
-    #        sum(losses_odm_bbox) > 1E10:
-    #         print("bad loss")
-    #     return dict(loss_fam_cls=losses_fam_cls,
-    #                 loss_fam_bbox=losses_fam_bbox,
-    #                 loss_odm_cls=losses_odm_cls,
-    #                 loss_odm_bbox=losses_odm_bbox)
-    #
-    # def loss_fam_single(self,
-    #                     fam_cls_score,
-    #                     fam_bbox_pred,
-    #                     anchors,
-    #                     labels,
-    #                     label_weights,
-    #                     bbox_targets,
-    #                     bbox_weights,
-    #                     num_total_samples,
-    #                     cfg):
-    #     # classification loss
-    #     labels = labels.reshape(-1)
-    #     label_weights = label_weights.reshape(-1)
-    #     fam_cls_score = fam_cls_score.permute(
-    #         0, 2, 3, 1).reshape(-1, self.cls_out_channels)
-    #     loss_fam_cls = self.loss_fam_cls(
-    #         fam_cls_score, labels, label_weights, avg_factor=num_total_samples)
-    #     # regression loss
-    #     bbox_targets = bbox_targets.reshape(-1, 5)
-    #     bbox_weights = bbox_weights.reshape(-1, 5)
-    #     fam_bbox_pred = fam_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
-    #
-    #     reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
-    #     if reg_decoded_bbox:
-    #         # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
-    #         # is applied directly on the decoded bounding boxes, it
-    #         # decodes the already encoded coordinates to absolute format.
-    #         bbox_coder_cfg = cfg.get('bbox_coder', '')
-    #         if bbox_coder_cfg == '':
-    #             bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
-    #         bbox_coder = build_bbox_coder(bbox_coder_cfg)
-    #         anchors = anchors.reshape(-1, 5)
-    #         fam_bbox_pred = bbox_coder.decode(anchors, fam_bbox_pred)
-    #     loss_fam_bbox = self.loss_fam_bbox(
-    #         fam_bbox_pred,
-    #         bbox_targets,
-    #         bbox_weights,
-    #         avg_factor=num_total_samples)
-    #     return loss_fam_cls, loss_fam_bbox
-    #
-    # def loss_odm_single(self,
-    #                     odm_cls_score,
-    #                     odm_bbox_pred,
-    #                     anchors,
-    #                     labels,
-    #                     label_weights,
-    #                     bbox_targets,
-    #                     bbox_weights,
-    #                     num_total_samples,
-    #                     cfg):
-    #     # classification loss
-    #     labels = labels.reshape(-1)
-    #     label_weights = label_weights.reshape(-1)
-    #     odm_cls_score = odm_cls_score.permute(0, 2, 3,
-    #                                           1).reshape(-1, self.cls_out_channels)
-    #     loss_odm_cls = self.loss_odm_cls(
-    #         odm_cls_score, labels, label_weights, avg_factor=num_total_samples)
-    #     # regression loss
-    #     bbox_targets = bbox_targets.reshape(-1, 5)
-    #     bbox_weights = bbox_weights.reshape(-1, 5)
-    #     odm_bbox_pred = odm_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
-    #
-    #     reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
-    #     if reg_decoded_bbox:
-    #         # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
-    #         # is applied directly on the decoded bounding boxes, it
-    #         # decodes the already encoded coordinates to absolute format.
-    #         bbox_coder_cfg = cfg.get('bbox_coder', '')
-    #         if bbox_coder_cfg == '':
-    #             bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
-    #         bbox_coder = build_bbox_coder(bbox_coder_cfg)
-    #         anchors = anchors.reshape(-1, 5)
-    #         odm_bbox_pred = bbox_coder.decode(anchors, odm_bbox_pred)
-    #     loss_odm_bbox = self.loss_odm_bbox(
-    #         odm_bbox_pred,
-    #         bbox_targets,
-    #         bbox_weights,
-    #         avg_factor=num_total_samples)
-    #     return loss_odm_cls, loss_odm_bbox
+    
+    # TODO make loss ensemble-compatible
+    def loss(self,
+             fam_cls_scores,
+             fam_bbox_preds,
+             refine_anchors,
+             odm_cls_scores,
+             odm_bbox_preds,
+             gt_bboxes,
+             gt_labels,
+             img_metas,
+             cfg,
+             gt_bboxes_ignore=None):
+        featmap_sizes = [featmap.size()[-2:] for featmap in odm_cls_scores]
+        assert len(featmap_sizes) == len(self.anchor_generators)
+
+        # check for size zero boxes
+        for img_nr in range(len(gt_bboxes)):
+            zero_inds = gt_bboxes[img_nr][:, 2:4] == 0
+            gt_bboxes[img_nr][:, 2:4][zero_inds] = 1
+
+        device = odm_cls_scores[0].device
+
+        anchor_list, valid_flag_list = self.get_init_anchors(
+            featmap_sizes, img_metas, device=device)
+
+        # anchor number of multi levels
+        num_level_anchors = [anchors.size(0) for anchors in anchor_list[0]]
+        # concat all level anchors and flags to a single tensor
+        concat_anchor_list = []
+        for i in range(len(anchor_list)):
+            concat_anchor_list.append(torch.cat(anchor_list[i]))
+        all_anchor_list = images_to_levels(concat_anchor_list,
+                                           num_level_anchors)
+
+        # Feature Alignment Module
+        label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
+        cls_reg_targets = anchor_target(
+            anchor_list,
+            valid_flag_list,
+            gt_bboxes,
+            img_metas,
+            self.target_means,
+            self.target_stds,
+            cfg.fam_cfg,
+            gt_bboxes_ignore_list=gt_bboxes_ignore,
+            gt_labels_list=gt_labels,
+            label_channels=label_channels,
+            sampling=self.sampling)
+        if cls_reg_targets is None:
+            return None
+        (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
+         num_total_pos, num_total_neg) = cls_reg_targets
+        num_total_samples = (
+            num_total_pos + num_total_neg if self.sampling else num_total_pos)
+
+        m = fam_cls_scores[0].shape[0]
+        losses_fam_cls_list = []
+        losses_fam_bbox_list = []
+        for i in range(m): # TODO make it a parameter m
+            fam_cls_scores_tmp = []
+            for j in range(len(fam_cls_scores)):
+                fam_cls_scores_tmp.append(odm_cls_scores[j][i:i+1, :, :, :])
+
+            fam_bbox_preds_tmp = []
+            for j in range(len(fam_bbox_preds)):
+                fam_bbox_preds_tmp.append(odm_bbox_preds[j][i:i+1, :, :, :])
+                
+            losses_fam_cls, losses_fam_bbox = multi_apply(
+                self.loss_fam_single,
+                fam_cls_scores_tmp,
+                fam_bbox_preds_tmp,
+                all_anchor_list,
+                labels_list,
+                label_weights_list,
+                bbox_targets_list,
+                bbox_weights_list,
+                num_total_samples=num_total_samples,
+                cfg=cfg.fam_cfg)
+            losses_fam_cls_list.append(losses_fam_cls)
+            losses_fam_bbox_list.append(losses_fam_bbox)
+
+        # Oriented Detection Module targets
+        refine_anchors_list, valid_flag_list = self.get_refine_anchors(
+            featmap_sizes, refine_anchors, img_metas, device=device)
+
+        # anchor number of multi levels
+        num_level_anchors = [anchors.size(0)
+                             for anchors in refine_anchors_list[0]]
+        # concat all level anchors and flags to a single tensor
+        concat_anchor_list = []
+        for i in range(len(refine_anchors_list)):
+            concat_anchor_list.append(torch.cat(refine_anchors_list[i]))
+        all_anchor_list = images_to_levels(concat_anchor_list,
+                                           num_level_anchors)
+
+        label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
+        cls_reg_targets = anchor_target(
+            refine_anchors_list,
+            valid_flag_list,
+            gt_bboxes,
+            img_metas,
+            self.target_means,
+            self.target_stds,
+            cfg.odm_cfg,
+            gt_bboxes_ignore_list=gt_bboxes_ignore,
+            gt_labels_list=gt_labels,
+            label_channels=label_channels,
+            sampling=self.sampling)
+        if cls_reg_targets is None:
+            return None
+        (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
+         num_total_pos, num_total_neg) = cls_reg_targets
+        num_total_samples = (
+            num_total_pos + num_total_neg if self.sampling else num_total_pos)
+
+        losses_odm_cls_list = []
+        losses_odm_bbox_list = []
+        for i in range(m): # TODO make it a parameter m
+            odm_cls_scores_tmp = []
+            for j in range(len(odm_cls_scores)):
+                odm_cls_scores_tmp.append(odm_cls_scores[j][i:i+1, :, :, :])
+
+            odm_bbox_preds_tmp = []
+            for j in range(len(odm_bbox_preds)):
+                odm_bbox_preds_tmp.append(odm_bbox_preds[j][i:i+1, :, :, :])
+                
+            losses_odm_cls, losses_odm_bbox = multi_apply(
+                self.loss_odm_single,
+                odm_cls_scores_tmp,
+                odm_bbox_preds_tmp,
+                all_anchor_list,
+                labels_list,
+                label_weights_list,
+                bbox_targets_list,
+                bbox_weights_list,
+                num_total_samples=num_total_samples,
+                cfg=cfg.odm_cfg)
+            losses_odm_cls_list.append(losses_odm_cls)
+            losses_odm_bbox_list.append(losses_odm_bbox)
+
+
+        # Clumsy loss-addition
+        
+        losses_odm_cls = []
+        for i in range(len(losses_odm_cls_list[0])):
+            i_index_sum = 0
+            for j in range(len(losses_odm_cls_list)):
+                i_index_sum += losses_odm_cls_list[j][i]
+            losses_odm_cls.append(i_index_sum)
+
+        losses_odm_bbox = []
+        for i in range(len(losses_odm_bbox_list[0])):
+            i_index_sum = 0
+            for j in range(len(losses_odm_bbox_list)):
+                i_index_sum += losses_odm_bbox_list[j][i]
+            losses_odm_bbox.append(i_index_sum)
+
+        losses_fam_cls = []
+        for i in range(len(losses_fam_cls_list[0])):
+            i_index_sum = 0
+            for j in range(len(losses_fam_cls_list)):
+                i_index_sum += losses_fam_cls_list[j][i]
+            losses_fam_cls.append(i_index_sum)
+
+        losses_fam_bbox = []
+        for i in range(len(losses_fam_bbox_list[0])):
+            i_index_sum = 0
+            for j in range(len(losses_fam_bbox_list)):
+                i_index_sum += losses_fam_bbox_list[j][i]
+            losses_fam_bbox.append(i_index_sum)
+
+
+        self.last_vals = dict(
+            gt_bboxes=gt_bboxes,
+            gt_labels=gt_labels,
+            img_metas=img_metas,
+            fam_cls_scores=fam_cls_scores,
+            fam_bbox_preds=fam_bbox_preds,
+            refine_anchors=refine_anchors,
+            odm_cls_scores=odm_cls_scores,
+            odm_bbox_preds=odm_bbox_preds,
+        )
+        if sum(losses_fam_cls) > 1E10 or \
+           sum(losses_fam_bbox) > 1E10 or \
+           sum(losses_odm_cls) > 1E10 or \
+           sum(losses_odm_bbox) > 1E10:
+            print("bad loss")
+        return dict(loss_fam_cls=losses_fam_cls,
+                    loss_fam_bbox=losses_fam_bbox,
+                    loss_odm_cls=losses_odm_cls,
+                    loss_odm_bbox=losses_odm_bbox)
+
+    def loss_fam_single(self,
+                        fam_cls_score,
+                        fam_bbox_pred,
+                        anchors,
+                        labels,
+                        label_weights,
+                        bbox_targets,
+                        bbox_weights,
+                        num_total_samples,
+                        cfg):
+        # classification loss
+        labels = labels.reshape(-1)
+        label_weights = label_weights.reshape(-1)
+        fam_cls_score = fam_cls_score.permute(
+            0, 2, 3, 1).reshape(-1, self.cls_out_channels)
+        loss_fam_cls = self.loss_fam_cls(
+            fam_cls_score, labels, label_weights, avg_factor=num_total_samples)
+        # regression loss
+        bbox_targets = bbox_targets.reshape(-1, 5)
+        bbox_weights = bbox_weights.reshape(-1, 5)
+        fam_bbox_pred = fam_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
+
+        reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+        if reg_decoded_bbox:
+            # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
+            # is applied directly on the decoded bounding boxes, it
+            # decodes the already encoded coordinates to absolute format.
+            bbox_coder_cfg = cfg.get('bbox_coder', '')
+            if bbox_coder_cfg == '':
+                bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
+            bbox_coder = build_bbox_coder(bbox_coder_cfg)
+            anchors = anchors.reshape(-1, 5)
+            fam_bbox_pred = bbox_coder.decode(anchors, fam_bbox_pred)
+        loss_fam_bbox = self.loss_fam_bbox(
+            fam_bbox_pred,
+            bbox_targets,
+            bbox_weights,
+            avg_factor=num_total_samples)
+        return loss_fam_cls, loss_fam_bbox
+
+    def loss_odm_single(self,
+                        odm_cls_score,
+                        odm_bbox_pred,
+                        anchors,
+                        labels,
+                        label_weights,
+                        bbox_targets,
+                        bbox_weights,
+                        num_total_samples,
+                        cfg):
+        # classification loss
+        labels = labels.reshape(-1)
+        label_weights = label_weights.reshape(-1)
+        odm_cls_score = odm_cls_score.permute(0, 2, 3,
+                                              1).reshape(-1, self.cls_out_channels)
+        loss_odm_cls = self.loss_odm_cls(
+            odm_cls_score, labels, label_weights, avg_factor=num_total_samples)
+        # regression loss
+        bbox_targets = bbox_targets.reshape(-1, 5)
+        bbox_weights = bbox_weights.reshape(-1, 5)
+        odm_bbox_pred = odm_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
+
+        reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+        if reg_decoded_bbox:
+            # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
+            # is applied directly on the decoded bounding boxes, it
+            # decodes the already encoded coordinates to absolute format.
+            bbox_coder_cfg = cfg.get('bbox_coder', '')
+            if bbox_coder_cfg == '':
+                bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
+            bbox_coder = build_bbox_coder(bbox_coder_cfg)
+            anchors = anchors.reshape(-1, 5)
+            odm_bbox_pred = bbox_coder.decode(anchors, odm_bbox_pred)
+        loss_odm_bbox = self.loss_odm_bbox(
+            odm_bbox_pred,
+            bbox_targets,
+            bbox_weights,
+            avg_factor=num_total_samples)
+        return loss_odm_cls, loss_odm_bbox
     #
     # @force_fp32(apply_to=(
     #     'fam_cls_scores',
@@ -695,9 +759,10 @@ class S2ANetHeadBE(S2ANetHead):
 #         return out
 
 
+# Class from LP_BNN repo
 class Ensemble_Conv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
-                 groups=1, first_layer=False, num_models=2, train_gamma=True,
+                 groups=1, first_layer=False, num_models=30, train_gamma=True,
                  bias=True, constant_init=False, p=0.5, random_sign_init=False):
         super(Ensemble_Conv2d, self).__init__()
         self.in_channels = in_channels
@@ -776,6 +841,9 @@ class Ensemble_Conv2d(nn.Module):
         self.indices = indices
 
     def forward(self, x):
+        # TODO tile here?
+        x = tile(x, 0, self.num_models)
+        # TODO tile here?
         if not self.training and self.first_layer:
             # Repeated pattern in test: [[A,B,C],[A,B,C]]
             x = torch.cat([x for i in range(self.num_models)], dim=0)
@@ -837,3 +905,14 @@ class Ensemble_Conv2d(nn.Module):
                 bias.unsqueeze_(-1).unsqueeze_(-1)
             result = self.conv(x*alpha)
             return result + bias if self.bias is not None else result
+        
+
+# utility function to reshape batch ensemble layer inputs and targets
+# function from LP_BNN repo
+def tile(a, dim, n_tile):
+    init_dim = a.size(dim)
+    repeat_idx = [1] * a.dim()
+    repeat_idx[dim] = n_tile
+    a = a.repeat(*(repeat_idx))
+    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).cuda()
+    return torch.index_select(a, dim, order_index)
