@@ -849,9 +849,8 @@ class Ensemble_Conv2d(nn.Module):
         self.indices = indices
 
     def forward(self, x):
-        # TODO tile here?
+        # Tile here thus making input ensemble-compatible.
         x = tile(x, 0, self.num_models)
-        # TODO tile here?
         if not self.training and self.first_layer:
             # Repeated pattern in test: [[A,B,C],[A,B,C]]
             x = torch.cat([x for i in range(self.num_models)], dim=0)

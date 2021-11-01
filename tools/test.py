@@ -31,7 +31,8 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
             #    bbox_list[nr] = [rotated_box_to_poly_np(sub_list[0].cpu().numpy()), sub_list[1].cpu().numpy()]
 
             model.module.show_result(data, result, show=show, dataset=dataset.CLASSES,
-                                     bbox_transorm=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
+                                     bbox_transform=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
+                                    # typo in bbox_transorm -> bbox_transform?
 
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
