@@ -223,6 +223,13 @@ def rotated_box_to_poly_single(rrect):
     return poly
 
 
+def outputs_rotated_box_to_poly_np(outputs):
+    for i, page in enumerate(outputs):
+        for ii, cla in enumerate(page):
+            if len(cla) > 0:
+                page[ii] = rotated_box_to_poly_np(cla)
+    return outputs
+
 def rotated_box_to_poly_np(rrects):
     """
     rrect:[x_ctr,y_ctr,w,h,angle]

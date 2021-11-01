@@ -4,14 +4,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 from mmcv.cnn import normal_init
+from mmdet.core import (AnchorGeneratorRotated, anchor_target,
+                        build_bbox_coder, delta2bbox_rotated, force_fp32,
+                        images_to_levels, multi_apply, multiclass_nms_rotated)
 
-from mmdet.core import (anchor_target, delta2bbox_rotated, AnchorGeneratorRotated,
-                        force_fp32, multi_apply, multiclass_nms_rotated)
+from ...ops import DeformConv
+from ...ops.orn import ORConv2d, RotationInvariantPooling
 from ..builder import build_loss
 from ..registry import HEADS
 from ..utils import ConvModule, bias_init_with_prob
-from ...ops import DeformConv
-from ...ops.orn import ORConv2d, RotationInvariantPooling
 
 # Visualization imports
 import debugging.visualization_tools as vt
@@ -87,6 +88,10 @@ class S2ANetHead(nn.Module):
         self.training = True
         # anchor cache
         self.base_anchors = dict()
+
+        self.num_anchors = len(self.anchor_ratios) * len(self.anchor_scales)
+
+
         self._init_layers()
 
     def _init_layers(self):
@@ -110,10 +115,10 @@ class S2ANetHead(nn.Module):
                     stride=1,
                     padding=1))
 
-        self.fam_reg = nn.Conv2d(self.feat_channels, 5, 1)
-        self.fam_cls = nn.Conv2d(self.feat_channels, self.cls_out_channels, 1)
+        self.fam_reg = nn.Conv2d(self.feat_channels, self.num_anchors * 5, 1)
+        self.fam_cls = nn.Conv2d(self.feat_channels, self.num_anchors *self.cls_out_channels, 1)
 
-        self.align_conv = AlignConv(self.feat_channels, self.feat_channels, kernel_size=3)
+        self.align_conv = AlignConv(self.feat_channels, self.feat_channels, kernel_size=3, anchor_num=self.num_anchors)
 
         if self.with_orconv:
             self.or_conv = ORConv2d(self.feat_channels, int(
@@ -144,8 +149,8 @@ class S2ANetHead(nn.Module):
                     padding=1))
 
         self.odm_cls = nn.Conv2d(
-            self.feat_channels, self.cls_out_channels, 3, padding=1)
-        self.odm_reg = nn.Conv2d(self.feat_channels, 5, 3, padding=1)
+            self.feat_channels, self.num_anchors * self.cls_out_channels, 3, padding=1)
+        self.odm_reg = nn.Conv2d(self.feat_channels, self.num_anchors *5, 3, padding=1)
 
     def init_weights(self):
         for m in self.fam_reg_convs:
@@ -190,12 +195,13 @@ class S2ANetHead(nn.Module):
             init_anchors = self.anchor_generators[num_level].grid_anchors(
                 featmap_size, self.anchor_strides[num_level], device=device)
             self.base_anchors[(num_level, featmap_size)] = init_anchors
-
+        #TODO only works with fixed amount of anchors
         refine_anchor = bbox_decode(
             fam_bbox_pred.detach(),
             init_anchors,
             self.target_means,
-            self.target_stds)
+            self.target_stds,
+            self.num_anchors)
 
         align_feat = self.align_conv(x, refine_anchor.clone(), stride)
 
@@ -295,10 +301,10 @@ class S2ANetHead(nn.Module):
         return refine_anchors_list, valid_flag_list
 
     @force_fp32(apply_to=(
-            'fam_cls_scores',
-            'fam_bbox_preds',
-            'odm_cls_scores',
-            'odm_bbox_preds'))
+        'fam_cls_scores',
+        'fam_bbox_preds',
+        'odm_cls_scores',
+        'odm_bbox_preds'))
     def loss(self,
              fam_cls_scores,
              fam_bbox_preds,
@@ -312,15 +318,30 @@ class S2ANetHead(nn.Module):
              gt_bboxes_ignore=None):
         featmap_sizes = [featmap.size()[-2:] for featmap in odm_cls_scores]
         assert len(featmap_sizes) == len(self.anchor_generators)
+
+        # check for size zero boxes
+        for img_nr in range(len(gt_bboxes)):
+            zero_inds = gt_bboxes[img_nr][:, 2:4] == 0
+            gt_bboxes[img_nr][:, 2:4][zero_inds] = 1
+
         device = odm_cls_scores[0].device
 
-        anchors_list, valid_flag_list = self.get_init_anchors(
+        anchor_list, valid_flag_list = self.get_init_anchors(
             featmap_sizes, img_metas, device=device)
+
+        # anchor number of multi levels
+        num_level_anchors = [anchors.size(0) for anchors in anchor_list[0]]
+        # concat all level anchors and flags to a single tensor
+        concat_anchor_list = []
+        for i in range(len(anchor_list)):
+            concat_anchor_list.append(torch.cat(anchor_list[i]))
+        all_anchor_list = images_to_levels(concat_anchor_list,
+                                           num_level_anchors)
 
         # Feature Alignment Module
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
         cls_reg_targets = anchor_target(
-            anchors_list,
+            anchor_list,
             valid_flag_list,
             gt_bboxes,
             img_metas,
@@ -342,6 +363,7 @@ class S2ANetHead(nn.Module):
             self.loss_fam_single,
             fam_cls_scores,
             fam_bbox_preds,
+            all_anchor_list,
             labels_list,
             label_weights_list,
             bbox_targets_list,
@@ -352,6 +374,16 @@ class S2ANetHead(nn.Module):
         # Oriented Detection Module targets
         refine_anchors_list, valid_flag_list = self.get_refine_anchors(
             featmap_sizes, refine_anchors, img_metas, device=device)
+
+        # anchor number of multi levels
+        num_level_anchors = [anchors.size(0)
+                             for anchors in refine_anchors_list[0]]
+        # concat all level anchors and flags to a single tensor
+        concat_anchor_list = []
+        for i in range(len(refine_anchors_list)):
+            concat_anchor_list.append(torch.cat(refine_anchors_list[i]))
+        all_anchor_list = images_to_levels(concat_anchor_list,
+                                           num_level_anchors)
 
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
         cls_reg_targets = anchor_target(
@@ -377,6 +409,7 @@ class S2ANetHead(nn.Module):
             self.loss_odm_single,
             odm_cls_scores,
             odm_bbox_preds,
+            all_anchor_list,
             labels_list,
             label_weights_list,
             bbox_targets_list,
@@ -388,8 +421,17 @@ class S2ANetHead(nn.Module):
             gt_bboxes=gt_bboxes,
             gt_labels=gt_labels,
             img_metas=img_metas,
+            fam_cls_scores=fam_cls_scores,
+            fam_bbox_preds=fam_bbox_preds,
+            refine_anchors=refine_anchors,
+            odm_cls_scores=odm_cls_scores,
+            odm_bbox_preds=odm_bbox_preds,
         )
-
+        if sum(losses_fam_cls) > 1E10 or \
+           sum(losses_fam_bbox) > 1E10 or \
+           sum(losses_odm_cls) > 1E10 or \
+           sum(losses_odm_bbox) > 1E10:
+            print("bad loss")
         return dict(loss_fam_cls=losses_fam_cls,
                     loss_fam_bbox=losses_fam_bbox,
                     loss_odm_cls=losses_odm_cls,
@@ -398,6 +440,7 @@ class S2ANetHead(nn.Module):
     def loss_fam_single(self,
                         fam_cls_score,
                         fam_bbox_pred,
+                        anchors,
                         labels,
                         label_weights,
                         bbox_targets,
@@ -416,6 +459,17 @@ class S2ANetHead(nn.Module):
         bbox_weights = bbox_weights.reshape(-1, 5)
         fam_bbox_pred = fam_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
 
+        reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+        if reg_decoded_bbox:
+            # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
+            # is applied directly on the decoded bounding boxes, it
+            # decodes the already encoded coordinates to absolute format.
+            bbox_coder_cfg = cfg.get('bbox_coder', '')
+            if bbox_coder_cfg == '':
+                bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
+            bbox_coder = build_bbox_coder(bbox_coder_cfg)
+            anchors = anchors.reshape(-1, 5)
+            fam_bbox_pred = bbox_coder.decode(anchors, fam_bbox_pred)
         loss_fam_bbox = self.loss_fam_bbox(
             fam_bbox_pred,
             bbox_targets,
@@ -426,6 +480,7 @@ class S2ANetHead(nn.Module):
     def loss_odm_single(self,
                         odm_cls_score,
                         odm_bbox_pred,
+                        anchors,
                         labels,
                         label_weights,
                         bbox_targets,
@@ -444,6 +499,17 @@ class S2ANetHead(nn.Module):
         bbox_weights = bbox_weights.reshape(-1, 5)
         odm_bbox_pred = odm_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
 
+        reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+        if reg_decoded_bbox:
+            # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
+            # is applied directly on the decoded bounding boxes, it
+            # decodes the already encoded coordinates to absolute format.
+            bbox_coder_cfg = cfg.get('bbox_coder', '')
+            if bbox_coder_cfg == '':
+                bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
+            bbox_coder = build_bbox_coder(bbox_coder_cfg)
+            anchors = anchors.reshape(-1, 5)
+            odm_bbox_pred = bbox_coder.decode(anchors, odm_bbox_pred)
         loss_odm_bbox = self.loss_odm_bbox(
             odm_bbox_pred,
             bbox_targets,
@@ -452,10 +518,10 @@ class S2ANetHead(nn.Module):
         return loss_odm_cls, loss_odm_bbox
 
     @force_fp32(apply_to=(
-            'fam_cls_scores',
-            'fam_bbox_preds',
-            'odm_cls_scores',
-            'odm_bbox_preds'))
+        'fam_cls_scores',
+        'fam_bbox_preds',
+        'odm_cls_scores',
+        'odm_bbox_preds'))
     def get_bboxes(self,
                    fam_cls_scores,
                    fam_bbox_preds,
@@ -556,16 +622,35 @@ class S2ANetHead(nn.Module):
         gt = rotated_box_to_poly_np(self.last_vals['gt_bboxes'][0].cpu().numpy())
         #TODO classes are wrong for deepscores
         img_gt = imshow_det_bboxes(img.copy(),gt,
-                                        self.last_vals['gt_labels'][0].cpu().numpy()-1,
-                                        class_names=None, show=False, show_label=True, rotated=True)
-        #Image.fromarray(img_gt).show()
-        return [{"name": "stitched_img", "image": img_gt}]
+                                        self.last_vals['gt_labels'][0].cpu().numpy(),
+                                        class_names=classes, show=False, show_label=True, rotated=True)
 
+        det_boxes_labels = self.get_bboxes(fam_cls_scores=self.last_vals['fam_cls_scores'],
+                   fam_bbox_preds=self.last_vals['fam_bbox_preds'],
+                   refine_anchors=self.last_vals['refine_anchors'],
+                   odm_cls_scores=self.last_vals['odm_cls_scores'],
+                   odm_bbox_preds=self.last_vals['odm_bbox_preds'],
+                   img_metas=self.last_vals['img_metas'],
+                   cfg=test_cfg)[0]
+        det_boxes = rotated_box_to_poly_np(det_boxes_labels[0].cpu().numpy())
+        det_labels = det_boxes_labels[1].cpu().numpy()
+        if len(det_boxes)>0:
+            img_det = imshow_det_bboxes(img.copy(), det_boxes,
+                                            det_labels.astype(np.int)+1,
+                                            class_names=classes, show=False, show_label=True, rotated=True)
+        else:
+            img_det = img.copy()
+        stitched = vt.stitch_big_image([[img_gt],
+                                        [img_det]])
+
+        return [{"name": "stitched_img", "image": stitched}]
+        # Image.fromarray(stitched).show()
 def bbox_decode(
         bbox_preds,
         anchors,
         means=[0, 0, 0, 0, 0],
-        stds=[1, 1, 1, 1, 1]):
+        stds=[1, 1, 1, 1, 1],
+        num_anchors=1):
     """
     Decode bboxes from deltas
     :param bbox_preds: [N,5,H,W]
@@ -582,7 +667,7 @@ def bbox_decode(
         bbox_delta = bbox_pred.permute(1, 2, 0).reshape(-1, 5)
         bboxes = delta2bbox_rotated(
             anchors, bbox_delta, means, stds, wh_ratio_clip=1e-6)
-        bboxes = bboxes.reshape(H, W, 5)
+        bboxes = bboxes.reshape(num_anchors,H, W, 5)
         bboxes_list.append(bboxes)
     return torch.stack(bboxes_list, dim=0)
 
@@ -593,7 +678,8 @@ class AlignConv(nn.Module):
                  in_channels,
                  out_channels,
                  kernel_size=3,
-                 deformable_groups=1):
+                 deformable_groups=1,
+                 anchor_num = 1):
         super(AlignConv, self).__init__()
         self.kernel_size = kernel_size
         self.deform_conv = DeformConv(in_channels,
@@ -602,6 +688,7 @@ class AlignConv(nn.Module):
                                       padding=(kernel_size - 1) // 2,
                                       deformable_groups=deformable_groups)
         self.relu = nn.ReLU(inplace=True)
+        self.anchor_num = anchor_num
 
     def init_weights(self):
         normal_init(self.deform_conv, std=0.01)
@@ -644,13 +731,26 @@ class AlignConv(nn.Module):
         offset = offset.reshape(anchors.size(0), -1).permute(1, 0).reshape(-1, feat_h, feat_w)
         return offset
 
-    def forward(self, x, anchors, stride):
-        num_imgs, H, W = anchors.shape[:3]
-        offset_list = [
-            self.get_offset(anchors[i].reshape(-1, 5), (H, W), stride)
-            for i in range(num_imgs)
-        ]
-        offset_tensor = torch.stack(offset_list, dim=0)
-        x = self.relu(self.deform_conv(x, offset_tensor))
-        return x
+    # def forward(self, x, anchors, stride):
+    #     num_imgs, H, W = anchors.shape[:3]
+    #     offset_list = [
+    #         self.get_offset(anchors[i].reshape(-1, 5), (H, W), stride)
+    #         for i in range(num_imgs)
+    #     ]
+    #     offset_tensor = torch.stack(offset_list, dim=0)
+    #     x = self.relu(self.deform_conv(x, offset_tensor))
+    #     return x
 
+    def forward(self, x, anchors, stride):
+        num_imgs = anchors.shape[0]
+        H, W = anchors.shape[2:4]
+        out = list()
+        for i in range(self.anchor_num):
+            offset_list = [self.get_offset(anchors[ii,i,...].reshape(-1,5), (H,W), stride)
+                           for ii in range(num_imgs)]
+            offset_tensor = torch.stack(offset_list, dim=0)
+            out.append(self.relu(self.deform_conv(x, offset_tensor)))
+        # TODO: max-pooling over multi anchor to get feature
+        out = torch.stack(out, dim=1)
+        out, _ = torch.max(out, dim=1, keepdim=False)
+        return out

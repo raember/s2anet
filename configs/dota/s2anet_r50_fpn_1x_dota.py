@@ -113,8 +113,8 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=2,
-    workers_per_gpu=2,
+    imgs_per_gpu=1,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'trainval_split/trainval_s2anet.pkl',
@@ -145,7 +145,7 @@ lr_config = dict(
     step=[8, 11])
 checkpoint_config = dict(interval=1)
 log_config = dict(
-    interval=50,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
