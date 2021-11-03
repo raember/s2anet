@@ -204,5 +204,19 @@ class DeepScoresV2Dataset(CocoDataset):
             import os
             out_file = os.path.join(work_dir, "dsv2_metrics.pkl")
             pickle.dump(metric_results, open(out_file, 'wb'))
+            
+            if self.data_root is None:
+                self.data_root = '/'.join(self.ann_file.split('/')[0:2]) + '/'
+
+            out_dir = os.path.join(work_dir, "visualized_proposals/")
+            if not os.path.exists(out_dir):
+                os.makedirs(out_dir)
+            
+            for img_info in self.obb.img_info:
+                self.obb.visualize(img_id=img_info['id'],
+                                   data_root=self.data_root,
+                                   out_dir=out_dir
+                                   )
+
         print(metric_results)
         return metric_results
