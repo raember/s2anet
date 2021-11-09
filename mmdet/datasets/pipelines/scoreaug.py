@@ -137,7 +137,7 @@ class ScoreAug(object):
         fg_brightness = choice([True, False], p=[0.4, 0.6])
         if fg_brightness or True:
             fg_img = np.array(fg_img, dtype=np.uint32)
-            fg_img = fg_img + np.random.uniform(30, 150)
+            fg_img = fg_img + np.random.uniform(20, 90)
             fg_img[fg_img > 255] = 255
             fg_img = Image_m.fromarray(fg_img.astype(np.uint8))
 
