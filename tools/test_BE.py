@@ -3,7 +3,6 @@ import os
 import os.path as osp
 import shutil
 import tempfile
-import numpy as np
 
 import mmcv
 import torch
@@ -27,26 +26,12 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
             result, bbox_list = model(return_loss=False, rescale=not show, **data)
         results.append(result)
         if show:
-            #print("asdf")
+            print("asdf")
             #for nr, sub_list in enumerate(bbox_list):
             #    bbox_list[nr] = [rotated_box_to_poly_np(sub_list[0].cpu().numpy()), sub_list[1].cpu().numpy()]
 
-            # TODO: Quick and Dirty Test to fix
-            new_result = []
-            for bbox in result:
-                new_bbox = rotated_box_to_poly_np(bbox)
-                if bbox.shape[0] != 0:
-                    new_bbox = np.append(new_bbox[:, np.array([0, 1, 4, 5])],
-                                         bbox[:, -1:], axis=1)
-                else:
-                    new_bbox = np.empty((0, 5), dtype="float32")
-                new_result.append(
-                    new_bbox)  # shoud be a list of 135 entries, each entry is a np array with shape n,5
-            
-            
-            model.module.show_result(data, new_result, show=show, dataset=dataset.CLASSES,
-                                     #bbox_transform=rotated_box_to_poly_np,
-                                     score_thr=cfg.test_cfg['score_thr'])
+            model.module.show_result(data, result, show=show, dataset=dataset.CLASSES,
+                                     bbox_transform=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
                                     # typo in bbox_transorm -> bbox_transform?
 
         batch_size = data['img'][0].size(0)
@@ -206,7 +191,7 @@ def main():
         model.CLASSES = checkpoint['meta']['CLASSES']
     else:
         model.CLASSES = dataset.CLASSES
-    if not distributed:
+    if not distributed:  # Only implemented BatchEnsemble here
         model = MMDataParallel(model, device_ids=[0])
         outputs = single_gpu_test(model, data_loader, args.show, cfg)
     else:
@@ -214,54 +199,68 @@ def main():
         outputs = multi_gpu_test(model, data_loader, args.tmpdir)
     rank, _ = get_dist_info()
     if args.out and rank == 0:
-        print('\nwriting results to {}'.format(args.out))
-        mmcv.dump(outputs, args.out)
-        eval_types = args.eval
-        data_name = args.data
-        if data_name == 'coco':
-            if eval_types:
-                print('Starting evaluate {}'.format(' and '.join(eval_types)))
-                if eval_types == ['proposal_fast']:
-                    result_file = args.out
-                    coco_eval(result_file, eval_types, dataset.coco)
-                else:
-                    if not isinstance(outputs[0], dict):
-                        result_files = results2json(dataset, outputs, args.out)
-                        coco_eval(result_files, eval_types, dataset.coco)
+        
+        # Reshape outputs: first needed to calculate the 30 ensemble-outputs per image
+        # and then end up with a nested_list of the wrong shape
+        # (outputs = {list: 10}) but need outputs_m = {list: 30})
+        # TODO: How to solve this in a better way? Just ugly not slow.
+        outputs_m = []
+        for j in range(len(outputs[0])):
+            outputs_reshaped_m = []
+            for i in range(len(outputs)):
+                outputs_reshaped_m.append(outputs[i][j])
+            outputs_m.append(outputs_reshaped_m)
+
+        # TODO: This loop is brutally slow -> need a better way to evaluate outputs.
+        for i in range(len(outputs_m)):
+            print('\nwriting results to {}'.format(args.out))
+            mmcv.dump(outputs_m[i], args.out)
+            eval_types = args.eval
+            data_name = args.data
+            if data_name == 'coco':
+                if eval_types:
+                    print('Starting evaluate {}'.format(' and '.join(eval_types)))
+                    if eval_types == ['proposal_fast']:
+                        result_file = args.out
+                        coco_eval(result_file, eval_types, dataset.coco)
                     else:
-                        for name in outputs[0]:
-                            print('\nEvaluating {}'.format(name))
-                            outputs_ = [out[name] for out in outputs]
-                            result_file = args.out + '.{}'.format(name)
-                            result_files = results2json(dataset, outputs_,
-                                                        result_file)
+                        if not isinstance(outputs_m[i][0], dict):
+                            result_files = results2json(dataset, outputs_m[i], args.out)
                             coco_eval(result_files, eval_types, dataset.coco)
-
-        elif data_name in ['dota', 'hrsc2016']:
-            eval_kwargs = cfg.get('evaluation', {}).copy()
-            work_dir = osp.dirname(args.out)
-            dataset.evaluate(outputs, work_dir, **eval_kwargs)
-        elif data_name in ['dsv2']:
-            from mmdet.core import outputs_rotated_box_to_poly_np
-            # for page in outputs:
-            #     for cla in page:
-            #         for detec in cla:
-            #             if min(detec[:4]) < 0:
-            #                 detec[:4][detec[:4] < 0] = 0
-            #TODO: fix ugly hack to make the labels match
-            import numpy as np
-            for page in outputs:
-                page.insert(0, np.array([]))
-
-            outputs = outputs_rotated_box_to_poly_np(outputs)
-            work_dir = osp.dirname(args.out)
-            dataset.evaluate(outputs, work_dir = work_dir)
-            # print("asdfsdf")
-            # for page in outputs:
-            #     for cla in page:
-            #         for detec in cla:
-            #             if min(detec[:4]) < 0:
-            #                 print(detec)
+                        else:
+                            for name in outputs_m[i][0]:
+                                print('\nEvaluating {}'.format(name))
+                                outputs_m[i] = [out[name] for out in outputs_m[i]]
+                                result_file = args.out + '.{}'.format(name)
+                                result_files = results2json(dataset, outputs_m[i],
+                                                            result_file)
+                                coco_eval(result_files, eval_types, dataset.coco)
+    
+            elif data_name in ['dota', 'hrsc2016']:
+                eval_kwargs = cfg.get('evaluation', {}).copy()
+                work_dir = osp.dirname(args.out)
+                dataset.evaluate(outputs_m[i], work_dir, **eval_kwargs)
+            elif data_name in ['dsv2']:
+                from mmdet.core import outputs_rotated_box_to_poly_np
+                # for page in outputs:
+                #     for cla in page:
+                #         for detec in cla:
+                #             if min(detec[:4]) < 0:
+                #                 detec[:4][detec[:4] < 0] = 0
+                #TODO: fix ugly hack to make the labels match
+                import numpy as np
+                for page in outputs_m[i]:
+                    page.insert(0, np.array([]))
+    
+                outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])
+                work_dir = osp.dirname(args.out)
+                dataset.evaluate(outputs_m[i], work_dir = work_dir)
+                # print("asdfsdf")
+                # for page in outputs:
+                #     for cla in page:
+                #         for detec in cla:
+                #             if min(detec[:4]) < 0:
+                #                 print(detec)
 
 
 

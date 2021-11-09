@@ -249,7 +249,7 @@ class S2ANetHeadBE(S2ANetHead):
     #     'odm_cls_scores',
     #     'odm_bbox_preds'))
     
-    # TODO make loss ensemble-compatible
+    # TODO try to implement it in a less ugly way
     def loss(self,
              fam_cls_scores,
              fam_bbox_preds,
@@ -587,12 +587,10 @@ class S2ANetHeadBE(S2ANetHead):
     #         assert cls_score.size()[-2:] == bbox_pred.size()[-2:]
     #         cls_score = cls_score.permute(
     #             1, 2, 0).reshape(-1, self.cls_out_channels)
-    #
     #         if self.use_sigmoid_cls:
     #             scores = cls_score.sigmoid()
     #         else:
     #             scores = cls_score.softmax(-1)
-    #
     #         bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 5)
     #         # anchors = rect2rbox(anchors)
     #         nms_pre = cfg.get('nms_pre', -1)

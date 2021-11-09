@@ -1,6 +1,6 @@
 # model settings
 model = dict(
-    type='S2ANetDetector',
+    type='S2ANetDetectorBE',
     pretrained='torchvision://resnet50',
     backbone=dict(
         type='ResNet',
