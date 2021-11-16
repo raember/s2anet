@@ -122,14 +122,15 @@ class ScoreAug(object):
             bg_img = bg_img.rotate(angle, PIL.Image.BICUBIC, center=center, fillcolor=fill_col)
 
             def rotate(arr: np.ndarray, angle: float) -> np.ndarray:
+                ar = arr.copy()
                 theta = np.radians(angle)
                 c, s = np.cos(theta), np.sin(theta)
                 R = np.array(((c, -s), (s, c)))
-                for i, o_bbox in enumerate(arr):
+                for i, o_bbox in enumerate(ar):
                     bbox = o_bbox.reshape((4, 2)) - center
                     bbox = bbox.dot(R)
-                    arr[i] = (bbox + center).reshape((8,))
-                return arr
+                    ar[i] = (bbox + center).reshape((8,))
+                return ar
 
             results['ann_info']['bboxes'] = rotate(results['ann_info']['bboxes'], angle)
             results['gt_bboxes'] = rotate(results['gt_bboxes'], angle)
