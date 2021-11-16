@@ -60,6 +60,13 @@ def maybe_init_wandb(cfg):
         name = "{}_{}".format(osp.split(cfg.work_dir)[1],
                               time.strftime('%Y.%m.%d--%H.%M.%S'))
         entity = None
+
+        try:
+            name_prefix = cfg.wandb_cfg['name_prefix']
+            name = name_prefix + name
+        except AttributeError or KeyError:
+            pass
+
         try:
             project = cfg.wandb_cfg['project']
         except AttributeError or KeyError:

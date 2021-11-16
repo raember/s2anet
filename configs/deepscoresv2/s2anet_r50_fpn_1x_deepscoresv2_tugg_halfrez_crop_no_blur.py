@@ -31,7 +31,7 @@ model = dict(
         # anchor_ratios=[0.05, 0.3, 0.73, 2.5],
         # anchor_strides=[8, 16, 32, 64, 128],
         # anchor_scales=[1.0, 2.0, 12.0],
-=0.5,
+
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
@@ -66,7 +66,7 @@ train_cfg = dict(
                         clip_border=True),
         allowed_border=-1,
         pos_weight=-1,
-        debug=False),
+        debug=False), 
     odm_cfg=dict(
         assigner=dict(
             type='MaxIoUAssigner',
@@ -83,11 +83,11 @@ train_cfg = dict(
         pos_weight=-1,
         debug=False))
 test_cfg = dict(
-    nms_pre=2000,
+    nms_pre=5000,
     min_bbox_size=0,
-    score_thr=0.05,
+    score_thr=0.3,
     nms=dict(type='nms_rotated', iou_thr=0.1),
-    max_per_img=2000)
+    max_per_img=1000)
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
 data_root = 'data/deep_scores_dense/'
@@ -98,8 +98,9 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    #dict(type='RandomCrop', crop_size=(1024, 1024), threshold_rel=0.6, threshold_abs=200.0),
-    dict(type='RotatedResize', img_scale=0.5, keep_ratio=True, max_size=(2000, 2000)),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0),
+    dict(type='RandomCrop', crop_size=(2000, 2000), threshold_rel=0.6, threshold_abs=200.0),
+    dict(type='RotatedResize', img_scale=(1000, 1000), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -113,7 +114,7 @@ test_pipeline = [
         img_scale=0.5,
         flip=False,
         transforms=[
-            dict(type='RotatedResize', img_scale=0.5, keep_ratio=True, max_size=(300, 500)),
+            dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
             dict(type='RotatedRandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
@@ -122,17 +123,17 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=1,
-    workers_per_gpu=0,
+    imgs_per_gpu=4,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_debug.json',
+        ann_file=data_root + 'deepscores_train.json',
         img_prefix=data_root + 'images/',
         pipeline=train_pipeline,
         use_oriented_bboxes=True),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_debug.json',
+        ann_file=data_root + 'deepscores_test.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True),
@@ -154,10 +155,11 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[50, 100])
-checkpoint_config = dict(interval=20)
+    gamma = 0.5,
+    step=[300, 700])
+checkpoint_config = dict(interval=10)
 log_config = dict(
-    interval=1,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
@@ -165,15 +167,17 @@ log_config = dict(
 # wandb settings
 wandb_cfg = dict(
     entity="tuggeluk",
-    project='wfcos-testing',
-    dryrun=True
+    project='s2anet_augment',
+    dryrun=False,
+    name_prefix = "no_blur"
 )
 
 
+
 # runtime settings
-total_epochs = 120
+total_epochs = 500 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None
-resume_from = None
+#load_from = "DeepScoresV2_s2anet/halfrez_crop/epoch_400.pth"
+resume_from = "/home/ubuntu/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop_no_blur/latest.pth"
 workflow = [('train', 1)]
