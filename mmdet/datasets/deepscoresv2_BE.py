@@ -19,7 +19,7 @@ from .coco import *
 
 
 @DATASETS.register_module
-class DeepScoresV2Dataset(CocoDataset):
+class DeepScoresV2Dataset_BE(CocoDataset):
 
     def __init__(self,
                  ann_file,
@@ -33,7 +33,7 @@ class DeepScoresV2Dataset(CocoDataset):
                  filter_empty_gt=True,
                  use_oriented_bboxes=True):
         self.filter_empty_gt = filter_empty_gt
-        super(DeepScoresV2Dataset, self).__init__(ann_file, pipeline, data_root, img_prefix, seg_prefix, proposal_file, test_mode)
+        super(DeepScoresV2Dataset_BE, self).__init__(ann_file, pipeline, data_root, img_prefix, seg_prefix, proposal_file, test_mode)
         #self.CLASSES = self.get_classes(classes)
         self.use_oriented_bboxes = use_oriented_bboxes
 
@@ -186,7 +186,16 @@ class DeepScoresV2Dataset(CocoDataset):
             if metric not in allowed_metrics:
                 raise KeyError(f'metric {metric} is not supported')
 
-        filename = self.write_results_json(results)
+        if work_dir is not None:
+            # Hack to save ensemble member specific output separately.
+            import os
+            ith_member = work_dir.split('_')[7]
+            work_dir = '_'.join(work_dir.split('_')[0:7])
+            filename_json = f'deepscores_results_{ith_member}.json'
+            out_json = os.path.join(work_dir, filename_json)
+            filename = self.write_results_json(results, filename=out_json)
+        else:
+            filename = self.write_results_json(results)
 
         self.obb.load_proposals(filename)
         metric_results = self.obb.calculate_metrics(iou_thrs=iou_thrs, classwise=classwise, average_thrs=average_thrs)
@@ -201,8 +210,8 @@ class DeepScoresV2Dataset(CocoDataset):
 
         if work_dir is not None:
             import pickle
-            import os
-            out_file = os.path.join(work_dir, "dsv2_metrics.pkl")
+            # Hack to save ensemble member specific output separately.
+            out_file = os.path.join(work_dir, f'dsv2_metrics_{ith_member}.pkl')
             pickle.dump(metric_results, open(out_file, 'wb'))
             
             if self.data_root is None:
@@ -215,8 +224,7 @@ class DeepScoresV2Dataset(CocoDataset):
             # for img_info in self.obb.img_info:
             #     self.obb.visualize(img_id=img_info['id'],
             #                        data_root=self.data_root,
-            #                        out_dir=out_dir
-            #                        )
+            #                        out_dir=out_dir)
 
         print(metric_results)
         return metric_results
