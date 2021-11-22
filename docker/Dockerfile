@@ -2,12 +2,11 @@
 # .
 # ├── mmcv/             # git clone https://github.com/tuggeluk/mmcv.git
 # ├── obb_anns/         # git clone https://github.com/yvan674/obb_anns.git
-# ├── s2anet/           # This repo https://github.com/raember/s2anet.git
-# └── authorized_keys   # Optional: ssh pub keys
+# └── s2anet/           # This repo https://github.com/raember/s2anet.git
 # Build with:
 # docker build -t <tag> -f s2anet/docker/Dockerfile .
 # Run with:
-# docker run -dp 2222:22 -v $HOME/s2anet/s2anet:/s2anet -v $HOME/ds2_dense:/s2anet/data --name <name> <tag>
+# docker run -dv $HOME/s2anet/s2anet:/s2anet -v $HOME/ds2_dense:/s2anet/data --name <name> <tag>
 
 ARG PYTORCH="1.8.0"
 ARG CUDA="11.1"
@@ -61,12 +60,3 @@ FROM build-mmcv AS build-aftermath
 WORKDIR /s2anet
 # /s2anet/data -> DS2 dataset
 WORKDIR /s2anet/data
-
-# Setup ssh port forwarding
-RUN apt-get update && apt-get install -y openssh-server
-RUN mkdir -p /root/.ssh
-ADD authorized_keys /root/.ssh/authorized_keys
-RUN chown root:root /root/.ssh/authorized_keys
-RUN mkdir /var/run/sshd
-EXPOSE 22
-CMD ["/usr/sbin/sshd", "-D"]
