@@ -2,7 +2,7 @@
 # .
 # ├── mmcv/             # git clone https://github.com/tuggeluk/mmcv.git
 # ├── obb_anns/         # git clone https://github.com/yvan674/obb_anns.git
-# ├── s2anet/           # This repo
+# ├── s2anet/           # This repo https://github.com/raember/s2anet.git
 # └── authorized_keys   # Optional: ssh pub keys
 # Build with:
 # docker build -t <tag> -f s2anet/docker/Dockerfile .
@@ -34,7 +34,7 @@ RUN pip install -e /obb_anns
 FROM build-obb_anns AS build-mmdet
 WORKDIR /
 COPY /s2anet /s2anet_dummy
-#RUN git clone https://github.com/tuggeluk/mmdetection.git s2anet_dummy
+#RUN git clone https://github.com/raember/s2anet.git s2anet_dummy
 RUN conda install python=3.8
 ENV FORCE_CUDA="1"
 RUN conda install pytorch=${PYTORCH} torchvision cudatoolkit=${CUDA} -c pytorch
