@@ -9,11 +9,11 @@
 # Run with:
 # docker run -dp 2222:22 -v $HOME/s2anet/s2anet:/s2anet -v $HOME/ds2_dense:/s2anet/data --name <name> <tag>
 
-ARG PYTORCH="1.7.1"
-ARG CUDA="11.0"
+ARG PYTORCH="1.8.0"
+ARG CUDA="11.1"
 ARG CUDNN="8"
 
-FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
+FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel AS build-pytorch
 
 ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
 ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
@@ -24,30 +24,37 @@ RUN apt-get update && apt-get install -y curl ffmpeg libsm6 libxext6 git ninja-b
     && rm -rf /var/lib/apt/lists/*
 
 # Install OBB_Anns
-# git clone https://github.com/yvan674/obb_anns.git
+FROM build-pytorch AS build-obb_anns
+WORKDIR /
 COPY /obb_anns /obb_anns
-WORKDIR /obb_anns
-RUN /opt/conda/bin/pip install -e .
-
-# Install MMCV
-# git clone https://github.com/tuggeluk/mmcv.git
-COPY /mmcv /mmcv
-WORKDIR /mmcv
-ENV MMCV_WITH_OPS=1
-RUN /opt/conda/bin/pip install -e .
-
+#RUN git clone https://github.com/yvan674/obb_anns.git
+RUN pip install -e /obb_anns
 
 # Install MMDetection deps
+FROM build-obb_anns AS build-mmdet
+WORKDIR /
 COPY /s2anet /s2anet_dummy
-WORKDIR /s2anet_dummy
-RUN /opt/conda/bin/conda install python=3.7
+#RUN git clone https://github.com/tuggeluk/mmdetection.git s2anet_dummy
+RUN conda install python=3.8
 ENV FORCE_CUDA="1"
-RUN /opt/conda/bin/conda install pytorch=1.3 torchvision cudatoolkit=${CUDA} -c pytorch
-RUN /opt/conda/bin/pip install -r requirements.txt
-RUN /opt/conda/bin/python setup.py develop
+RUN conda install pytorch=${PYTORCH} torchvision cudatoolkit=${CUDA} -c pytorch
+RUN pip install -r /s2anet_dummy/requirements.txt
+RUN pip install wandb
+# Install custom polyiou
+FROM build-mmdet AS build-polyiou
 WORKDIR /s2anet_dummy/DOTA_devkit/polyiou
 RUN swig -c++ -python csrc/polyiou.i
-RUN /opt/conda/bin/python setup.py build_ext --inplace
+RUN python setup.py build_ext --inplace
+
+# Install MMCV
+FROM build-polyiou AS build-mmcv
+WORKDIR /
+#COPY /mmcv /mmcv
+RUN git clone https://github.com/tuggeluk/mmcv.git
+ENV MMCV_WITH_OPS=1
+RUN pip install -e /mmcv
+
+FROM build-mmcv AS build-aftermath
 
 # Setup s2anet for disk sharing
 # /s2anet -> code base
