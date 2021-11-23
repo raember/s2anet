@@ -213,8 +213,14 @@ def main():
 
         # TODO: This loop is brutally slow -> need a better way to evaluate outputs.
         for i in range(len(outputs_m)):
-            print('\nwriting results to {}'.format(args.out))
-            mmcv.dump(outputs_m[i], args.out)
+            # Reformat out-path to save ensemble member specific output seperately.
+            fp_out = '/'.join(args.out.split('/')[0:2]) + '/' + \
+            args.out.split('/')[2][:-4] + \
+            '_' + str(i) + '.pkl'
+            
+            print('\nwriting results to {}'.format(fp_out))
+            
+            mmcv.dump(outputs_m[i], fp_out)
             eval_types = args.eval
             data_name = args.data
             if data_name == 'coco':
@@ -252,8 +258,9 @@ def main():
                 for page in outputs_m[i]:
                     page.insert(0, np.array([]))
     
-                outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])
+                outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
                 work_dir = osp.dirname(args.out)
+                work_dir = work_dir + '_' + str(i)
                 dataset.evaluate(outputs_m[i], work_dir = work_dir)
                 # print("asdfsdf")
                 # for page in outputs:

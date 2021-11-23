@@ -215,7 +215,8 @@ class DeepScoresV2Dataset(CocoDataset):
             # for img_info in self.obb.img_info:
             #     self.obb.visualize(img_id=img_info['id'],
             #                        data_root=self.data_root,
-            #                        out_dir=out_dir)
+            #                        out_dir=out_dir
+            #                        )
 
         print(metric_results)
         return metric_results

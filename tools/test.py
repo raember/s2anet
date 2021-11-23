@@ -24,7 +24,8 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
     for i, data in enumerate(data_loader):
         with torch.no_grad():
             result, bbox_list = model(return_loss=False, rescale=not show, **data)
-        results.append(result)
+        results.append(result) # TODO: How do I get the scores in bbox_list[0][0][:,5]
+        # TODO: or are the scores saved in e.g. result[0][:,5] ?
         if show:
             print("asdf")
             #for nr, sub_list in enumerate(bbox_list):
@@ -236,7 +237,7 @@ def main():
             #TODO: fix ugly hack to make the labels match
             import numpy as np
             for page in outputs:
-                page.insert(0, np.array([]))
+                page.insert(0, np.array([]))  # TODO: Check if this line shifts the labels from 0:135 to 0:136?
 
             outputs = outputs_rotated_box_to_poly_np(outputs)
             work_dir = osp.dirname(args.out)
