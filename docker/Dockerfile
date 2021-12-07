@@ -57,6 +57,8 @@ FROM build-s2anet AS build-mmcv
 WORKDIR /
 #COPY /mmcv /mmcv
 RUN git clone https://github.com/tuggeluk/mmcv.git
+# Remove old mmcv
+RUN pip uninstall mmcv
 ENV MMCV_WITH_OPS=1
 RUN pip install -e /mmcv
 
