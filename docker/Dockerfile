@@ -1,16 +1,16 @@
 # Required docker build context:
 # .
 # ├── mmcv/             # git clone https://github.com/tuggeluk/mmcv.git
-# ├── obb_anns/         # git clone https://github.com/yvan674/obb_anns.git
+# ├── obb_anns/         # git clone https://github.com/raember/obb_anns.git
 # └── s2anet/           # This repo https://github.com/raember/s2anet.git
 # Build with:
 # docker build -t <tag> -f s2anet/docker/Dockerfile .
 # Run with:
 # docker run -dv $HOME/s2anet/s2anet:/s2anet -v $HOME/ds2_dense:/s2anet/data --name <name> <tag>
 
-ARG PYTORCH="1.3"
-ARG CUDA="10.1"
-ARG CUDNN="7"
+ARG PYTORCH="1.8.0"
+ARG CUDA="11.1"
+ARG CUDNN="8"
 
 FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel AS build-pytorch
 
@@ -29,22 +29,15 @@ WORKDIR /
 COPY /obb_anns /obb_anns
 #RUN git clone https://github.com/raember/obb_anns.git
 WORKDIR /obb_anns
-# https://github.com/cocodataset/cocoapi/issues/94
 RUN python setup.py develop
 
-# Install MMDetection deps
+# Install MMDetection/S2ANet deps
 FROM build-obb_anns AS build-mmdet
 RUN conda install cython -y && conda clean --all
-WORKDIR /
 COPY /s2anet /s2anet_dummy
 #RUN git clone https://github.com/raember/s2anet.git s2anet_dummy
 WORKDIR /s2anet_dummy
-# https://github.com/cocodataset/cocoapi/issues/94
-RUN cat setup.py | sed -e "s/3.6',/3.6',\n            'Programming Language :: Python :: 3.8',/" -e "s/get_requirements(),/get_requirements(),\n        extra_link_args=[\'-L\/usr\/lib\/x86_64-linux-gnu\/\'],/" > setup_tmp.py
-RUN python setup_tmp.py develop
-
 ENV FORCE_CUDA="1"
-# https://pytorch.org/
 RUN conda install pytorch=${PYTORCH} torchvision cudatoolkit=${CUDA} -c pytorch
 RUN pip install -r /s2anet_dummy/requirements.txt
 RUN pip install wandb
@@ -55,8 +48,12 @@ WORKDIR /s2anet_dummy/DOTA_devkit/polyiou
 RUN swig -c++ -python csrc/polyiou.i
 RUN python setup.py build_ext --inplace
 
+# Install S2ANet
+FROM build-polyiou AS build-s2anet
+RUN pip install --no-cache-dir -e /s2anet_dummy
+
 # Install MMCV
-FROM build-polyiou AS build-mmcv
+FROM build-s2anet AS build-mmcv
 WORKDIR /
 #COPY /mmcv /mmcv
 RUN git clone https://github.com/tuggeluk/mmcv.git
@@ -73,6 +70,7 @@ WORKDIR /s2anet
 
 # Setup miscellaneous things for usability
 FROM build-aftermath AS build-custom
+RUN apt update
 RUN apt install tmux vim zsh -y
 RUN echo | RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 RUN sed 's/robbyrussell/crcandy/g' -i ~/.zshrc
