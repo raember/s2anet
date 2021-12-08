@@ -4,9 +4,11 @@ import argparse
 import os
 import os.path as osp
 import warnings
+import time
 
 import torch
 from mmcv import Config
+from mmcv.runner.dist_utils import master_only
 
 from mmdet import __version__
 from mmdet.apis import (get_root_logger, init_dist, set_random_seed,
@@ -49,6 +51,35 @@ def parse_args():
         os.environ['LOCAL_RANK'] = str(args.local_rank)
 
     return args
+
+@master_only
+def maybe_init_wandb(cfg):
+    if ('WandbLoggerHook' in [x["type"] for x in cfg["log_config"]["hooks"]] or
+        'WandbVisualLoggerHook' in [x["type"] for x in cfg["log_config"]["hooks"]]):
+        import wandb
+        name = "{}_{}".format(osp.split(cfg.work_dir)[1],
+                              time.strftime('%Y.%m.%d--%H.%M.%S'))
+        entity = None
+        try:
+            project = cfg.wandb_cfg['project']
+        except AttributeError or KeyError:
+            project = None
+
+        try:
+            if cfg.wandb_cfg['dryrun']:
+                os.environ['WANDB_MODE'] = 'dryrun'
+        except AttributeError or KeyError:
+            pass
+
+        try:
+            if cfg.wandb_cfg['entity']:
+                entity = cfg.wandb_cfg['entity']
+        except AttributeError or KeyError:
+            pass
+
+        wandb.init(name=name, project=project, entity=entity)
+        wandb.config.update(cfg._cfg_dict)
+        wandb.config.update({"filename": cfg.filename})
 
 
 def main():
@@ -103,6 +134,9 @@ def main():
             mmdet_version=__version__,
             config=cfg.text,
             CLASSES=datasets[0].CLASSES)
+
+    maybe_init_wandb(cfg)
+
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
     train_detector(
