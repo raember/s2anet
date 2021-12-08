@@ -166,9 +166,10 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="tuggeluk",
-    project='wfcos-testing',
-    dryrun=False
+    entity="raember",
+    project='s2anet_scoreaug',
+    dryrun=False,
+    name_prefix = "tugg_halfrez_IoU_"
 )
 
 # runtime settings

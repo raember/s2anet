@@ -98,6 +98,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='ScoreAug', blank_pages_path=data_root+'blanks'),
     dict(type='RandomCrop', crop_size=(512, 512), threshold_rel=0.6, threshold_abs=200.0),
     dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
@@ -164,9 +165,10 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="tuggeluk",
-    project='wfcos-testing',
-    dryrun=False
+    entity="raember",
+    project='s2anet_scoreaug',
+    dryrun=False,
+    name_prefix = "tugg_"
 )
 
 

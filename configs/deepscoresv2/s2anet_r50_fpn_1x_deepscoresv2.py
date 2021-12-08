@@ -133,7 +133,7 @@ data = dict(
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_small.json',
+        ann_file=data_root + 'deepscores_test_small.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
@@ -159,9 +159,10 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity='tuggeluk',
-    project='s2anet',
-    dryrun=True
+    entity='raember',
+    project='s2anet_augment',
+    dryrun=True,
+    name_prefix = "raember_"
 )
 
 

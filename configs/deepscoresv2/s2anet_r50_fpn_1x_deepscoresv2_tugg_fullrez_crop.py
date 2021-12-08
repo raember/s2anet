@@ -166,10 +166,10 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="tuggeluk",
-    project='s2anet_augment',
+    entity="raember",
+    project='s2anet_scoreaug',
     dryrun=False,
-    name_prefix = "fullrez_"
+    name_prefix = "tugg_fullrez_crop_"
 )
 
 
@@ -178,6 +178,8 @@ wandb_cfg = dict(
 total_epochs = 500 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-#load_from = "DeepScoresV2_s2anet/fullrez_crop/epoch_500.pth"
-resume_from = "/home/ubuntu/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_fullrez_crop/latest.pth"
+# #load_from = "DeepScoresV2_s2anet/fullrez_crop/epoch_500.pth"
+# resume_from = "/home/ubuntu/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_fullrez_crop/latest.pth"
+load_from = None
+resume_from = None
 workflow = [('train', 1)]
