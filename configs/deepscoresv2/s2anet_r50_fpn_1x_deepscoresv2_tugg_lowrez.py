@@ -85,8 +85,8 @@ train_cfg = dict(
 test_cfg = dict(
     nms_pre=8000,
     min_bbox_size=0,
-    score_thr=0.01,
-    nms=dict(type='nms_rotated', iou_thr=0.1),
+    score_thr=0.6,
+    nms=dict(type='nms_rotated', iou_thr=0.4),
     max_per_img=5000)
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
@@ -138,7 +138,7 @@ data = dict(
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test.json',
+        ann_file=data_root + 'deepscores_test_small.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
