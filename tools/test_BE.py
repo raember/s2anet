@@ -3,6 +3,7 @@ import os
 import os.path as osp
 import shutil
 import tempfile
+import numpy as np
 
 import mmcv
 import torch
@@ -26,12 +27,26 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
             result, bbox_list = model(return_loss=False, rescale=not show, **data)
         results.append(result)
         if show:
-            print("asdf")
+            #print("asdf")
             #for nr, sub_list in enumerate(bbox_list):
             #    bbox_list[nr] = [rotated_box_to_poly_np(sub_list[0].cpu().numpy()), sub_list[1].cpu().numpy()]
 
-            model.module.show_result(data, result, show=show, dataset=dataset.CLASSES,
-                                     bbox_transform=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
+            # TODO: Quick and Dirty Test to fix
+            new_result = []
+            for bbox in result:
+                new_bbox = rotated_box_to_poly_np(bbox)
+                if bbox.shape[0] != 0:
+                    new_bbox = np.append(new_bbox[:, np.array([0, 1, 4, 5])],
+                                         bbox[:, -1:], axis=1)
+                else:
+                    new_bbox = np.empty((0, 5), dtype="float32")
+                new_result.append(
+                    new_bbox)  # shoud be a list of 135 entries, each entry is a np array with shape n,5
+            
+            
+            model.module.show_result(data, new_result, show=show, dataset=dataset.CLASSES,
+                                     #bbox_transform=rotated_box_to_poly_np,
+                                     score_thr=cfg.test_cfg['score_thr'])
                                     # typo in bbox_transorm -> bbox_transform?
 
         batch_size = data['img'][0].size(0)
