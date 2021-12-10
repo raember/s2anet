@@ -3,6 +3,6 @@
 
 . "$(dirname $0)/settings.sh"
 
-echo "$DOCKER_CMD" run -ditv "$CODEBASE":/s2anet -v "$DATASET":/s2anet/data --name "${1:-$NAME}" "${2:-$TAG}"
+echo "$DOCKER_CMD" run --shm-size=16g -ditv "$CODEBASE":/s2anet -v "$DATASET":/s2anet/data --name "${1:-$NAME}" "${2:-$TAG}"
 read -p "[ENTER] to run" _
-"$DOCKER_CMD" run -ditv "$CODEBASE":/s2anet -v "$DATASET":/s2anet/data --name "${1:-$NAME}" "${2:-$TAG}"
+"$DOCKER_CMD" run --shm-size=16g -ditv "$CODEBASE":/s2anet -v "$DATASET":/s2anet/data --name "${1:-$NAME}" "${2:-$TAG}"
