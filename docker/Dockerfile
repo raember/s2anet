@@ -1,10 +1,10 @@
 # Required docker build context:
 # .
 # ├── .dockerignore     # Filters out overhead. Contents:
-# │                     # s2anet/work_dirs
-# │                     # s2anet/data
+# │                       s2anet/work_dirs
+# │                       s2anet/data
 # ├── mmcv/             # optional, git clone https://github.com/tuggeluk/mmcv.git
-# ├── obb_anns/         # optional, git clone https://github.com/raember/obb_anns.git
+# ├── obb_anns/         # optional, git clone -b dev-embe https://github.com/raember/obb_anns.git
 # └── s2anet/           # This repo https://github.com/raember/s2anet.git
 # Build with:
 # ./s2anet/docker/build.sh [tag]
@@ -42,7 +42,7 @@ RUN python setup.py develop
 FROM build-obb_anns AS build-mmdet
 RUN conda install cython -y && conda clean --all
 COPY /s2anet /s2anet_dummy
-#RUN git clone https://github.com/raember/s2anet.git s2anet_dummy
+#RUN git clone -b dev-embe https://github.com/raember/s2anet.git s2anet_dummy
 WORKDIR /s2anet_dummy
 ENV FORCE_CUDA="1"
 RUN conda install pytorch=${PYTORCH} torchvision cudatoolkit=${CUDA} -c pytorch
