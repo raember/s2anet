@@ -8,7 +8,9 @@
 # └── s2anet/           # This repo https://github.com/raember/s2anet.git
 # Build with:
 # ./s2anet/docker/build.sh [tag]
-# Run with:
+# In case a SLURM session is needed, run:
+# ./s2anet/docker/srun.sh [jobname]
+# Run container with:
 # ./s2anet/docker/run.sh [name [tag]]
 # Attach to contianer with:
 # ./s2anet/docker/attach.sh [name]
