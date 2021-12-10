@@ -7,9 +7,13 @@
 # ├── obb_anns/         # optional, git clone https://github.com/raember/obb_anns.git
 # └── s2anet/           # This repo https://github.com/raember/s2anet.git
 # Build with:
-# ./s2anet/docker/build.sh <docker-cmd> <tag>
+# ./s2anet/docker/build.sh [tag]
 # Run with:
-# ./s2anet/docker/run.sh <docker-cmd> <tag> <name>
+# ./s2anet/docker/run.sh [name [tag]]
+# Attach to contianer with:
+# ./s2anet/docker/attach.sh [name]
+# Adjust settings in:
+# ./s2anet/docker/settings.sh
 
 ARG PYTORCH="1.8.0"
 ARG CUDA="11.1"

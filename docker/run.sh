@@ -1,9 +1,11 @@
 #!/bin/bash
-# ./s2anet/docker/run.sh <docker-cmd> <tag> <name>
+# ./s2anet/docker/run.sh [name [tag]]
+
+. "$(dirname $0)/settings.sh"
 
 CODEBASE="$HOME/s2anet/s2anet"
-DATASET="$HOME/ds2_dense"
+DATASET="$HOME/ds2_dense/"
 
-echo "${1:-docker}" run -ditv "$CODEBASE":/s2anet -v "$DATASET":/s2anet/data --name "${3:-s2anet}" "${2:-s2anet}"
+echo "$DOCKER_CMD" run -ditv "$CODEBASE":/s2anet -v "$DATASET":/s2anet/data --name "${1:-$NAME}" "${2:-$TAG}"
 read -p "[ENTER] to run" _
-"${1:-docker}" run -ditv "$CODEBASE":/s2anet -v "$DATASET":/s2anet/data --name "${3:-s2anet}" "${2:-s2anet}"
+"$DOCKER_CMD" run -ditv "$CODEBASE":/s2anet -v "$DATASET":/s2anet/data --name "${1:-$NAME}" "${2:-$TAG}"

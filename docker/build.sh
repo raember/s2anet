@@ -1,5 +1,7 @@
 #!/bin/bash
-# ./s2anet/docker/build.sh <docker-cmd> <tag>
+# ./s2anet/docker/build.sh [tag]
+
+. "$(dirname $0)/settings.sh"
 
 DOCKER_CONTEXT="$(pwd)"
 echo "Docker build context:"
@@ -24,6 +26,6 @@ if [[ -z $seems_fine ]]; then
     exit 1
 fi
 
-echo "${1:-docker}" build -t "${2:-s2anet}" -f s2anet/docker/Dockerfile .
+echo "$DOCKER_CMD" build -t "${1:-$TAG}" -f s2anet/docker/Dockerfile .
 read -p "[ENTER] to run" _
-"${1:-docker}" build -t "${2:-s2anet}" -f s2anet/docker/Dockerfile .
+"$DOCKER_CMD" build -t "${1:-$TAG}" -f s2anet/docker/Dockerfile .
