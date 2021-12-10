@@ -1,12 +1,15 @@
 # Required docker build context:
 # .
-# ├── mmcv/             # git clone https://github.com/tuggeluk/mmcv.git
-# ├── obb_anns/         # git clone https://github.com/raember/obb_anns.git
+# ├── .dockerignore     # Filters out overhead. Contents:
+# │                     # s2anet/work_dirs
+# │                     # s2anet/data
+# ├── mmcv/             # optional, git clone https://github.com/tuggeluk/mmcv.git
+# ├── obb_anns/         # optional, git clone https://github.com/raember/obb_anns.git
 # └── s2anet/           # This repo https://github.com/raember/s2anet.git
 # Build with:
-# docker build -t <tag> -f s2anet/docker/Dockerfile .
+# ./s2anet/docker/build.sh <docker-cmd> <tag>
 # Run with:
-# docker run -dv $HOME/s2anet/s2anet:/s2anet -v $HOME/ds2_dense:/s2anet/data --name <name> <tag>
+# ./s2anet/docker/run.sh <docker-cmd> <tag> <name>
 
 ARG PYTORCH="1.8.0"
 ARG CUDA="11.1"
@@ -26,8 +29,8 @@ RUN conda install python=3.8
 # Install OBB_Anns
 FROM build-pytorch AS build-obb_anns
 WORKDIR /
-COPY /obb_anns /obb_anns
-#RUN git clone https://github.com/raember/obb_anns.git
+#COPY /obb_anns /obb_anns
+RUN git clone https://github.com/raember/obb_anns.git
 WORKDIR /obb_anns
 RUN python setup.py develop
 
