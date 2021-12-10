@@ -167,7 +167,8 @@ log_config = dict(
 wandb_cfg = dict(
     entity="tuggeluk",
     project='wfcos-testing',
-    dryrun=True
+    dryrun=True,
+    name_prefix='lowrez_'
 )
 
 
