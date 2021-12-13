@@ -79,8 +79,8 @@ train_cfg = dict(
 test_cfg = dict(
     nms_pre=2000,
     min_bbox_size=0,
-    score_thr=0.05,
-    nms=dict(type='nms_rotated', iou_thr=0.1),
+    score_thr=0.4,
+    nms=dict(type='nms_rotated', iou_thr=0.3),
     max_per_img=2000)
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
@@ -153,7 +153,7 @@ checkpoint_config = dict(interval=1)
 log_config = dict(
     interval=1,
     hooks=[
-        # dict(type='TextLoggerHook'),
+        dict(type='TextLoggerHook'),
         # dict(type='WandbVisualLoggerHook'),
         dict(type='WandbLoggerHook')
     ])
