@@ -31,7 +31,7 @@ model = dict(
         # anchor_ratios=[0.05, 0.3, 0.73, 2.5],
         # anchor_strides=[8, 16, 32, 64, 128],
         # anchor_scales=[1.0, 2.0, 12.0],
-=0.5,
+
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
@@ -98,6 +98,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
     #dict(type='RandomCrop', crop_size=(1024, 1024), threshold_rel=0.6, threshold_abs=200.0),
     dict(type='RotatedResize', img_scale=0.5, keep_ratio=True, max_size=(2000, 2000)),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
@@ -126,13 +127,13 @@ data = dict(
     workers_per_gpu=0,
     train=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_debug.json',
+        ann_file=data_root + 'deepscores_train.json',
         img_prefix=data_root + 'images/',
         pipeline=train_pipeline,
         use_oriented_bboxes=True),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_debug.json',
+        ann_file=data_root + 'deepscores_test.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True),
@@ -164,9 +165,10 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="tuggeluk",
-    project='wfcos-testing',
-    dryrun=True
+    entity="raember",
+    project='s2anet_scoreaug',
+    dryrun=True,
+    name_prefix = "tugg_halfrez_nocrop_"
 )
 
 

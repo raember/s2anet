@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import List, Dict
+
+import PIL.Image
 from numpy.random import choice
 import numpy as np
 from PIL.Image import Image, open as img_open
@@ -105,10 +107,38 @@ class ScoreAug(object):
             enhancer = ImageEnhance.Contrast(fg_img)
             fg_img = enhancer.enhance(5)
 
+        # maybe add small rotation to score
+        small_rotate = choice([True, False], p=[0.6, 0.4])
+        if small_rotate:
+            # negate angle to get teh right direction
+            angle = -np.random.uniform(-2, 2)
+
+            # Add some randomly dark bg to fill in
+            fill = np.random.randint(5, 30)
+            fill_col = tuple((fill + np.random.randint(-5, 5)) for _ in range(3))
+
+            center = tuple(np.array(results['img'].shape[:2]) / 2)
+            fg_img = fg_img.rotate(angle, PIL.Image.BICUBIC, center=center, fillcolor=fill_col)
+            bg_img = bg_img.rotate(angle, PIL.Image.BICUBIC, center=center, fillcolor=fill_col)
+
+            def rotate(arr: np.ndarray, angle: float) -> np.ndarray:
+                ar = arr.copy()
+                theta = np.radians(angle)
+                c, s = np.cos(theta), np.sin(theta)
+                R = np.array(((c, -s), (s, c)))
+                for i, o_bbox in enumerate(ar):
+                    bbox = o_bbox.reshape((4, 2)) - center
+                    bbox = bbox.dot(R)
+                    ar[i] = (bbox + center).reshape((8,))
+                return ar
+
+            results['ann_info']['bboxes'] = rotate(results['ann_info']['bboxes'], angle)
+            results['gt_bboxes'] = rotate(results['gt_bboxes'], angle)
+
         fg_brightness = choice([True, False], p=[0.4, 0.6])
         if fg_brightness or True:
             fg_img = np.array(fg_img, dtype=np.uint32)
-            fg_img = fg_img + np.random.uniform(30, 150)
+            fg_img = fg_img + np.random.uniform(20, 90)
             fg_img[fg_img > 255] = 255
             fg_img = Image_m.fromarray(fg_img.astype(np.uint8))
 

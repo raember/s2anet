@@ -166,10 +166,10 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="tuggeluk",
-    project='s2anet_augment',
+    entity="raember",
+    project='s2anet_scoreaug',
     dryrun=False,
-    name_prefix = ""
+    name_prefix = "tugg_halfrez_crop_"
 )
 
 
