@@ -85,8 +85,8 @@ train_cfg = dict(
 test_cfg = dict(
     nms_pre=8000,
     min_bbox_size=0,
-    score_thr=0.6,
-    nms=dict(type='nms_rotated', iou_thr=0.4),
+    score_thr=0.3,
+    nms=dict(type='nms_rotated', iou_thr=0.1),
     max_per_img=5000)
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
@@ -98,6 +98,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
     #dict(type='RandomCrop', crop_size=(1024, 1024), threshold_rel=0.6, threshold_abs=200.0),
     dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
@@ -165,9 +166,11 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="tuggeluk",
-    project='wfcos-testing',
-    dryrun=True
+    entity="raember",
+    project='s2anet_scoreaug',
+    dryrun=False,
+    online=True,
+    name_prefix='lowrez_'
 )
 
 

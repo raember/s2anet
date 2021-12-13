@@ -92,6 +92,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='ScoreAug', blank_pages_path=data_root+'blanks'),
     dict(type='RandomCrop', crop_size=(1400, 1400), threshold_rel=0.6, threshold_abs=20.0),
     dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
@@ -140,7 +141,7 @@ data = dict(
 #     gt_dir='data/dota/test/labelTxt/', # change it to valset for offline validation
 #     imagesetfile='data/dota/test/test.txt')
 # optimizer
-optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0001, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -161,7 +162,8 @@ log_config = dict(
 wandb_cfg = dict(
     entity='rs-confidence',
     project='urs',
-    dryrun=False
+    dryrun=True,
+    name_prefix="urs_"
 )
 
 

@@ -254,6 +254,7 @@ def rotated_box_to_poly_np(rrects):
     polys_and_scores = np.concatenate((polys, rrects[:, [5]]), axis=1)
     return polys_and_scores
 
+
 def rotated_box_to_poly(rboxes):
     """
     rrect:[x_ctr,y_ctr,w,h,angle]
