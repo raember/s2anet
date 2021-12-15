@@ -24,8 +24,7 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
     for i, data in enumerate(data_loader):
         with torch.no_grad():
             result, bbox_list = model(return_loss=False, rescale=not show, **data)
-        results.append(result) # TODO: How do I get the scores in bbox_list[0][0][:,5]
-        # TODO: or are the scores saved in e.g. result[0][:,5] ?
+        results.append(result)
         if show:
             print("asdf")
             #for nr, sub_list in enumerate(bbox_list):
@@ -234,26 +233,14 @@ def main():
             #         for detec in cla:
             #             if min(detec[:4]) < 0:
             #                 detec[:4][detec[:4] < 0] = 0
-            # TODO: fix ugly hack to make the labels match
+            #TODO: fix ugly hack to make the labels match
             import numpy as np
             for page in outputs:
-                page.insert(0, np.array([])) # TODO: Don't fully understand why this hack works... classifications remain untouched by this.
-                
+                page.insert(0, np.array([]))
+
             outputs = outputs_rotated_box_to_poly_np(outputs)
             work_dir = osp.dirname(args.out)
             dataset.evaluate(outputs, work_dir = work_dir)
-            
-            # # TODO: Remove after debugging
-            # import copy
-            # for i in range(len(outputs[0])):
-            #     print(f'inserting dim at index {i}...')
-            #     outputs_tmp = copy.deepcopy(outputs)
-            #     for page in outputs_tmp:
-            #         page.insert(i, np.array([]))  # TODO: Check if this line shifts the labels from 0:135 to 0:136?
-            #
-            #     outputs_tmp = outputs_rotated_box_to_poly_np(outputs_tmp)
-            #     work_dir = osp.dirname(args.out)
-            #     dataset.evaluate(outputs_tmp, work_dir = work_dir)
             # print("asdfsdf")
             # for page in outputs:
             #     for cla in page:

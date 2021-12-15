@@ -122,7 +122,7 @@ class DeepScoresV2Dataset(CocoDataset):
         for idx in range(len(self)):
             img_id = self.img_ids[idx]
             result = results[idx]
-            for label in range(len(result)): # TODO: here cat_labels are generated from indexes in nested output list; index is serially checked, this should be OK and work correctly!
+            for label in range(len(result)):
                 bboxes = result[label]
                 for i in range(bboxes.shape[0]):
                     data = dict()
@@ -208,22 +208,15 @@ class DeepScoresV2Dataset(CocoDataset):
             if self.data_root is None:
                 self.data_root = '/'.join(self.ann_file.split('/')[0:2]) + '/'
 
-            # out_dir = os.path.join(work_dir, "visualized_proposals/")
-            # if not os.path.exists(out_dir):
-            #     os.makedirs(out_dir)
-            #
-            # for img_info in self.obb.img_info:
-            #     self.obb.visualize(img_id=img_info['id'],
-            #                        data_root=self.data_root,
-            #                        out_dir=out_dir
-            #                        )
+            out_dir = os.path.join(work_dir, "visualized_proposals/")
+            if not os.path.exists(out_dir):
+                os.makedirs(out_dir)
+            
+            for img_info in self.obb.img_info:
+                self.obb.visualize(img_id=img_info['id'],
+                                   data_root=self.data_root,
+                                   out_dir=out_dir
+                                   )
 
         print(metric_results)
-        # TODO: remove when done with Debugging!
-        # # Debugging output:
-        # overall_ap = 0
-        # for key in metric_results.keys():
-        #     overall_ap += metric_results[key][0.5]['ap']
-        # overall_ap = overall_ap / len(metric_results.keys())
-        # print(f'Overall AP at IOU 0.5 is: {overall_ap}')
         return metric_results
