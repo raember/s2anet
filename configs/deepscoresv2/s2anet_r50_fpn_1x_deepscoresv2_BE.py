@@ -79,7 +79,7 @@ train_cfg = dict(
 test_cfg = dict(
     nms_pre=8000, #2000
     min_bbox_size=0,
-    score_thr=0.01, # 0.05
+    score_thr=0.3,
     nms=dict(type='nms_rotated', iou_thr=0.1),
     max_per_img=5000) # 2000
 
@@ -93,8 +93,9 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RandomCrop', crop_size=(1400, 1400), threshold_rel=0.6, threshold_abs=20.0),
-    dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
+    #dict(type='RandomCrop', crop_size=(1024, 1024), threshold_rel=0.6, threshold_abs=200.0),
+    dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -105,10 +106,10 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(1024, 1024),
+        img_scale=1.0,
         flip=False,
         transforms=[
-            dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
+            dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
             dict(type='RotatedRandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
@@ -127,13 +128,13 @@ data = dict(
         use_oriented_bboxes=True),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_val.json',
+        ann_file=data_root + 'deepscores_test.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test.json',
+        ann_file=data_root + 'deepscores_test_small.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
@@ -149,10 +150,11 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[8, 11])
-checkpoint_config = dict(interval=1)
+    step=[50, 100],
+    gamma=0.5)
+checkpoint_config = dict(interval=20)
 log_config = dict(
-    interval=1,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         # dict(type='WandbVisualLoggerHook'),
@@ -162,12 +164,14 @@ log_config = dict(
 wandb_cfg = dict(
     entity='rs-confidence',
     project='urs',
-    dryrun=False
+    dryrun=False,
+    online=True,
+    name_prefix='lowrez_'
 )
 
 
 # runtime settings
-total_epochs = 12
+total_epochs = 500
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None

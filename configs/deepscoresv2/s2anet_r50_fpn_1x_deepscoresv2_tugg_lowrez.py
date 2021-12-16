@@ -139,7 +139,7 @@ data = dict(
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test.json',
+        ann_file=data_root + 'deepscores_test_small.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
@@ -166,8 +166,8 @@ log_config = dict(
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity="raember",
-    project='s2anet_scoreaug',
+    entity='rs-confidence',
+    project='urs',
     dryrun=False,
     online=True,
     name_prefix='lowrez_'

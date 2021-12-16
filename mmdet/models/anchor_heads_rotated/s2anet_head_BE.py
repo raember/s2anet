@@ -768,7 +768,7 @@ class S2ANetHeadBE(S2ANetHead):
 # Class from LP_BNN repo
 class Ensemble_Conv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
-                 groups=1, first_layer=False, num_models=30, train_gamma=True,
+                 groups=1, first_layer=False, num_models=3, train_gamma=True,
                  bias=True, constant_init=False, p=0.5, random_sign_init=False):
         super(Ensemble_Conv2d, self).__init__()
         self.in_channels = in_channels
