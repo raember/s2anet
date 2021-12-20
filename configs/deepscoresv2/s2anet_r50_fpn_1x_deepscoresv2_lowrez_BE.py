@@ -93,9 +93,9 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='ScoreAug', blank_pages_path=data_root+'blanks'),
-    dict(type='RandomCrop', crop_size=(1400, 1400), threshold_rel=0.6, threshold_abs=20.0),
-    dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
+    #dict(type='RandomCrop', crop_size=(1024, 1024), threshold_rel=0.6, threshold_abs=200.0),
+    dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -106,10 +106,10 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(1024, 1024),
+        img_scale=1.0,
         flip=False,
         transforms=[
-            dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
+            dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
             dict(type='RotatedRandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
@@ -157,8 +157,8 @@ log_config = dict(
     interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='WandbVisualLoggerHook'),
-        #dict(type='WandbLoggerHook')
+        # dict(type='WandbVisualLoggerHook'),
+        dict(type='WandbLoggerHook')
     ])
 # wandb settings
 wandb_cfg = dict(
@@ -166,7 +166,7 @@ wandb_cfg = dict(
     project='urs',
     dryrun=False,
     online=True,
-    name_prefix='urs_'
+    name_prefix='lowrez_'
 )
 
 
