@@ -131,7 +131,7 @@ def get_np_arrays(evaluations_folder):
 def main():
     evaluations_folder = '/s2anet/DeepScoresV2_s2anet/analyze_BE_output'
     metrics_df = get_np_arrays(evaluations_folder)
-    path = os.path.join(evaluations_folder, "IOU_0.5_class_wise_APs.csv")
+    path = os.path.join(evaluations_folder, "IOU_0-5_class_wise_APs.csv")
     metrics_df.to_csv(path)
 
 
