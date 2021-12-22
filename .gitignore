@@ -115,6 +115,7 @@ data
 *.pkl
 *.pkl.json
 *.log.json
+*.csv
 work_dirs/
 data/
 wandb/

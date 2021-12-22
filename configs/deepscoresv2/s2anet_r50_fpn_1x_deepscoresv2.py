@@ -155,14 +155,15 @@ log_config = dict(
     interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
-        # dict(type='WandbVisualLoggerHook'),
-        dict(type='WandbLoggerHook')
+        dict(type='WandbVisualLoggerHook'),
+        #dict(type='WandbLoggerHook')
     ])
 # wandb settings
 wandb_cfg = dict(
     entity='rs-confidence',
     project='urs',
-    dryrun=True,
+    dryrun=False,
+    online=True,
     name_prefix="urs_"
 )
 

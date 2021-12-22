@@ -252,7 +252,7 @@ def rotated_box_to_poly_np(rrects):
     polys = get_best_begin_point(polys)
     # scores are being dropped -> but scores are needed to sort proposals during
     # testing.
-    if 0 <= 5 < len(rrects):
+    if 0 <= 5 < rrects.shape[1] and np.any(rrects):
         polys_and_scores = np.concatenate((polys, rrects[:, [5]]), axis=1)
         return polys_and_scores
     else:
