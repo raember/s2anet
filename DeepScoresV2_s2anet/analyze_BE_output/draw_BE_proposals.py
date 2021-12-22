@@ -3,7 +3,6 @@ import os
 
 import os.path as osp
 from PIL import Image, ImageColor, ImageDraw, ImageFont
-from datetime import datetime
 import numpy as np
 import colorcet as cc
 
