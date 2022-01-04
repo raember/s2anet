@@ -20,8 +20,10 @@ def get_pickles_i(evaluations_folder, i):
 
 def get_np_arrays(evaluations_folder):
     # Deduce m (number of BatchEnsemble members)
-    for base_i, folders_i, files_i in os.walk(evaluations_folder):
-        pickles = [x.split('_')[-1] for x in files_i if "dsv2_metrics_" in x]
+    pickles = []
+    for files_i in os.listdir(evaluations_folder):
+        if "dsv2_metrics_" in files_i:
+            pickles.append(files_i.split('_')[-1])
     m = max([int(x.split('.')[0]) for x in pickles]) + 1
 
     # Load pickles

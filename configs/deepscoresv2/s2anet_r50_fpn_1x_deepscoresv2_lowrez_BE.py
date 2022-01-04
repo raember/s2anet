@@ -152,9 +152,9 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     step=[50, 100],
     gamma=0.5)
-checkpoint_config = dict(interval=20)
+checkpoint_config = dict(interval=5)
 log_config = dict(
-    interval=100,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
         # dict(type='WandbVisualLoggerHook'),
@@ -166,7 +166,7 @@ wandb_cfg = dict(
     project='urs',
     dryrun=False,
     online=True,
-    name_prefix='lowrez_'
+    name_prefix='urs_'
 )
 
 

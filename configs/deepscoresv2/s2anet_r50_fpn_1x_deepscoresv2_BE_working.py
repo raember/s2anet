@@ -1,6 +1,6 @@
 # model settings
 model = dict(
-    type='S2ANetDetector',
+    type='S2ANetDetectorBE',
     pretrained='torchvision://resnet50',
     backbone=dict(
         type='ResNet',
@@ -17,21 +17,15 @@ model = dict(
         add_extra_convs=True,
         num_outs=5),
     bbox_head=dict(
-        type='S2ANetHead',
+        type='S2ANetHeadBE',
         num_classes=136,
         in_channels=256,
         feat_channels=256,
         stacked_convs=2,
         with_orconv=True,
-        # Original config from s2anet
         anchor_ratios=[1.0],
         anchor_strides=[8, 16, 32, 64, 128],
         anchor_scales=[4],
-        # Working config form RCNN
-        # anchor_ratios=[0.05, 0.3, 0.73, 2.5],
-        # anchor_strides=[8, 16, 32, 64, 128],
-        # anchor_scales=[1.0, 2.0, 12.0],
-
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
@@ -83,13 +77,14 @@ train_cfg = dict(
         pos_weight=-1,
         debug=False))
 test_cfg = dict(
-    nms_pre=8000,
+    nms_pre=8000, #2000
     min_bbox_size=0,
     score_thr=0.3,
     nms=dict(type='nms_rotated', iou_thr=0.1),
-    max_per_img=5000)
+    max_per_img=5000) # 2000
+
 # dataset settings
-dataset_type = 'DeepScoresV2Dataset'
+dataset_type = 'DeepScoresV2Dataset_BE'
 data_root = 'data/deep_scores_dense/'
 img_norm_cfg = dict(
     mean = [240, 240, 240],
@@ -98,9 +93,9 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
-    #dict(type='RandomCrop', crop_size=(1024, 1024), threshold_rel=0.6, threshold_abs=200.0),
-    dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
+    dict(type='ScoreAug', blank_pages_path=data_root+'blanks'),
+    dict(type='RandomCrop', crop_size=(1400, 1400), threshold_rel=0.6, threshold_abs=20.0),
+    dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -139,7 +134,7 @@ data = dict(
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test.json',
+        ann_file=data_root + 'deepscores_test_small.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
@@ -157,12 +152,13 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     step=[50, 100],
     gamma=0.5)
-checkpoint_config = dict(interval=20)
+checkpoint_config = dict(interval=5)
 log_config = dict(
-    interval=100,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='WandbVisualLoggerHook'),
+        #dict(type='WandbVisualLoggerHook'),
+        dict(type='WandbLoggerHook')
     ])
 # wandb settings
 wandb_cfg = dict(
@@ -170,12 +166,12 @@ wandb_cfg = dict(
     project='urs',
     dryrun=False,
     online=True,
-    name_prefix='lowrez_'
+    name_prefix='urs_'
 )
 
 
 # runtime settings
-total_epochs = 120
+total_epochs = 500
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
