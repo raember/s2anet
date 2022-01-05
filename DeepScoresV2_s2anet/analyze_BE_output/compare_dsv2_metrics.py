@@ -16,6 +16,7 @@ def get_pickles_i(evaluations_folder, i):
             error_metrics[name] = metrics
         elif len(pickles) > 1:
             print("multiple pickles found")
+        error_metrics = error_metrics[list(error_metrics.keys())[0]]
     return error_metrics
 
 def get_np_arrays(evaluations_folder):
@@ -30,7 +31,7 @@ def get_np_arrays(evaluations_folder):
     error_metrics = []
     for i in range(m):
         error_metrics_i = get_pickles_i(evaluations_folder, i)
-        error_metrics.append(error_metrics_i['analyze_BE_output'])
+        error_metrics.append(error_metrics_i)
     all_classes = set().union(*(d.keys() for d in error_metrics))
 
     # Create dummy dict for missing classes
@@ -131,9 +132,10 @@ def get_np_arrays(evaluations_folder):
 
 
 def main():
-    evaluations_folder = '/s2anet/DeepScoresV2_s2anet/analyze_BE_output'
-    metrics_df = get_np_arrays(evaluations_folder)
-    path = os.path.join(evaluations_folder, "IOU_0-5_class_wise_APs.csv")
+    input_folder = '/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_BE'
+    output_folder = '/s2anet/DeepScoresV2_s2anet/analyze_BE_output'
+    metrics_df = get_np_arrays(input_folder)
+    path = os.path.join(output_folder, "IOU_0-5_class_wise_APs.csv")
     metrics_df.to_csv(path)
 
 

@@ -1,11 +1,23 @@
+# Code implemented based on obb_anns.py and:
+# https://github.com/ZFTurbo/Weighted-Boxes-Fusion/ensemble_boxes/ensemble_boxes_wbf.py, 4.1.2022
+
+
+from ensemble_boxes import *
+from rotated_ensemble_boxes_wbf import *
+
 from mmdet.datasets import build_dataset
 import os
+import pickle
+from itertools import compress, chain
 
 import os.path as osp
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 import numpy as np
+import pandas as pd
 import colorcet as cc
 
+from matplotlib import colors
+import matplotlib.cm as cm
 
 def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
                   print_label=False, print_staff_pos=False, print_onset=False,
@@ -41,10 +53,18 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
     
     if oriented:
         bbox = ann.get('o_bbox', list(ann.get('bbox', [])))
-        draw.polygon(bbox + bbox[:2], fill=color)
+        color = cm.coolwarm(ann['score'])
+        color2 = colors.to_rgba(color, alpha=round(1/30,2))  # TODO add 1/m; with parameter m
+        color = colors.rgb2hex(color)
+        color2 = colors.to_hex(color2, keep_alpha=True)
+        draw.polygon(bbox + bbox[:2], outline=color, fill=color2)
     else:
-        bbox = ann['a_bbox']
-        draw.rectangle(bbox, fill=color)
+        bbox = ann.get('a_bbox', list(ann.get('bbox', [])))
+        color = cm.coolwarm(ann['score'])
+        color2 = colors.to_rgba(color, alpha=round(1/30,2))  #TODO add 1/m; with parameter m
+        color = colors.rgb2hex(color)
+        color2 = colors.to_hex(color2, keep_alpha=True)
+        draw.rectangle(bbox, outline=color, width=2, fill=color2)
     
     # Now draw the label below the bbox
     x0 = min(bbox[::2])
@@ -147,7 +167,8 @@ def visualize_BE(self,
     else:
         prop_dir = '/s2anet/DeepScoresV2_s2anet/analyze_BE_output/visualized_proposals'
         img_fp = osp.join(prop_dir, 'props_' + img_info['filename'])
-        if not osp.exists(img_fp):  # If there were no proposals for the current image until now (i.e. none of the other members made any proposals yet)
+        if not osp.exists(
+                img_fp):  # If there were no proposals for the current image until now (i.e. none of the other members made any proposals yet)
             img_fp = osp.join(img_dir, img_info['filename'])
         print(f'Visualizing {img_fp}...')
     
@@ -227,11 +248,10 @@ def main():
         dict(type='LoadImageFromFile'),
         dict(
             type='MultiScaleFlipAug',
-            img_scale=(1024, 1024),
+            img_scale=1.0,
             flip=False,
             transforms=[
-                dict(type='RotatedResize', img_scale=(1024, 1024),
-                     keep_ratio=True),
+                dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
                 dict(type='RotatedRandomFlip'),
                 dict(type='Normalize', **img_norm_cfg),
                 dict(type='Pad', size_divisor=32),
@@ -245,36 +265,96 @@ def main():
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True)
-    
+
     json_results_dir = "/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_BE"
     work_dir = "/s2anet/DeepScoresV2_s2anet/analyze_BE_output/"
     dataset = build_dataset(data_dict)
-    
+
     # Deduce m (number of BatchEnsemble members)
     for base_i, folders_i, files_i in os.walk(json_results_dir):
-        jsons = [x.split('_')[-1] for x in files_i if "deepscores_results_" in x]
+        jsons = [x.split('_')[-1] for x in files_i if
+                 "deepscores_results_" in x]
     m = max([int(x.split('.')[0]) for x in jsons]) + 1
+
+    # Load proposals from deepscores_results_i.json
+    boxes_list = []
+    scores_list = []
+    labels_list = []
+    img_idx_list = []
+    for i in range(m):
+
+        json_result_fp = osp.join(json_results_dir,
+                                  f"deepscores_results_{i}.json")
+        dataset.obb.load_proposals(json_result_fp)
+        boxes_list.append(dataset.obb.proposals['bbox'].to_list())
+        scores_list.append(list(map(float,
+                                    dataset.obb.proposals['score'].to_list())))
+        labels_list.append(dataset.obb.proposals['cat_id'].to_list())
+        img_idx_list.append(dataset.obb.proposals['img_idx'])
+        print(f"Adding proposals from ensemble member {i}.")
+
+    # Calculate proposals_WBF
+    max_img_idx = max([max(i) for i in img_idx_list])
+    iou_thr = 0.55  # TODO: This is the most important hyper parameter
+    skip_box_thr = 0.0001
+    weights = None  #
+    proposals_WBF = []
+    score_thr = 0.3  # TODO: Same parameter as in config; excludes props < thr
     
+    # rotated_weighted_boxes mixes boxes from different images during calculation.
+    # Thus, execute it on proposals of each image seperately, then concatenate results.
+    for i in range(max_img_idx + 1):
+        # s: select_proposals_by_img_idx
+        s = [img_idx == i for img_idx in img_idx_list]
+        boxes_list_i = [list(compress(boxes_list[j], s[j])) for j in
+                        range(len(boxes_list))]
+        scores_list_i = [list(compress(scores_list[j], s[j])) for j in
+                        range(len(scores_list))]
+        labels_list_i = [list(compress(labels_list[j], s[j])) for j in
+                        range(len(labels_list))]
+        img_idx_list_i = [list(compress(img_idx_list[j], s[j])) for j in
+                        range(len(img_idx_list))]
+        
+        boxes, scores, labels = rotated_weighted_boxes_fusion(boxes_list_i,
+                                                              scores_list_i,
+                                                              labels_list_i,
+                                                              weights=weights,
+                                                              iou_thr=iou_thr,
+                                                              skip_box_thr=skip_box_thr)
+
+        boxes = pd.Series(list(boxes))
+        labels = pd.Series(list(labels)).astype(int)
+        img_idxs = pd.Series(chain(*img_idx_list_i))
+        scores = pd.Series(list(scores))
+        zipped = list(zip(boxes, labels, img_idxs, scores))
+
+        proposals_WBF_i = pd.DataFrame(zipped,
+                                     columns=['bbox', 'cat_id', 'img_idx',
+                                              'score'])
+        proposals_WBF.append(proposals_WBF_i)
+    proposals_WBF = pd.concat(proposals_WBF)
+
+    out_file = os.path.join(work_dir, 'proposals_WBF.pkl')
+    pickle.dump(proposals_WBF, open(out_file, 'wb'))
+
+    ############## DRAW WBF PROPOSALS ###############
+
     # Create output directory
     out_dir = osp.join(work_dir, "visualized_proposals/")
     if not osp.exists(out_dir):
         os.makedirs(out_dir)
+
+    # Dropping proposals with score < score_thr
+    proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
+    dataset.obb.proposals = proposals_WBF
     
-    # Loop through proposals of each ensemble member and visualize them
-    # on one page.
-    for i in range(m):
-        
-        json_result_fp = osp.join(json_results_dir,
-                                   f"deepscores_results_{i}.json")
-        dataset.obb.load_proposals(json_result_fp)
-    
-        for img_info in dataset.obb.img_info:
-            # TODO: If implementation works visualize_BE could be added as an OBBAnns method
-            visualize_BE(self=dataset.obb,
-                         img_id=img_info['id'],
-                         data_root=dataset.data_root,
-                         out_dir=out_dir,
-                         member=i)
+    for img_info in dataset.obb.img_info:
+        # TODO: If implementation works visualize_BE could be added as an OBBAnns method
+        visualize_BE(self=dataset.obb,
+                     img_id=img_info['id'],
+                     data_root=dataset.data_root,
+                     out_dir=out_dir,
+                     member=i)
 
 
 if __name__ == '__main__':
