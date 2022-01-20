@@ -189,8 +189,8 @@ class DeepScoresV2Dataset_BE(CocoDataset):
         if work_dir is not None:
             # Hack to save ensemble member specific output separately.
             import os
-            ith_member = work_dir.split('_')[7]
-            work_dir = '_'.join(work_dir.split('_')[0:7])
+            ith_member = work_dir.split('_')[-1]
+            work_dir = '_'.join(work_dir.split('_')[:-1])
             filename_json = f'deepscores_results_{ith_member}.json'
             out_json = os.path.join(work_dir, filename_json)
             filename = self.write_results_json(results, filename=out_json)

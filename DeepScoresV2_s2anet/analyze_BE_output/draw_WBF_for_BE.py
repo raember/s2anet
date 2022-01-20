@@ -21,7 +21,7 @@ import matplotlib.cm as cm
 
 def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
                   print_label=False, print_staff_pos=False, print_onset=False,
-                  instances=False):
+                  instances=False, print_score=True):
     """Draws the bounding box onto an image with a given color.
 
     :param ImageDraw.ImageDraw draw: ImageDraw object to draw with.
@@ -35,6 +35,8 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         drawn. If None is given, the first one available will be drawn.
     :param Optional[bool] print_label: Determines if the class labels
     are printed on the visualization
+    :param Optional[bool] print_score: Determines if the scores
+    are printed on the visualization
     :param Optional[bool] print_staff_pos: Determines if the staff positions
     are printed on the visualization
     :param Optional[bool] print_onset:  Determines if the onsets are
@@ -42,6 +44,7 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
 
     :return: The drawn object.
     :rtype: ImageDraw.ImageDraw
+
     """
     annotation_set = 0 if annotation_set is None else annotation_set
     cat_id = ann['cat_id']
@@ -57,14 +60,15 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         color2 = colors.to_rgba(color, alpha=round(1/30,2))  # TODO add 1/m; with parameter m
         color = colors.rgb2hex(color)
         color2 = colors.to_hex(color2, keep_alpha=True)
-        draw.polygon(bbox + bbox[:2], outline=color, fill=color2)
+        # draw.polygon(bbox + bbox[:2], outline=color, fill=color2)
+        draw.line(bbox + bbox[:2], fill=color, width=3)
     else:
         bbox = ann.get('a_bbox', list(ann.get('bbox', [])))
         color = cm.coolwarm(ann['score'])
         color2 = colors.to_rgba(color, alpha=round(1/30,2))  #TODO add 1/m; with parameter m
         color = colors.rgb2hex(color)
         color2 = colors.to_hex(color2, keep_alpha=True)
-        draw.rectangle(bbox, outline=color, width=2, fill=color2)
+        draw.rectangle(bbox, outline=color, width=2) #, fill=color2)
     
     # Now draw the label below the bbox
     x0 = min(bbox[::2])
@@ -79,15 +83,24 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
     
+    def print_scores(position, text, color_text):
+        x1, y1 = ImageFont.load_default().getsize(text)
+        x1 += position[0] + 4
+        y1 += position[1] + 4
+        draw.text((position[0] + 2, position[1] + 2), text, color_text)
+        return x1, position[1]
+    
     if instances:
         label = str(int(parsed_comments['instance'].lstrip('#'), 16))
         print_text_label(pos, label, '#ffffff', '#303030')
     
     else:
         label = self.cat_info[cat_id]['name']
-        
+        score = str(round(ann['score'], 2))
         if print_label:
             pos = print_text_label(pos, label, '#ffffff', '#303030')
+        if print_score:
+            pos = print_scores(pos, score, color)
         if print_onset and 'onset' in parsed_comments.keys():
             pos = print_text_label(pos, parsed_comments['onset'], '#ffffff',
                                    '#091e94')
@@ -158,19 +171,23 @@ def visualize_BE(self,
     img_dir = osp.join(data_root, 'images')
     seg_dir = osp.join(data_root, 'segmentation')
     inst_dir = osp.join(data_root, 'instance')
-    
+
     # Get the actual image filepath and the segmentation filepath
-    # If proposals have already been visualized for an image load these
-    if member == 0:
-        img_fp = osp.join(img_dir, img_info['filename'])
-        print(f'Visualizing {img_fp}...')
-    else:
-        prop_dir = '/s2anet/DeepScoresV2_s2anet/analyze_BE_output/visualized_proposals'
-        img_fp = osp.join(prop_dir, 'props_' + img_info['filename'])
-        if not osp.exists(
-                img_fp):  # If there were no proposals for the current image until now (i.e. none of the other members made any proposals yet)
-            img_fp = osp.join(img_dir, img_info['filename'])
-        print(f'Visualizing {img_fp}...')
+    img_fp = osp.join(img_dir, img_info['filename'])
+    print(f'Visualizing {img_fp}...')
+
+    # NEEDED FOR ALPHA-VERSION OF PLOT ONLY
+    # # If proposals have already been visualized for an image load these
+    # if member == 0:
+    #     img_fp = osp.join(img_dir, img_info['filename'])
+    #     print(f'Visualizing {img_fp}...')
+    # else:
+    #     prop_dir = '/s2anet/DeepScoresV2_s2anet/analyze_BE_output/visualized_proposals'
+    #     img_fp = osp.join(prop_dir, 'props_' + img_info['filename'])
+    #     if not osp.exists(
+    #             img_fp):  # If there were no proposals for the current image until now (i.e. none of the other members made any proposals yet)
+    #         img_fp = osp.join(img_dir, img_info['filename'])
+    #     print(f'Visualizing {img_fp}...')
     
     # Remember: PIL Images are in form (h, w, 3)
     img = Image.open(img_fp)
@@ -295,11 +312,10 @@ def main():
 
     # Calculate proposals_WBF
     max_img_idx = max([max(i) for i in img_idx_list])
-    iou_thr = 0.55  # TODO: This is the most important hyper parameter
-    skip_box_thr = 0.0001
-    weights = None  #
+    iou_thr = 0.1  # This is the most important hyper parameter; IOU of proposal with fused box.
+    skip_box_thr = 0.3  # Same parameter as in config; excludes comparisons of fused box with proposal, if props_score < thr
+    weights = None  # Could weight proposals from a specific ensemble member
     proposals_WBF = []
-    score_thr = 0.3  # TODO: Same parameter as in config; excludes props < thr
     
     # rotated_weighted_boxes mixes boxes from different images during calculation.
     # Thus, execute it on proposals of each image seperately, then concatenate results.
@@ -345,7 +361,11 @@ def main():
         os.makedirs(out_dir)
 
     # Dropping proposals with score < score_thr
+    score_thr = skip_box_thr
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
+    
+    # Drop 'staff'-class (looks ugly on plot)
+    proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
     dataset.obb.proposals = proposals_WBF
     
     for img_info in dataset.obb.img_info:
