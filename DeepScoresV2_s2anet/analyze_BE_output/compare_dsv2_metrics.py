@@ -135,6 +135,10 @@ def main():
     input_folder = '/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_BE'
     output_folder = '/s2anet/DeepScoresV2_s2anet/analyze_BE_output'
     metrics_df = get_np_arrays(input_folder)
+    metrics_df = round(metrics_df, 2)
+    metrics_df.astype({'nr_occurrences': np.float})
+    metrics_df = metrics_df.sort_values('nr_occurrences', ascending=False)
+    metrics_df.rename(columns={'nr_occurrences': 'nr_occur'}, inplace=True)
     path = os.path.join(output_folder, "IOU_0-5_class_wise_APs.csv")
     metrics_df.to_csv(path)
 

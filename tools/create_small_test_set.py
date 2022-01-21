@@ -7,9 +7,9 @@ from pathlib import Path
 orig_ann_root =  Path('..', 'data', 'deep_scores_dense')
 
 from_ann = orig_ann_root / 'deepscores_test.json'
-to_ann = orig_ann_root / 'deepscores_test_small.json'
+to_ann = orig_ann_root / 'deepscores_test_edited.json'
 
-N_SAMPLES = 10
+N_SAMPLES = 200
 
 ann = OBBAnns(str(from_ann))
 ann.load_annotations()

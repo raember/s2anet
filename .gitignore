@@ -120,6 +120,7 @@ work_dirs/
 data/
 wandb/
 DeepScoresV2_s2anet/analyze_BE_output/visualized_proposals
+DeepScoresV2_s2anet/analyze_BE_output/visualization_final
 
 # Pytorch
 *.pth

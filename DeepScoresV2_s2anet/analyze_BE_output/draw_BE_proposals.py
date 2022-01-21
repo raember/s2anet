@@ -154,43 +154,43 @@ def visualize_BE(self,
     # Remember: PIL Images are in form (h, w, 3)
     img = Image.open(img_fp)
     
-    if instances:
-        # Do stuff
-        inst_fp = osp.join(
-            inst_dir,
-            osp.splitext(img_info['filename'])[0] + '_inst.png'
-        )
-        overlay = Image.open(inst_fp)
-        img.putalpha(255)
-        img = Image.alpha_composite(img, overlay)
-        img = img.convert('RGB')
-    
-    else:
-        seg_fp = osp.join(
-            seg_dir,
-            osp.splitext(img_info['filename'])[0] + '_seg.png'
-        )
-        overlay = Image.open(seg_fp)
-        
-        # Here we overlay the segmentation on the original image using the
-        # colorcet colors
-        # First we need to get the new color values from colorcet
-        colors = [ImageColor.getrgb(i) for i in cc.glasbey]
-        colors = np.array(colors).reshape(768, ).tolist()
-        colors[0:3] = [0, 0, 0]  # Set background to black
-        
-        # Then put the palette
-        overlay.putpalette(colors)
-        overlay_array = np.array(overlay)
-        
-        # Now the img and the segmentation can be composed together. Black
-        # areas in the segmentation (i.e. background) are ignored
-        
-        mask = np.zeros_like(overlay_array)
-        mask[np.where(overlay_array == 0)] = 255
-        mask = Image.fromarray(mask, mode='L')
-        
-        img = Image.composite(img, overlay.convert('RGB'), mask)
+    # if instances:
+    #     # Do stuff
+    #     inst_fp = osp.join(
+    #         inst_dir,
+    #         osp.splitext(img_info['filename'])[0] + '_inst.png'
+    #     )
+    #     overlay = Image.open(inst_fp)
+    #     img.putalpha(255)
+    #     img = Image.alpha_composite(img, overlay)
+    #     img = img.convert('RGB')
+    #
+    # else:
+    #     seg_fp = osp.join(
+    #         seg_dir,
+    #         osp.splitext(img_info['filename'])[0] + '_seg.png'
+    #     )
+    #     overlay = Image.open(seg_fp)
+    #
+    #     # Here we overlay the segmentation on the original image using the
+    #     # colorcet colors
+    #     # First we need to get the new color values from colorcet
+    #     colors = [ImageColor.getrgb(i) for i in cc.glasbey]
+    #     colors = np.array(colors).reshape(768, ).tolist()
+    #     colors[0:3] = [0, 0, 0]  # Set background to black
+    #
+    #     # Then put the palette
+    #     overlay.putpalette(colors)
+    #     overlay_array = np.array(overlay)
+    #
+    #     # Now the img and the segmentation can be composed together. Black
+    #     # areas in the segmentation (i.e. background) are ignored
+    #
+    #     mask = np.zeros_like(overlay_array)
+    #     mask[np.where(overlay_array == 0)] = 255
+    #     mask = Image.fromarray(mask, mode='L')
+    #
+    #     img = Image.composite(img, overlay.convert('RGB'), mask)
     draw = ImageDraw.Draw(img, 'RGBA')
     
     # Now draw the gt bounding boxes onto the image
@@ -227,11 +227,10 @@ def main():
         dict(type='LoadImageFromFile'),
         dict(
             type='MultiScaleFlipAug',
-            img_scale=(1024, 1024),
+            img_scale=1.0,
             flip=False,
             transforms=[
-                dict(type='RotatedResize', img_scale=(1024, 1024),
-                     keep_ratio=True),
+                dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
                 dict(type='RotatedRandomFlip'),
                 dict(type='Normalize', **img_norm_cfg),
                 dict(type='Pad', size_divisor=32),
@@ -252,7 +251,8 @@ def main():
     
     # Deduce m (number of BatchEnsemble members)
     for base_i, folders_i, files_i in os.walk(json_results_dir):
-        jsons = [x.split('_')[-1] for x in files_i if "deepscores_results_" in x]
+        jsons = [x.split('_')[-1] for x in files_i if
+                 "deepscores_results_" in x]
     m = max([int(x.split('.')[0]) for x in jsons]) + 1
     
     # Create output directory
@@ -267,6 +267,12 @@ def main():
         json_result_fp = osp.join(json_results_dir,
                                    f"deepscores_results_{i}.json")
         dataset.obb.load_proposals(json_result_fp)
+
+        # Drop 'staff'-class (looks ugly on plot)
+        props = dataset.obb.proposals
+        props = props.drop(
+            props[props.cat_id == 135].index)
+        dataset.obb.proposals = props
     
         for img_info in dataset.obb.img_info:
             # TODO: If implementation works visualize_BE could be added as an OBBAnns method

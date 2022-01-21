@@ -54,21 +54,27 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
     if 'comments' in ann.keys():
         parsed_comments = self.parse_comments(ann['comments'])
     
+    score_thr = 0.5
     if oriented:
         bbox = ann.get('o_bbox', list(ann.get('bbox', [])))
-        color = cm.coolwarm(ann['score'])
-        color2 = colors.to_rgba(color, alpha=round(1/30,2))  # TODO add 1/m; with parameter m
+        color = cm.RdYlGn(ann['score'])
         color = colors.rgb2hex(color)
-        color2 = colors.to_hex(color2, keep_alpha=True)
-        # draw.polygon(bbox + bbox[:2], outline=color, fill=color2)
-        draw.line(bbox + bbox[:2], fill=color, width=3)
+        if ann['score'] < score_thr:
+            #color2 = colors.to_rgba(color, alpha=round(1/30, 2))  # TODO add 1/m; with parameter m
+            #color2 = colors.to_hex(color2, keep_alpha=True)
+            draw.polygon(bbox + bbox[:2], outline=None, fill='#ff000040')
+        else:
+            draw.line(bbox + bbox[:2], fill=color, width=3)
     else:
         bbox = ann.get('a_bbox', list(ann.get('bbox', [])))
-        color = cm.coolwarm(ann['score'])
-        color2 = colors.to_rgba(color, alpha=round(1/30,2))  #TODO add 1/m; with parameter m
+        color = cm.RdYlGn(ann['score'])
         color = colors.rgb2hex(color)
-        color2 = colors.to_hex(color2, keep_alpha=True)
-        draw.rectangle(bbox, outline=color, width=2) #, fill=color2)
+        if ann['score'] < score_thr:
+            color2 = colors.to_rgba(color, alpha=round(1/30, 2))  #TODO add 1/m; with parameter m
+            color2 = colors.to_hex(color2, keep_alpha=True)
+            draw.rectangle(bbox, outline=None, width=2, fill='#ff000040')
+        else:
+            draw.rectangle(bbox, outline=color, width=2)
     
     # Now draw the label below the bbox
     x0 = min(bbox[::2])
@@ -83,11 +89,17 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
     
-    def print_scores(position, text, color_text):
-        x1, y1 = ImageFont.load_default().getsize(text)
-        x1 += position[0] + 4
-        y1 += position[1] + 4
-        draw.text((position[0] + 2, position[1] + 2), text, color_text)
+    def print_scores(position, text, color_text, score_thr):
+        if float(text) < score_thr:
+            x1, y1 = ImageFont.load_default().getsize(text)
+            x1 += position[0] + 4
+            y1 += position[1] + 4
+            draw.text((position[0] + 2, position[1] + 2), text, color_text)
+        else:
+            x1, y1 = ImageFont.load_default().getsize(text)
+            x1 += position[0] + 4
+            y1 += position[1] + 4
+            draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
     
     if instances:
@@ -100,7 +112,7 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         if print_label:
             pos = print_text_label(pos, label, '#ffffff', '#303030')
         if print_score:
-            pos = print_scores(pos, score, color)
+            pos = print_scores(pos, score, color, score_thr)
         if print_onset and 'onset' in parsed_comments.keys():
             pos = print_text_label(pos, parsed_comments['onset'], '#ffffff',
                                    '#091e94')
@@ -119,8 +131,7 @@ def visualize_BE(self,
                  annotation_set=None,
                  oriented=True,
                  instances=False,
-                 show=True,
-                 member=0):
+                 show=True):
     """Uses PIL to visualize the ground truth labels of a given image.
 
     img_idx and img_id are mutually exclusive. Only one can be used at a
@@ -145,7 +156,6 @@ def visualize_BE(self,
     :param bool instances: Choose whether to show classes or instances. If
         False, then shows classes. Else, shows instances as the labels on
         bounding boxes.
-    :param int member: Index of current ensemble member (i in loop)
     """
     # Since we can only visualize a single image at a time, we do i[0] so
     # that we don't have to deal with lists. get_img_ann_pair() returns a
@@ -175,60 +185,47 @@ def visualize_BE(self,
     # Get the actual image filepath and the segmentation filepath
     img_fp = osp.join(img_dir, img_info['filename'])
     print(f'Visualizing {img_fp}...')
-
-    # NEEDED FOR ALPHA-VERSION OF PLOT ONLY
-    # # If proposals have already been visualized for an image load these
-    # if member == 0:
-    #     img_fp = osp.join(img_dir, img_info['filename'])
-    #     print(f'Visualizing {img_fp}...')
-    # else:
-    #     prop_dir = '/s2anet/DeepScoresV2_s2anet/analyze_BE_output/visualized_proposals'
-    #     img_fp = osp.join(prop_dir, 'props_' + img_info['filename'])
-    #     if not osp.exists(
-    #             img_fp):  # If there were no proposals for the current image until now (i.e. none of the other members made any proposals yet)
-    #         img_fp = osp.join(img_dir, img_info['filename'])
-    #     print(f'Visualizing {img_fp}...')
     
     # Remember: PIL Images are in form (h, w, 3)
     img = Image.open(img_fp)
     
-    if instances:
-        # Do stuff
-        inst_fp = osp.join(
-            inst_dir,
-            osp.splitext(img_info['filename'])[0] + '_inst.png'
-        )
-        overlay = Image.open(inst_fp)
-        img.putalpha(255)
-        img = Image.alpha_composite(img, overlay)
-        img = img.convert('RGB')
-    
-    else:
-        seg_fp = osp.join(
-            seg_dir,
-            osp.splitext(img_info['filename'])[0] + '_seg.png'
-        )
-        overlay = Image.open(seg_fp)
-        
-        # Here we overlay the segmentation on the original image using the
-        # colorcet colors
-        # First we need to get the new color values from colorcet
-        colors = [ImageColor.getrgb(i) for i in cc.glasbey]
-        colors = np.array(colors).reshape(768, ).tolist()
-        colors[0:3] = [0, 0, 0]  # Set background to black
-        
-        # Then put the palette
-        overlay.putpalette(colors)
-        overlay_array = np.array(overlay)
-        
-        # Now the img and the segmentation can be composed together. Black
-        # areas in the segmentation (i.e. background) are ignored
-        
-        mask = np.zeros_like(overlay_array)
-        mask[np.where(overlay_array == 0)] = 255
-        mask = Image.fromarray(mask, mode='L')
-        
-        img = Image.composite(img, overlay.convert('RGB'), mask)
+    # if instances:
+    #     # Do stuff
+    #     inst_fp = osp.join(
+    #         inst_dir,
+    #         osp.splitext(img_info['filename'])[0] + '_inst.png'
+    #     )
+    #     overlay = Image.open(inst_fp)
+    #     img.putalpha(255)
+    #     img = Image.alpha_composite(img, overlay)
+    #     img = img.convert('RGB')
+    #
+    # else:
+    #     seg_fp = osp.join(
+    #         seg_dir,
+    #         osp.splitext(img_info['filename'])[0] + '_seg.png'
+    #     )
+    #     overlay = Image.open(seg_fp)
+    #
+    #     # Here we overlay the segmentation on the original image using the
+    #     # colorcet colors
+    #     # First we need to get the new color values from colorcet
+    #     colors = [ImageColor.getrgb(i) for i in cc.glasbey]
+    #     colors = np.array(colors).reshape(768, ).tolist()
+    #     colors[0:3] = [0, 0, 0]  # Set background to black
+    #
+    #     # Then put the palette
+    #     overlay.putpalette(colors)
+    #     overlay_array = np.array(overlay)
+    #
+    #     # Now the img and the segmentation can be composed together. Black
+    #     # areas in the segmentation (i.e. background) are ignored
+    #
+    #     mask = np.zeros_like(overlay_array)
+    #     mask[np.where(overlay_array == 0)] = 255
+    #     mask = Image.fromarray(mask, mode='L')
+    #
+    #     img = Image.composite(img, overlay.convert('RGB'), mask)
     draw = ImageDraw.Draw(img, 'RGBA')
     
     # Now draw the gt bounding boxes onto the image
@@ -313,7 +310,7 @@ def main():
     # Calculate proposals_WBF
     max_img_idx = max([max(i) for i in img_idx_list])
     iou_thr = 0.1  # This is the most important hyper parameter; IOU of proposal with fused box.
-    skip_box_thr = 0.3  # Same parameter as in config; excludes comparisons of fused box with proposal, if props_score < thr
+    skip_box_thr = 0.00001  # Same parameter as in config; excludes comparisons of fused box with proposal, if props_score < thr
     weights = None  # Could weight proposals from a specific ensemble member
     proposals_WBF = []
     
@@ -373,8 +370,12 @@ def main():
         visualize_BE(self=dataset.obb,
                      img_id=img_info['id'],
                      data_root=dataset.data_root,
-                     out_dir=out_dir,
-                     member=i)
+                     out_dir=out_dir)
+
+    # visualize_BE(self=dataset.obb,
+    #              img_id=dataset.obb.img_info[0]['id'],
+    #              data_root=dataset.data_root,
+    #              out_dir=out_dir)
 
 
 if __name__ == '__main__':
