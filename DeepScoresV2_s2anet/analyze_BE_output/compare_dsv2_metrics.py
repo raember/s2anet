@@ -139,6 +139,11 @@ def main():
     metrics_df.astype({'nr_occurrences': np.float})
     metrics_df = metrics_df.sort_values('nr_occurrences', ascending=False)
     metrics_df.rename(columns={'nr_occurrences': 'nr_occur'}, inplace=True)
+    spread = metrics_df.drop(
+        metrics_df[(metrics_df['min'] == 0) & (metrics_df['max'] == 0)].index)
+    x = spread['max'] - spread['min']
+    x = np.mean(x)
+    print(f"The mean range between min and max class-wise AP is: {x}")
     path = os.path.join(output_folder, "IOU_0-5_class_wise_APs.csv")
     metrics_df.to_csv(path)
 

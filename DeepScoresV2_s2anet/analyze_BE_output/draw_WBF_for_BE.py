@@ -54,7 +54,7 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
     if 'comments' in ann.keys():
         parsed_comments = self.parse_comments(ann['comments'])
     
-    score_thr = 0.5
+    score_thr = 0.5  # fused score thr: below this value, transparent polygons are plotted.
     if oriented:
         bbox = ann.get('o_bbox', list(ann.get('bbox', [])))
         color = cm.RdYlGn(ann['score'])
@@ -310,7 +310,8 @@ def main():
     # Calculate proposals_WBF
     max_img_idx = max([max(i) for i in img_idx_list])
     iou_thr = 0.1  # This is the most important hyper parameter; IOU of proposal with fused box.
-    skip_box_thr = 0.00001  # Same parameter as in config; excludes comparisons of fused box with proposal, if props_score < thr
+    skip_box_thr = 0.00001  # Skips proposals if score < thr; However, nms is applied when using routine in test_BE.py and score_thr from config applies already.
+    # score_thr: value is set below; skips visualization if fused score is below score_thr
     weights = None  # Could weight proposals from a specific ensemble member
     proposals_WBF = []
     
@@ -357,8 +358,8 @@ def main():
     if not osp.exists(out_dir):
         os.makedirs(out_dir)
 
-    # Dropping proposals with score < score_thr
-    score_thr = skip_box_thr
+    # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and all others make no proposal; the fused score is: 0.3/30=0.01)
+    score_thr = 0.1
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
     
     # Drop 'staff'-class (looks ugly on plot)
