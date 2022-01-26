@@ -77,7 +77,19 @@ Please refer to [install.md](docs/INSTALL.md) for installation and dataset prepa
 
 Please see [getting_started.md](docs/GETTING_STARTED.md) for the basic usage of MMDetection.
 
+## BatchEnsemble Prototype
 
+### Training
+python s2anet\tools\train_BE.py configs/deepscoresv2/{config}
+
+### Testing
+python  s2anet\tools\test_BE.py configs/deepscoresv2/{config} work_dirs/{config}/{checkpoint.pth} --data dsv2 --out work_dirs/{config}/pred.pkl
+
+### Visualization
+python s2anet\DeepScoresV2_s2anet\analyze_BE_output\draw_WBF_for_BE.py
+
+### Class-wise AP
+python s2anet\DeepScoresV2_s2anet\analyze_BE_output\compare_dsv2_metrics.py
 
 ## Citation
 
@@ -112,4 +124,6 @@ Please see [getting_started.md](docs/GETTING_STARTED.md) for the basic usage of 
   journal={arXiv preprint arXiv:1906.07155},
   year={2019}
 }
+
+
 ```

@@ -19,6 +19,14 @@ import colorcet as cc
 from matplotlib import colors
 import matplotlib.cm as cm
 
+# Functions _draw_bbox_BE and visualize_BE are based on code from obb_anns/obb_anns.py
+# https://github.com/raember/obb_anns, 26.1.2022
+# Module rotated_ensemble_boxes_wbf is based on code from:
+# obb_anns/obb_anns/polyiou, https://github.com/raember/obb_anns, 26.1.2022
+# and:
+# ensemble-boxes module, https://github.com/ZFTurbo/Weighted-Boxes-Fusion, 26.1.2022
+
+
 def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
                   print_label=False, print_staff_pos=False, print_onset=False,
                   instances=False, print_score=True):
@@ -359,7 +367,7 @@ def main():
         os.makedirs(out_dir)
 
     # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and all others make no proposal; the fused score is: 0.3/30=0.01)
-    score_thr = 0.1
+    score_thr = 0.00001
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
     
     # Drop 'staff'-class (looks ugly on plot)

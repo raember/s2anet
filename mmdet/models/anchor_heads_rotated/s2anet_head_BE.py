@@ -765,7 +765,7 @@ class S2ANetHeadBE(S2ANetHead):
 #         return out
 
 
-# Class from LP_BNN repo (https://github.com/giannifranchi/LP_BNN/)
+# Class from LP_BNN repo (https://github.com/giannifranchi/LP_BNN/, 26.1.2022)
 class Ensemble_Conv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
                  groups=1, first_layer=False, num_models=30, train_gamma=True,
@@ -914,6 +914,7 @@ class Ensemble_Conv2d(nn.Module):
 
 # utility function to reshape batch ensemble layer inputs and targets
 # function from LP_BNN repo
+# (https://github.com/giannifranchi/LP_BNN/, 26.1.2022)
 def tile(a, dim, n_tile):
     init_dim = a.size(dim)
     repeat_idx = [1] * a.dim()

@@ -5,7 +5,8 @@ import os.path as osp
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 import numpy as np
 import colorcet as cc
-
+# Functions _draw_bbox_BE and visualize_BE are based on code from obb_anns/obb_anns.py
+# https://github.com/raember/obb_anns, 26.1.2022
 
 def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
                   print_label=False, print_staff_pos=False, print_onset=False,

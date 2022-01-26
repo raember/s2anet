@@ -17,7 +17,7 @@ from mmdet.datasets import build_dataset
 from mmdet.models import build_detector
 
 warnings.filterwarnings("ignore")
-
+# Code based on train.py
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')

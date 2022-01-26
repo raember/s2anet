@@ -2,7 +2,7 @@ import os
 import pickle
 import pandas as pa
 import numpy as np
-
+# Includes code snippets adapted from analyze_errors.py
 
 def get_pickles_i(evaluations_folder, i):
     error_metrics = dict()

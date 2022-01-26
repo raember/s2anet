@@ -15,6 +15,7 @@ from mmdet.core import coco_eval, results2json, wrap_fp16_model
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
 from mmdet.core import rotated_box_to_poly_np
+# Code based on test.py
 
 def single_gpu_test(model, data_loader, show=False, cfg = None):
     model.eval()
