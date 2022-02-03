@@ -620,6 +620,8 @@ class S2ANetHead(nn.Module):
         #Image.fromarray(img).show()
         from mmdet.core import rotated_box_to_poly_np
         gt = rotated_box_to_poly_np(self.last_vals['gt_bboxes'][0].cpu().numpy())
+        # add confidence 1 to gt
+
         #TODO classes are wrong for deepscores
         img_gt = imshow_det_bboxes(img.copy(),gt,
                                         self.last_vals['gt_labels'][0].cpu().numpy(),
