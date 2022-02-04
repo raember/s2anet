@@ -54,8 +54,9 @@
     ```
 3. Now load the image file corresponding to the annotation into GeoGebra: `lg-162999963-aug-gutenberg1939--page-2.png`
     1. Open the image's settings and tick the **"Fix Object"** box to prevent you form accidentally moving the image by mouse.
-    2. Tick the **"Background Image"** box to display it behind the grid (This actually has a similar effect like #1)
-    3. In the image settings' **"Position"** tab, set **"Corner 1"** to `I` and **"Corner 2"** to `J`.
+    2. Tick the **"Background Image"** box to display it behind the grid (This actually has a similar effect like #1).
+    3. Make sure the **"Auxiliary Object"** box is unticked, so the element still gets displayed in the sidebar for easily selecting and deleting it, once it has to be changed.
+    4. In the image settings' **"Position"** tab, set **"Corner 1"** to `I` and **"Corner 2"** to `J`.
 4. Now adjust the bboxes to your needs
 5. Execute the last Javascript snippet printed by the script, paste the output to the script's standard input and hit enter:
 ```
@@ -70,3 +71,7 @@ This will set the coordinates of the **oriented bbox**.
 
 7. Now the script will display the new coordinates and ask for confirmation. Confirm with enter and the script will write the changes back to the dataset. You can also hit Ctrl-C to abort.
 8. Rinse and repeat
+
+# Reminder
+The script does not update the areas saved in the files.
+To fix that, run the `deepscores_stats.py` with the `-a`.
