@@ -10,6 +10,7 @@ import os.path as osp
 from matplotlib import pyplot as plt
 
 from mmdet.datasets.pipelines.transforms import OBBox
+from obb_anns import OBBAnns
 
 parser = ArgumentParser(description='Deepscores statistics')
 parser.add_argument('-c', '--compile', dest='compile', action='store_true', default=False,
@@ -20,22 +21,25 @@ parser.add_argument('-f', '--flag-outliers', dest='flag_outliers', action='store
                     help='Flags outliers using past statistics')
 parser.add_argument('-g', '--geogebra', dest='to_geogebra', action='store', default=None,
                     help='Converts json annotation to geogebra inputs')
+parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='store_true', default=False,
+                    help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
 deviation = {
-    2: 10.0,  # ledgerLine
-    25: 5.1,  # noteheadBlackOnLine
-    27: 6.0,  # noteheadBlackInSpace
-    31: 10.0,  # noteheadHalfInSpace
+    2: (2.0, 9.0),  # ledgerLine
+    25: (5.5, 2.2),  # noteheadBlackOnLine
+    27: (5.5, 1.0),  # noteheadBlackInSpace
+    31: (4.0, 3.0),  # noteheadHalfInSpace
     33: 3.0,  # noteheadWholeOnLine
-    42: 20.0,  # stem
+    42: (2.0, 15.0),  # stem
     64: 3.0,  # accidentialSharp
-    70: 3.0,  # keySharp
-    88: 2.0,  # rest8th
+    70: (0.82, 3.0),  # keySharp
+    85: (1.5, 3.0),  # restWhole
+    88: (1.8, 2.0),  # rest8th
     90: 2.0,  # rest32nd
     113: 10.0,  # tuplet3
-    122: 20.0,  # beam
-    135: 5.0,  # staff
+    122: (1.1, 17.0),  # beam
+    135: (4.0, 5.0),  # staff
 }
 ignore = {
     1,  # brace
@@ -140,7 +144,15 @@ def flag_area(stats: dict, area: float) -> bool:
     mean = stats['mean']
     median = stats['median']
     std = stats['std']
-    return abs(area - median) > deviation.get(int(stats['id']), default) * std  # or area == 0.0
+    dev = deviation.get(int(stats['id']), default)
+    if isinstance(dev, float):
+        dev = dev, dev
+    low_dev, high_dev = dev
+    # if isinstance(dev, int):
+    #     return abs(area - median) > dev * std  # or area == 0.0
+    # elif isinstance(dev, tuple):
+    #     low_dev, high_dev = dev
+    return area - median < -low_dev * std or area - median > high_dev * std
 
 def flag_outlier(bbox: np.ndarray, cat_id: int, stats: dict) -> bool:
     if isinstance(bbox, list):
@@ -151,7 +163,16 @@ def plot(cat_id: int, stats: dict):
     areas = stats['sorted_areas']
     n = len(areas)
     n_outliers = sum(map(lambda area: flag_area(stats, area), areas))
-    plt.title(f"{{{cat_id}}} {stats['name']}: {n_outliers} outliers (std factor: {deviation.get(int(cat_id), default)})")
+    median = stats['median']
+    mean = stats['mean']
+    std = stats['std']
+    dev = deviation.get(int(cat_id), default)
+    if isinstance(dev, float):
+        dev = dev, dev
+    low_dev, high_dev = dev
+    plt.title(f"{{{cat_id}}} {stats['name']}: {n_outliers} outliers "
+              f"(std factor: {deviation.get(int(cat_id), default)} "
+              f"-> ({median - low_dev * std:.1f} - {median + high_dev * std:.1f}))")
     plt.xlabel('Index of sorted Areas')
     plt.ylabel('Areas, sorted')
     # plt.yscale('log')
@@ -159,17 +180,12 @@ def plot(cat_id: int, stats: dict):
     plt.ylim(ymin=min(areas), ymax=max(areas))
     plt.grid(True)
     plt.plot(range(n)[::-1], areas)
-    median = stats['median']
-    mean = stats['mean']
-    std = stats['std']
-    std_factor = deviation.get(int(cat_id), default)
-    indiv_std = std_factor * std
     plt.plot([0, n], [median, median], color='#20dd50')
     plt.plot([0, n], [mean, mean], color='#55ffaa')
     plt.plot([0, n], [median + std, median + std], color='#ff9050')
     plt.plot([0, n], [median - std, median - std], color='#ff9050')
-    plt.plot([0, n], [median + indiv_std, median + indiv_std], color='#dd4020')
-    plt.plot([0, n], [median - indiv_std, median - indiv_std], color='#dd4020')
+    plt.plot([0, n], [median + high_dev * std, median + high_dev * std], color='#dd4020')
+    plt.plot([0, n], [median - low_dev * std, median - low_dev * std], color='#dd4020')
     plt.show()
 
 
@@ -180,7 +196,7 @@ if args.plot_stats:
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
-        if cat_id in {'25'}:
+        if cat_id in {'70'}:
             plot(cat_id, sts)
 
 if args.to_geogebra:
@@ -197,7 +213,7 @@ if args.to_geogebra:
     for p in a_bbox:
         char = chr(i)
         # print(f'ggbApplet.deleteObject("{char}")')
-        print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
+        print(f'\033[31mggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")\033[39m')
         chars.append(char)
         i += 2
     print('ggbApplet.evalCommand("a : Line(A, xAxis)")')
@@ -211,13 +227,13 @@ if args.to_geogebra:
     for p in o_bbox:
         char = chr(i)
         # print(f'ggbApplet.deleteObject("{char}")')
-        print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
+        print(f'\033[31mggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")\033[39m')
         chars.append(char)
         i += 1
     print(f'ggbApplet.evalCommand("obbox = Polygon({", ".join(chars)})")')
     print("\033[m")
 
-if not args.flag_outliers and not args.compile:
+if not args.flag_outliers and not args.compile and not args.fix_annotations:
     exit(0)
 
 pipeline = [
@@ -255,7 +271,7 @@ def extract_areas(dataset: DeepScoresV2Dataset, areas_by_cat: dict):
 def extract_stats(cat_to_area: dict, cat_info: dict, stats: dict):
     for cat, area_lst in cat_to_area.items():
         # cat = int(cat_id[0])
-        stats[int(cat)] = {
+        stats[str(cat)] = {
             'id': int(cat),
             'name': cat_info[cat]['name'],
             'min': min(area_lst),
@@ -297,9 +313,10 @@ def draw_outliers(imgs: dict, cat_info: dict) -> dict:
         for cat, a_bbox, bbox, idx in bboxes:
             draw.rectangle(a_bbox, outline='#223CF0', width=3)
             draw.line(bbox + bbox[:2], fill='#F03C22', width=3)
-            text = f"[{idx}] {cat_info[cat]['name']}({cat}): {OBBox.get_area(np.array(bbox).reshape((4, 2)))}"
+            text = f"[{idx}] {cat_info[cat]['name']}({cat}): {OBBox.get_area(np.array(bbox).reshape((4, 2))):.1f}"
             print(f"  * {text}")
-            position = np.array(bbox).reshape((4, 2)).max(axis=0)
+            bbox_np = np.array(bbox).reshape((4, 2))
+            position = int(bbox_np.max(axis=0)[0]), int(bbox_np.min(axis=0)[1])
             x1, y1 = ImageFont.load_default().getsize(text)
             x1 += position[0] + 4
             y1 += position[1] + 4
@@ -324,8 +341,8 @@ if args.compile:
     print("Done")
 
 if args.flag_outliers:
-    print("Loading stats")
     if 'stats' not in globals():
+        print("Loading stats")
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     imgs = {}
@@ -336,9 +353,52 @@ if args.flag_outliers:
     outlier_stats_train = draw_outliers(imgs_train, cat_info)
     print(f"{'#'*10} TEST DATASET {'#'*10}")
     outlier_stats_test = draw_outliers(imgs_test, cat_info)
+    print()
     print("[Train stats]")
+    total = 0
     for cat, number in sorted(outlier_stats_train.items(), reverse=True, key=lambda kvp: kvp[1]):
         print(f"{cat_info[cat]['name']} ({cat}): {number}")
+        total += number
+    print(f"Total possible outliers detected: {total}")
+    print()
     print("[Test stats]")
+    total = 0
     for cat, number in sorted(outlier_stats_test.items(), reverse=True, key=lambda kvp: kvp[1]):
         print(f"{cat_info[cat]['name']} ({cat}): {number}")
+        total += number
+    print(f"Total possible outliers detected: {total}")
+
+def fix_annotations(anns: OBBAnns):
+    def fix_ann(bbox: list) -> list:
+        bbox = list(map(int, bbox))
+        bbox = np.array([bbox[0::2], bbox[1::2]]).T
+        if OBBox.get_area(bbox) < 1.0:
+            if np.all(bbox[:,0] == np.full((4,), bbox[0,0])):  # all X's are the same
+                bbox[1:3,0] = bbox[1:3,0] + np.ones((2,))
+            if np.all(bbox[:,1] == np.full((4,), bbox[0,1])):  # all Ys are the same
+                bbox[2:,1] = bbox[2:,1] + np.ones((2,))
+            print(".", end='')
+        return list(map(int, bbox.reshape((8,))))
+    def per_row(x):
+        abbox, obbox = x[0], x[1]
+        # make abbox into a 8-tuple like obbox
+        abbox = [abbox[2], abbox[3], abbox[2], abbox[1], abbox[0], abbox[1], abbox[0], abbox[3]]
+        abbox = fix_ann(abbox)
+        x[0] = [abbox[0], abbox[1], abbox[4], abbox[5]]
+        obbox = fix_ann(obbox)
+        x[1] = obbox
+        x[3] = int(OBBox.get_area(np.array([obbox[0::2], obbox[1::2]]).T))
+        return x
+    anns.ann_info = anns.ann_info.apply(per_row, axis=1, raw=True)
+    print()
+
+if args.fix_annotations:
+    print('[TRAIN] Fixing annotations')
+    fix_annotations(dataset_train.obb)
+    print('[TRAIN] Saving dataset to deepscores_train.fixed.json')
+    dataset_train.obb.save_annotations('deepscores_train.fixed.json')
+    print('[TEST] Fixing annotations')
+    fix_annotations(dataset_test.obb)
+    print('[TEST] Saving dataset to deepscores_test.fixed.json')
+    dataset_test.obb.save_annotations('deepscores_test.fixed.json')
+    print('Done')
