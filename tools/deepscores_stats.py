@@ -26,20 +26,20 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
 args = parser.parse_args()
 
 deviation = {
-    2: (2.0, 9.0),  # ledgerLine
+    2: (2.2, 10.0),  # ledgerLine
     25: (5.5, 2.2),  # noteheadBlackOnLine
-    27: (5.5, 1.0),  # noteheadBlackInSpace
-    31: (4.0, 3.0),  # noteheadHalfInSpace
-    33: 3.0,  # noteheadWholeOnLine
-    42: (2.0, 15.0),  # stem
+    27: (5.5, 1.5),  # noteheadBlackInSpace
+    # 31: (6.0, 3.0),  # noteheadHalfInSpace
+    # 33: 8.0,  # noteheadWholeOnLine
+    # 42: (2.0, 15.0),  # stem
     64: 3.0,  # accidentialSharp
-    70: (0.82, 3.0),  # keySharp
-    85: (1.5, 3.0),  # restWhole
-    88: (1.8, 2.0),  # rest8th
+    70: (1.0, 5.0),  # keySharp
+    85: (1.5, 6.0),  # restWhole
+    88: (1.8, 2.5),  # rest8th
     90: 2.0,  # rest32nd
-    113: 10.0,  # tuplet3
+    #113: 10.0,  # tuplet3
     122: (1.1, 17.0),  # beam
-    135: (4.0, 5.0),  # staff
+    135: (4.5, 4.5),  # staff
 }
 ignore = {
     1,  # brace
@@ -64,10 +64,13 @@ ignore = {
     23,  # timeSigCommon
     24,  # timeSigCutCommon
     29,  # noteheadHalfOnLine
+    31,  # noteheadHalfInSpace
+    33,  # noteheadWholeOnLine
     35,  # noteheadWholeInSpace
     37,  # noteheadDoubleWholeOnLine
     39,  # noteheadDoubleWholeInSpace
     41,  # augmentationDot
+    42,  # stem
     43,  # tremolo1
     44,  # tremolo2
     45,  # tremolo3
@@ -122,6 +125,7 @@ ignore = {
     110,  # arpeggiato
     111,  # keaboardPedalPed
     112,  # keyboardPedalUp
+    113,  # tuplet3
     114,  # tuplet6
     115,  # fingering0
     116,  # fingering1
@@ -131,6 +135,7 @@ ignore = {
     120,  # fingering5
     121,  # slur
     123,  # tie
+    124,  # restHBar
     125,  # dynamicCrescendoHairpin
     126,  # dynamicDiminuendoHairpin
     129,  # tuplet4
@@ -196,7 +201,7 @@ if args.plot_stats:
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
-        if cat_id in {'70'}:
+        if cat_id in {'2'}:
             plot(cat_id, sts)
 
 if args.to_geogebra:
@@ -377,6 +382,9 @@ def fix_annotations(anns: OBBAnns):
                 bbox[1:3,0] = bbox[1:3,0] + np.ones((2,))
             if np.all(bbox[:,1] == np.full((4,), bbox[0,1])):  # all Ys are the same
                 bbox[2:,1] = bbox[2:,1] + np.ones((2,))
+            if np.all(bbox[0::2,:] == bbox[1::2,:]):  # weird constellation
+                bbox[1, 1] = bbox[2, 1]
+                bbox[3, 1] = bbox[0, 1]
             print(".", end='')
         return list(map(int, bbox.reshape((8,))))
     def per_row(x):
