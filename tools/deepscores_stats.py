@@ -1,8 +1,10 @@
 import json
 from argparse import ArgumentParser
+from collections import defaultdict
 
 from PIL import Image, ImageDraw
 from PIL import ImageFont
+from typing import Tuple, List
 
 from mmdet.datasets import DeepScoresV2Dataset
 import numpy as np
@@ -24,6 +26,47 @@ parser.add_argument('-g', '--geogebra', dest='to_geogebra', action='store', defa
 parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='store_true', default=False,
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
+
+thresholds = {
+    # tuple: Upper and lower bound. vs single value: symmetric bounds
+    # float: std deviation factor
+    # int: absolute threshold
+    #   Area,   Angle,  L1,     L2,     Ratio
+    2: ((2.2, 10.0)),  # ledgerLine
+    25: ((5.5, 2.2)),  # noteheadBlackOnLine
+    27: ((5.5, 1.5)),  # noteheadBlackInSpace
+    # 31: ((6.0, 3.0)),  # noteheadHalfInSpace
+    # 33: ((8.0)),  # noteheadWholeOnLine
+    # 42: ((2.0, 15.0)),  # stem
+    64: (3.0),  # accidentialSharp
+    70: ((1.0, 5.0)),  # keySharp
+    85: ((1.5, 6.0)),  # restWhole
+    88: ((1.8, 2.5)),  # rest8th
+    90: (2.0),  # rest32nd
+    #113: (10.0),  # tuplet3
+    122: ((1.1, 17.0)),  # beam
+    135: ((4.5, 4.5)),  # staff
+}
+def get_threshold(stats: dict, klasses: List[str]) -> Tuple[Tuple[int, int], ...]:
+    def expand_threshold(threshold, median: float, std: float) -> Tuple[int, int]:
+        if threshold is None:
+            return None, None
+        if not isinstance(threshold, tuple):
+            threshold = threshold, threshold
+        low_thr, high_thr = threshold
+        if isinstance(low_thr, float):
+            low_thr *= std
+        if isinstance(high_thr, float):
+            high_thr *= std
+        return int(median - low_thr), int(median + high_thr)
+    thr_list = thresholds.get(stats['id'], [])
+    thrs = {}
+    for i, klass in enumerate(klasses):
+        if i < len(thr_list):
+            thrs[klass] = thr_list[i]
+        klass_stat = stats[klass]
+        yield expand_threshold(thrs.get(klass, None), klass_stat['median'], klass_stat['std'])
+
 
 deviation = {
     2: (2.2, 10.0),  # ledgerLine
@@ -162,7 +205,16 @@ def flag_area(stats: dict, area: float) -> bool:
 def flag_outlier(bbox: np.ndarray, cat_id: int, stats: dict) -> bool:
     if isinstance(bbox, list):
         bbox = np.array(bbox)
-    return flag_area(stats[str(cat_id)], OBBox.get_area(bbox.reshape((4, 2))))
+    flagged = False
+    cat_stats = stats[cat_id]
+    klasses = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
+    for klass in klasses:
+        for threshold in get_threshold(cat_stats, klasses):
+            flagged |= flag_area(cat_stats[klass], threshold)
+        if flagged:
+            return flagged
+    return flagged
+    return flag_area(stats[str(cat_id)]['area'], OBBox.get_area(bbox.reshape((4, 2))))
 
 def plot(cat_id: int, stats: dict):
     areas = stats['sorted_areas']
@@ -253,39 +305,51 @@ pipeline = [
     {'type': 'Collect', 'keys': ['img', 'gt_bboxes', 'gt_labels']}
 ]
 dataset_train = DeepScoresV2Dataset(
-    ann_file='data/deep_scores_dense/deepscores_train.json',
+    ann_file='deepscores_train.json',
     img_prefix='data/deep_scores_dense/images/',
     pipeline=pipeline,
     use_oriented_bboxes=True,
 )
 dataset_test = DeepScoresV2Dataset(
-    ann_file='data/deep_scores_dense/deepscores_test.json',
+    ann_file='deepscores_test.json',
     img_prefix='data/deep_scores_dense/images/',
     pipeline=pipeline,
     use_oriented_bboxes=True,
 )
 cat_info = dataset_train.obb.cat_info
 
-def extract_areas(dataset: DeepScoresV2Dataset, areas_by_cat: dict):
+def gather_stats(dataset: DeepScoresV2Dataset, stats: dict):
     for cat_id, o_bbox in zip(dataset.obb.ann_info['cat_id'], dataset.obb.ann_info['o_bbox']):
-        cat = int(cat_id[0])
-        bbox = np.array(o_bbox).reshape((4, 2))
-        area = OBBox.get_area(bbox)
-        areas_by_cat[cat] = np.append(areas_by_cat.get(cat, np.array([])), area)
+        cat = str(cat_id[0])
+        obbox = np.array(o_bbox).reshape((4, 2))
+        attributes = stats.get(cat, defaultdict(lambda: np.array([])))
+        attributes['area'] = np.append(attributes['area'], OBBox.get_area(obbox))
+        attributes['angle'] = np.append(attributes['angle'], OBBox.get_angle(obbox) % np.pi)
+        attributes['l1'] = np.append(attributes['l1'], np.linalg.norm(obbox[1] - obbox[0]))
+        attributes['l2'] = np.append(attributes['l2'], np.linalg.norm(obbox[1] - obbox[3]))
+        attributes['edge-ratio'] = np.append(attributes['edge-ratio'], OBBox.get_edge_ratio(obbox))
+        stats[cat] = attributes
 
-def extract_stats(cat_to_area: dict, cat_info: dict, stats: dict):
-    for cat, area_lst in cat_to_area.items():
-        # cat = int(cat_id[0])
-        stats[str(cat)] = {
+def compile_stats(stats: dict, cat_info: dict):
+    def to_dict(values: np.ndarray) -> dict:
+        return {
+            'min': min(values),
+            'max': max(values),
+            'mean': np.mean(values),
+            'median': np.median(values),
+            'std': np.std(values),
+            'length': values.size,
+            'sorted_areas': sorted(values, reverse=True)
+        }
+    for cat, data in stats.items():
+        stats[cat] = {
             'id': int(cat),
-            'name': cat_info[cat]['name'],
-            'min': min(area_lst),
-            'max': max(area_lst),
-            'mean': np.mean(area_lst),
-            'median': np.median(area_lst),
-            'std': np.std(area_lst),
-            'length': area_lst.size,
-            'sorted_areas': sorted(area_lst, reverse=True)
+            'name': cat_info[int(cat)]['name'],
+            'area': to_dict(data['area']),
+            'angle': to_dict(data['angle']),
+            'l1': to_dict(data['l1']),
+            'l2': to_dict(data['l2']),
+            'edge-ratio': to_dict(data['edge-ratio']),
         }
 
 def filter_bboxes(dataset: DeepScoresV2Dataset, stats: dict) -> dict:
@@ -333,13 +397,12 @@ def draw_outliers(imgs: dict, cat_info: dict) -> dict:
 
 
 if args.compile:
-    stats = {}
+    stats = defaultdict(lambda: {})
     print("Gathering the stats")
-    cat_to_areas = {}
-    extract_areas(dataset_train, cat_to_areas)
-    extract_areas(dataset_test, cat_to_areas)
+    gather_stats(dataset_train, stats)
+    gather_stats(dataset_test, stats)
     print("Calculating the stats")
-    extract_stats(cat_to_areas, cat_info, stats)
+    compile_stats(stats, dataset_test.obb.cat_info)
     print("Saving the stats")
     with open(STAT_FILE, 'w') as fp:
         json.dump(stats, fp, indent=4)

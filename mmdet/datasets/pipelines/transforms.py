@@ -650,6 +650,22 @@ class OBBox:
         return w * h
 
     @staticmethod
+    def get_angle(corners: np.ndarray) -> float:
+        assert corners.shape == (4, 2)
+        a, b, _, _ = corners
+        v = b - a
+        v = v/np.sqrt(np.dot(v, v))
+        return np.arccos(v)
+
+    @staticmethod
+    def get_edge_ratio(corners: np.ndarray) -> float:
+        assert corners.shape == (4, 2)
+        a, b, _, d = corners
+        v1 = b - a
+        v2 = d - a
+        return np.linalg.norm(v1)/np.linalg.norm(v2)
+
+    @staticmethod
     def _intersect(start_corner: np.ndarray, end_corner: np.ndarray, crop_shape: Tuple[int, int]) -> Optional[np.ndarray]:
         """
         Find the intersection of the given edge and the border closest to the first corner.
