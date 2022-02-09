@@ -4,12 +4,16 @@ from collections import defaultdict
 
 from PIL import Image, ImageDraw
 from PIL import ImageFont
-from typing import Tuple, List
+from typing import Tuple, List, Dict
+
+from matplotlib.axes import Axes
+from matplotlib.axis import Axis
+from matplotlib.figure import Figure
 
 from mmdet.datasets import DeepScoresV2Dataset
 import numpy as np
 import os.path as osp
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, axes
 
 from mmdet.datasets.pipelines.transforms import OBBox
 from obb_anns import OBBAnns
@@ -27,27 +31,28 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
+threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
 thresholds = {
     # tuple: Upper and lower bound. vs single value: symmetric bounds
     # float: std deviation factor
     # int: absolute threshold
-    #   Area,   Angle,  L1,     L2,     Ratio
-    2: ((2.2, 10.0)),  # ledgerLine
-    25: ((5.5, 2.2)),  # noteheadBlackOnLine
-    27: ((5.5, 1.5)),  # noteheadBlackInSpace
+    #   Area,       Angle,      L1,         L2,         Ratio
+    2: ((2.2, 10.0),),  # ledgerLine
+    25: ((5.5, 2.2),),  # noteheadBlackOnLine
+    27: ((5.5, 1.5),),  # noteheadBlackInSpace
     # 31: ((6.0, 3.0)),  # noteheadHalfInSpace
     # 33: ((8.0)),  # noteheadWholeOnLine
     # 42: ((2.0, 15.0)),  # stem
-    64: (3.0),  # accidentialSharp
-    70: ((1.0, 5.0)),  # keySharp
-    85: ((1.5, 6.0)),  # restWhole
-    88: ((1.8, 2.5)),  # rest8th
-    90: (2.0),  # rest32nd
+    64: (3.0,),  # accidentialSharp
+    70: ((1.0, 5.0),),  # keySharp
+    85: ((1.5, 6.0),),  # restWhole
+    88: ((1.8, 2.5),),  # rest8th
+    90: (2.0,),  # rest32nd
     #113: (10.0),  # tuplet3
-    122: ((1.1, 17.0)),  # beam
-    135: ((4.5, 4.5)),  # staff
+    122: ((1.1, 17.0),),  # beam
+    135: ((4.5, 4.5),),  # staff
 }
-def get_threshold(stats: dict, klasses: List[str]) -> Tuple[Tuple[int, int], ...]:
+def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[int, int]]:
     def expand_threshold(threshold, median: float, std: float) -> Tuple[int, int]:
         if threshold is None:
             return None, None
@@ -59,13 +64,12 @@ def get_threshold(stats: dict, klasses: List[str]) -> Tuple[Tuple[int, int], ...
         if isinstance(high_thr, float):
             high_thr *= std
         return int(median - low_thr), int(median + high_thr)
-    thr_list = thresholds.get(stats['id'], [])
-    thrs = {}
-    for i, klass in enumerate(klasses):
-        if i < len(thr_list):
-            thrs[klass] = thr_list[i]
-        klass_stat = stats[klass]
-        yield expand_threshold(thrs.get(klass, None), klass_stat['median'], klass_stat['std'])
+    thr_list = thresholds.get(cat_stats['id'], [])
+    out = defaultdict(lambda: (None, None))
+    for thr_cls, threshold in zip(threshold_classes, thr_list):
+        klass_stat = cat_stats[thr_cls]
+        out[thr_cls] = expand_threshold(threshold, klass_stat['median'], klass_stat['std'])
+    return {cls:out[cls] for cls in threshold_classes}
 
 
 deviation = {
@@ -186,64 +190,96 @@ ignore = {
     136,  # ottavaBracket
 }
 default = 1.0
-def flag_area(stats: dict, area: float) -> bool:
-    if stats['id'] in ignore:
+def is_attribute_an_outlier(cat_stats: dict, cat_thresholds: Dict[str, Tuple[int, int]], cls: str, value: float) -> bool:
+    if cat_stats['id'] in ignore:
         return False
-    mean = stats['mean']
-    median = stats['median']
-    std = stats['std']
-    dev = deviation.get(int(stats['id']), default)
-    if isinstance(dev, float):
-        dev = dev, dev
-    low_dev, high_dev = dev
-    # if isinstance(dev, int):
-    #     return abs(area - median) > dev * std  # or area == 0.0
-    # elif isinstance(dev, tuple):
-    #     low_dev, high_dev = dev
-    return area - median < -low_dev * std or area - median > high_dev * std
+    low_thr, high_thr = cat_thresholds[cls]
+    if low_thr is None or high_thr is None:
+        return False
+    return value < low_thr or value > high_thr
 
-def flag_outlier(bbox: np.ndarray, cat_id: int, stats: dict) -> bool:
-    if isinstance(bbox, list):
-        bbox = np.array(bbox)
-    flagged = False
-    cat_stats = stats[cat_id]
-    klasses = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
-    for klass in klasses:
-        for threshold in get_threshold(cat_stats, klasses):
-            flagged |= flag_area(cat_stats[klass], threshold)
-        if flagged:
-            return flagged
-    return flagged
-    return flag_area(stats[str(cat_id)]['area'], OBBox.get_area(bbox.reshape((4, 2))))
+def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> bool:
+    if isinstance(obbox, list):
+        obbox = np.array(obbox)
+    obbox = np.array(obbox).reshape((4, 2))
+    cat_stats = stats[str(cat_id)]
+    cat_thrs = get_thresholds(cat_stats)
+    # check all attributes
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'area', OBBox.get_area(obbox)):
+        return True
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'angle', OBBox.get_angle(obbox) % np.pi):
+        return True
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'l1', np.linalg.norm(obbox[1] - obbox[0])):
+        return True
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'l2', np.linalg.norm(obbox[1] - obbox[3])):
+        return True
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'edge-ratio', OBBox.get_edge_ratio(obbox)):
+        return True
+    return False
 
-def plot(cat_id: int, stats: dict):
-    areas = stats['sorted_areas']
-    n = len(areas)
-    n_outliers = sum(map(lambda area: flag_area(stats, area), areas))
-    median = stats['median']
-    mean = stats['mean']
-    std = stats['std']
-    dev = deviation.get(int(cat_id), default)
-    if isinstance(dev, float):
-        dev = dev, dev
-    low_dev, high_dev = dev
-    plt.title(f"{{{cat_id}}} {stats['name']}: {n_outliers} outliers "
-              f"(std factor: {deviation.get(int(cat_id), default)} "
-              f"-> ({median - low_dev * std:.1f} - {median + high_dev * std:.1f}))")
-    plt.xlabel('Index of sorted Areas')
-    plt.ylabel('Areas, sorted')
-    # plt.yscale('log')
-    # plt.ylim(ymin=0, ymax=max(areas))
-    plt.ylim(ymin=min(areas), ymax=max(areas))
-    plt.grid(True)
-    plt.plot(range(n)[::-1], areas)
-    plt.plot([0, n], [median, median], color='#20dd50')
-    plt.plot([0, n], [mean, mean], color='#55ffaa')
-    plt.plot([0, n], [median + std, median + std], color='#ff9050')
-    plt.plot([0, n], [median - std, median - std], color='#ff9050')
-    plt.plot([0, n], [median + high_dev * std, median + high_dev * std], color='#dd4020')
-    plt.plot([0, n], [median - low_dev * std, median - low_dev * std], color='#dd4020')
-    plt.show()
+def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str) -> int:
+    cls_stats = cat_stats[thr_cls]
+    cat_thrs = get_thresholds(cat_stats)
+    values = cls_stats['sorted']
+    n = len(values)
+    n_outliers = sum(map(lambda value: is_attribute_an_outlier(cat_stats, cat_thrs, thr_cls, value), values))
+    median = cls_stats['median']
+    mean = cls_stats['mean']
+    std = cls_stats['std']
+    low_thr, high_thr = cat_thrs[thr_cls]
+    ax.set_title(f"{thr_cls}: {n_outliers} outliers ({low_thr} - {high_thr})")
+    ax.set_xlabel(f'Index of sorted {thr_cls}')
+    ax.set_ylabel(f'{thr_cls}, sorted')
+    ax.set_ylim(ymin=min(values), ymax=max(values))
+    ax.grid(True)
+    ax.plot(range(n)[::-1], values)
+    ax.plot([0, n], [median, median], color='#20dd50')
+    ax.plot([0, n], [mean, mean], color='#55ffaa')
+    ax.plot([0, n], [median + std, median + std], color='#ff9050')  # Upper std
+    ax.plot([0, n], [median - std, median - std], color='#ff9050')  # Lower std
+    ax.plot([0, n], [high_thr, high_thr], color='#dd4020')  # Upper bound
+    ax.plot([0, n], [low_thr, low_thr], color='#dd4020')  # Lower bound
+    return n_outliers
+
+def plot(cat_id: int, cat_stats: dict):
+    fig: Figure
+    axs: List[Axes]
+    fig, axs = plt.subplots(2, 3, figsize=(16, 12))
+    cat_thrs = get_thresholds(cat_stats)
+    total_outliers = 0
+    for ax, thr_cls in zip(axs.reshape((6,)), threshold_classes):
+        total_outliers += plot_attribute(ax, cat_stats, cat_thrs, thr_cls)
+    fig.suptitle(f"[{cat_id}] {cat_stats['name']}: {total_outliers} outliers")
+    fig.show()
+
+    # values = cat_stats['sorted']
+    # n = len(values)
+    # cat_thrs = get_thresholds(cat_stats)
+    # n_outliers = sum(map(lambda value: is_attribute_an_outlier(cat_stats, cat_thrs, 'area', value), values))
+    # median = cat_stats['median']
+    # mean = cat_stats['mean']
+    # std = cat_stats['std']
+    # dev = deviation.get(int(cat_id), default)
+    # if isinstance(dev, float):
+    #     dev = dev, dev
+    # low_dev, high_dev = dev
+    # plt.title(f"{{{cat_id}}} {cat_stats['name']}: {n_outliers} outliers "
+    #           f"(std factor: {deviation.get(int(cat_id), default)} "
+    #           f"-> ({median - low_dev * std:.1f} - {median + high_dev * std:.1f}))")
+    # plt.xlabel('Index of sorted Areas')
+    # plt.ylabel('Areas, sorted')
+    # # plt.yscale('log')
+    # # plt.ylim(ymin=0, ymax=max(areas))
+    # plt.ylim(ymin=min(values), ymax=max(values))
+    # plt.grid(True)
+    # plt.plot(range(n)[::-1], values)
+    # plt.plot([0, n], [median, median], color='#20dd50')
+    # plt.plot([0, n], [mean, mean], color='#55ffaa')
+    # plt.plot([0, n], [median + std, median + std], color='#ff9050')
+    # plt.plot([0, n], [median - std, median - std], color='#ff9050')
+    # plt.plot([0, n], [median + high_dev * std, median + high_dev * std], color='#dd4020')
+    # plt.plot([0, n], [median - low_dev * std, median - low_dev * std], color='#dd4020')
+    # plt.show()
 
 
 STAT_FILE = 'stats.json'
@@ -339,7 +375,7 @@ def compile_stats(stats: dict, cat_info: dict):
             'median': np.median(values),
             'std': np.std(values),
             'length': values.size,
-            'sorted_areas': sorted(values, reverse=True)
+            'sorted': sorted(values, reverse=True)
         }
     for cat, data in stats.items():
         stats[cat] = {
