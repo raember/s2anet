@@ -358,23 +358,25 @@ def gather_stats(dataset: DeepScoresV2Dataset, stats: dict):
     for cat_id, o_bbox in zip(dataset.obb.ann_info['cat_id'], dataset.obb.ann_info['o_bbox']):
         cat = str(cat_id[0])
         obbox = np.array(o_bbox).reshape((4, 2))
-        attributes = stats.get(cat, defaultdict(lambda: np.array([])))
-        attributes['area'] = np.append(attributes['area'], OBBox.get_area(obbox))
-        attributes['angle'] = np.append(attributes['angle'], OBBox.get_angle(obbox) % np.pi)
-        attributes['l1'] = np.append(attributes['l1'], np.linalg.norm(obbox[1] - obbox[0]))
-        attributes['l2'] = np.append(attributes['l2'], np.linalg.norm(obbox[1] - obbox[3]))
-        attributes['edge-ratio'] = np.append(attributes['edge-ratio'], OBBox.get_edge_ratio(obbox))
+        attributes = stats.get(cat, defaultdict(lambda: []))
+        attributes['area'].append(OBBox.get_area(obbox))
+        attributes['angle'].append(OBBox.get_angle(obbox)[0] % np.pi)
+        l1 = np.linalg.norm(obbox[1] - obbox[0])
+        l2 = np.linalg.norm(obbox[1] - obbox[3])
+        attributes['l1'].append(min(l1, l2))
+        attributes['l2'].append(max(l1, l2))
+        attributes['edge-ratio'].append(OBBox.get_edge_ratio(obbox))
         stats[cat] = attributes
 
 def compile_stats(stats: dict, cat_info: dict):
-    def to_dict(values: np.ndarray) -> dict:
+    def to_dict(values: List[float]) -> dict:
         return {
             'min': min(values),
             'max': max(values),
             'mean': np.mean(values),
             'median': np.median(values),
             'std': np.std(values),
-            'length': values.size,
+            'length': len(values),
             'sorted': sorted(values, reverse=True)
         }
     for cat, data in stats.items():
