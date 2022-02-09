@@ -38,7 +38,7 @@ thresholds = {
     # float: std deviation factor
     # int: absolute threshold
     #   Area,       Angle,      L1,         L2,         Ratio
-    1: ((0, 20000),),  # brace
+    1: (None,       (1.0, 1.0)),  # brace
     2: ((2.2, 10.0),),  # ledgerLine
     25: ((5.5, 2.2),),  # noteheadBlackOnLine
     27: ((5.5, 1.5),),  # noteheadBlackInSpace
@@ -54,8 +54,8 @@ thresholds = {
     122: ((1.1, 17.0),),  # beam
     135: ((4.5, 4.5),),  # staff
 }
-def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[int, int]]:
-    def expand_threshold(threshold, median: float, std: float) -> Tuple[int, int]:
+def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[float, float]]:
+    def expand_threshold(threshold, median: float, std: float) -> Tuple[float, float]:
         if threshold is None:
             return None, None
         if not isinstance(threshold, tuple):
@@ -66,12 +66,15 @@ def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[int, int]]:
             low_thr = median - low_thr
         if isinstance(high_thr, float):
             high_thr *= std
-            high_thr = median - high_thr
-        return int(low_thr), int(high_thr)
+            high_thr = median + high_thr
+        return low_thr, high_thr
     thr_list = thresholds.get(cat_stats['id'], [])
     out = defaultdict(lambda: (None, None))
     for thr_cls, threshold in zip(threshold_classes, thr_list):
         klass_stat = cat_stats[thr_cls]
+        # median = klass_stat['median'] if thr_cls != 'angle' else 0.0
+        # std = klass_stat['std'] if thr_cls != 'angle' else 1.0
+        # out[thr_cls] = expand_threshold(threshold, median, std)
         out[thr_cls] = expand_threshold(threshold, klass_stat['median'], klass_stat['std'])
     return {cls:out[cls] for cls in threshold_classes}
 
@@ -194,7 +197,7 @@ ignore = {
     136,  # ottavaBracket
 }
 default = 1.0
-def is_attribute_an_outlier(cat_stats: dict, cat_thresholds: Dict[str, Tuple[int, int]], cls: str, value: float) -> bool:
+def is_attribute_an_outlier(cat_stats: dict, cat_thresholds: Dict[str, Tuple[float, float]], cls: str, value: float) -> bool:
     low_thr, high_thr = cat_thresholds.get(cls, (None, None))
     if low_thr is None or high_thr is None:
         return False
@@ -209,7 +212,7 @@ def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> bool:
     # check all attributes
     if is_attribute_an_outlier(cat_stats, cat_thrs, 'area', OBBox.get_area(obbox)):
         return True
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'angle', OBBox.get_angle(obbox) % np.pi):
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'angle', (OBBox.get_angle(obbox)) % 90 ):
         return True
     if is_attribute_an_outlier(cat_stats, cat_thrs, 'l1', np.linalg.norm(obbox[1] - obbox[0])):
         return True
@@ -228,9 +231,11 @@ def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str) -> i
     median = cls_stats['median']
     mean = cls_stats['mean']
     std = cls_stats['std']
-    minimum = cls_stats['min']
-    maximum = cls_stats['max']
+    minimum = round(cls_stats['min'], 2)
+    maximum = round(cls_stats['max'], 2)
     low_thr, high_thr = cat_thrs[thr_cls]
+    low_thr = round(low_thr, 2) if low_thr is not None else None
+    high_thr = round(high_thr, 2) if high_thr is not None else None
     ax.set_title(f"{thr_cls}: {n_outliers} outliers [{minimum}, {maximum}]\n({low_thr} - {high_thr})")
     ax.set_xlabel(f'Index of sorted {thr_cls}')
     ax.set_ylabel(f'{thr_cls}, sorted')
@@ -364,7 +369,7 @@ def gather_stats(dataset: DeepScoresV2Dataset, stats: dict):
         obbox = np.array(o_bbox).reshape((4, 2))
         attributes = stats.get(cat, defaultdict(lambda: []))
         attributes['area'].append(OBBox.get_area(obbox))
-        attributes['angle'].append(OBBox.get_angle(obbox)[0] % np.pi)
+        attributes['angle'].append((OBBox.get_angle(obbox)) % 90)
         l1 = np.linalg.norm(obbox[1] - obbox[0])
         l2 = np.linalg.norm(obbox[1] - obbox[3])
         attributes['l1'].append(min(l1, l2))
