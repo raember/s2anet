@@ -655,7 +655,7 @@ class OBBox:
         a, b, _, _ = corners
         v = b - a
         v = v/np.sqrt(np.dot(v, v))
-        return np.arccos(v)
+        return np.rad2deg(np.arccos(v))[0]
 
     @staticmethod
     def get_edge_ratio(corners: np.ndarray) -> float:
