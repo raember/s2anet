@@ -32,6 +32,8 @@ RUN apt-get update && apt-get install -y curl ffmpeg libsm6 libxext6 git ninja-b
     && rm -rf /var/lib/apt/lists/*
 RUN conda install python=3.8
 
+RUN conda uninstall pytorch cudatoolkit
+RUN conda install pytorch==1.4.0 torchvision==0.5.0 cudatoolkit=9.2 -c pytorch
 # Install OBB_Anns
 FROM build-pytorch AS build-obb_anns
 WORKDIR /
@@ -47,7 +49,6 @@ COPY /s2anet /s2anet_dummy
 #RUN git clone -b dev-embe https://github.com/raember/s2anet.git s2anet_dummy
 WORKDIR /s2anet_dummy
 ENV FORCE_CUDA="1"
-RUN conda install pytorch=${PYTORCH} torchvision cudatoolkit=${CUDA} -c pytorch
 RUN pip install -r /s2anet_dummy/requirements.txt
 RUN pip install wandb
 
@@ -87,3 +88,4 @@ RUN echo | RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyz
 RUN sed 's/robbyrussell/crcandy/g' -i ~/.zshrc
 # Don't forget to
 # python -m wandb login <token>
+
