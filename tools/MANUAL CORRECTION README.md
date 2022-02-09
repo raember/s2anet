@@ -19,7 +19,7 @@
 
 1. Pick out the annotation id of the chosen outlier annotation (i.e. 882200)
 2. Run `./tools/change_ds.sh 882200`
-    * The bash script [change_ds.sh](change_ds.sh) will now first search the train database and - if not unsuccessful - then the test dataset.
+    * The bash script [change_ds.sh](change_ds.sh) will now first search the train database and - if not successful - the test dataset.
     * It will display the javascript commands (open the javascript console of your browser of trust) to import the annotation data into the GeoGebra web version in bold text:
     ```
     ggbApplet.evalCommand("A=(1667, -699)")
