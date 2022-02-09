@@ -31,12 +31,14 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
+cat_selection = {'1'}
 threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
 thresholds = {
     # tuple: Upper and lower bound. vs single value: symmetric bounds
     # float: std deviation factor
     # int: absolute threshold
     #   Area,       Angle,      L1,         L2,         Ratio
+    1: ((0, 20000),),  # brace
     2: ((2.2, 10.0),),  # ledgerLine
     25: ((5.5, 2.2),),  # noteheadBlackOnLine
     27: ((5.5, 1.5),),  # noteheadBlackInSpace
@@ -61,9 +63,11 @@ def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[int, int]]:
         low_thr, high_thr = threshold
         if isinstance(low_thr, float):
             low_thr *= std
+            low_thr = median - low_thr
         if isinstance(high_thr, float):
             high_thr *= std
-        return int(median - low_thr), int(median + high_thr)
+            high_thr = median - high_thr
+        return int(low_thr), int(high_thr)
     thr_list = thresholds.get(cat_stats['id'], [])
     out = defaultdict(lambda: (None, None))
     for thr_cls, threshold in zip(threshold_classes, thr_list):
@@ -191,9 +195,7 @@ ignore = {
 }
 default = 1.0
 def is_attribute_an_outlier(cat_stats: dict, cat_thresholds: Dict[str, Tuple[int, int]], cls: str, value: float) -> bool:
-    if cat_stats['id'] in ignore:
-        return False
-    low_thr, high_thr = cat_thresholds[cls]
+    low_thr, high_thr = cat_thresholds.get(cls, (None, None))
     if low_thr is None or high_thr is None:
         return False
     return value < low_thr or value > high_thr
@@ -226,8 +228,10 @@ def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str) -> i
     median = cls_stats['median']
     mean = cls_stats['mean']
     std = cls_stats['std']
+    minimum = cls_stats['min']
+    maximum = cls_stats['max']
     low_thr, high_thr = cat_thrs[thr_cls]
-    ax.set_title(f"{thr_cls}: {n_outliers} outliers ({low_thr} - {high_thr})")
+    ax.set_title(f"{thr_cls}: {n_outliers} outliers [{minimum}, {maximum}]\n({low_thr} - {high_thr})")
     ax.set_xlabel(f'Index of sorted {thr_cls}')
     ax.set_ylabel(f'{thr_cls}, sorted')
     ax.set_ylim(ymin=min(values), ymax=max(values))
@@ -289,7 +293,7 @@ if args.plot_stats:
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
-        if cat_id in {'2'}:
+        if len(cat_selection) > 0 and cat_id in cat_selection:
             plot(cat_id, sts)
 
 if args.to_geogebra:
@@ -401,13 +405,14 @@ def filter_bboxes(dataset: DeepScoresV2Dataset, stats: dict) -> dict:
             dataset.obb.ann_info.index,
     ):
         cat = int(cat_id[0])
-        if flag_outlier(o_bbox, cat, stats):
-            # print(f"Found outlier '{cat_info[cat]['name']}'({cat})")
-            if img_id not in imgs.keys():
-                img_info, _ = dataset.obb.get_img_ann_pair(idxs=None, ids=[int(img_id)])
-                filename = img_info[0]['filename']
-                imgs[img_id] = (osp.join(img_dir, filename), [])
-            imgs[img_id][1].append((cat, a_bbox, o_bbox, idx))
+        if len(cat_selection) > 0 and str(cat) in cat_selection:
+            if flag_outlier(o_bbox, cat, stats):
+                # print(f"Found outlier '{cat_info[cat]['name']}'({cat})")
+                if img_id not in imgs.keys():
+                    img_info, _ = dataset.obb.get_img_ann_pair(idxs=None, ids=[int(img_id)])
+                    filename = img_info[0]['filename']
+                    imgs[img_id] = (osp.join(img_dir, filename), [])
+                imgs[img_id][1].append((cat, a_bbox, o_bbox, idx))
     return imgs
 
 def draw_outliers(imgs: dict, cat_info: dict) -> dict:
