@@ -31,15 +31,39 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
-cat_selection = {'1'}
+cat_selection = {'19'}
+crit_selection = {}
 threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
+area_thr_def = (1, 1.0)
+angle_thr_def = (85, 5)  # Between 5 and 85°
+l1_thr_def = (1, 1.0)
+l2_thr_def = (1, 1.0)
+ratio_thr_def = (1, 1.0)
 thresholds = {
     # tuple: Upper and lower bound. vs single value: symmetric bounds
     # float: std deviation factor
     # int: absolute threshold
-    #   Area,       Angle,      L1,         L2,         Ratio
-    1: (None,       (1.0, 1.0)),  # brace
-    2: ((2.2, 10.0),),  # ledgerLine
+    # If high value first: Inverted threshold (mainly used for angles)
+    #   Area,           Angle,          L1,         L2,         Ratio
+    1:  ((1000, 30000), angle_thr_def,  (5, 50),    (10, 600),  (5, 50)),       # brace
+    2:  ((23, 258),     0,              (1, 5),     (17, 100),  (5, 50)),       # ledgerLine
+    3:  ((20, 90),      None,           (4, 10),    (4, 13),    (1, 2)),        # repeatDot
+    4:  ((1500, 9000),  angle_thr_def,  (25, 90),   (30, 110),  ratio_thr_def), # segno
+    5:  ((1000, 9000),  None,           (25, 90),   (30, 110),  ratio_thr_def), # code
+    6:  ((2500, 6500),  (75, 20),       (25, 50),   (70, 150),  (2, 4)),        # clefG
+    7:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  (1, 2)),        # clefCAlto
+    8:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  (1, 2)),        # clefCTenor
+    9:  ((1000, 5000),  (80, 25),       (25, 65),   (30, 80),   (1, 2)),        # clefF
+    # 10 has been deleted
+    11: ((100, 200),    angle_thr_def,  (8, 13),    (10, 16),   (1, 2)),        # clef8
+    12: ((350, 450),    angle_thr_def,  (12, 20),   (20, 30),   (1, 2)),        # clef15
+    13: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   (1, 2)),        # timeSig0
+    14: ((350, 700),    angle_thr_def,  (10, 20),   (25, 40),   (1, 3)),        # timeSig1
+    15: ((550, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1, 2)),        # timeSig2
+    16: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1, 2)),        # timeSig3
+    17: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   (1, 2)),        # timeSig4
+    18: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1, 2)),        # timeSig5
+    19: ((500, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1, 2)),        # timeSig6
     25: ((5.5, 2.2),),  # noteheadBlackOnLine
     27: ((5.5, 1.5),),  # noteheadBlackInSpace
     # 31: ((6.0, 3.0)),  # noteheadHalfInSpace
@@ -198,10 +222,14 @@ ignore = {
 }
 default = 1.0
 def is_attribute_an_outlier(cat_stats: dict, cat_thresholds: Dict[str, Tuple[float, float]], cls: str, value: float) -> bool:
+    if len(crit_selection) != 0 and cls not in crit_selection:
+        return False
     low_thr, high_thr = cat_thresholds.get(cls, (None, None))
     if low_thr is None or high_thr is None:
         return False
-    return value < low_thr or value > high_thr
+    if low_thr > high_thr:  # Inverted threshold
+        return high_thr < value < low_thr
+    return not (low_thr <= value <= high_thr)
 
 def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> bool:
     if isinstance(obbox, list):
@@ -214,17 +242,19 @@ def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> bool:
         return True
     if is_attribute_an_outlier(cat_stats, cat_thrs, 'angle', (OBBox.get_angle(obbox)) % 90 ):
         return True
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'l1', np.linalg.norm(obbox[1] - obbox[0])):
+    l1 = np.linalg.norm(obbox[0] - obbox[1])
+    l2 = np.linalg.norm(obbox[1] - obbox[2])
+    l1, l2 = min(l1, l2), max(l1, l2)
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'l1', l1):
         return True
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'l2', np.linalg.norm(obbox[1] - obbox[3])):
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'l2', l2):
         return True
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'edge-ratio', OBBox.get_edge_ratio(obbox)):
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'edge-ratio', l2 / l1):
         return True
     return False
 
-def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str) -> int:
+def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str):
     cls_stats = cat_stats[thr_cls]
-    cat_thrs = get_thresholds(cat_stats)
     values = cls_stats['sorted']
     n = len(values)
     n_outliers = sum(map(lambda value: is_attribute_an_outlier(cat_stats, cat_thrs, thr_cls, value), values))
@@ -248,48 +278,16 @@ def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str) -> i
     ax.plot([0, n], [median - std, median - std], color='#ff9050')  # Lower std
     ax.plot([0, n], [high_thr, high_thr], color='#dd4020')  # Upper bound
     ax.plot([0, n], [low_thr, low_thr], color='#dd4020')  # Lower bound
-    return n_outliers
 
 def plot(cat_id: int, cat_stats: dict):
     fig: Figure
     axs: List[Axes]
     fig, axs = plt.subplots(2, 3, figsize=(16, 12))
     cat_thrs = get_thresholds(cat_stats)
-    total_outliers = 0
     for ax, thr_cls in zip(axs.reshape((6,)), threshold_classes):
-        total_outliers += plot_attribute(ax, cat_stats, cat_thrs, thr_cls)
-    fig.suptitle(f"[{cat_id}] {cat_stats['name']}: {total_outliers} outliers")
+        plot_attribute(ax, cat_stats, cat_thrs, thr_cls)
+    fig.suptitle(f"[{cat_id}] {cat_stats['name']}")
     fig.show()
-
-    # values = cat_stats['sorted']
-    # n = len(values)
-    # cat_thrs = get_thresholds(cat_stats)
-    # n_outliers = sum(map(lambda value: is_attribute_an_outlier(cat_stats, cat_thrs, 'area', value), values))
-    # median = cat_stats['median']
-    # mean = cat_stats['mean']
-    # std = cat_stats['std']
-    # dev = deviation.get(int(cat_id), default)
-    # if isinstance(dev, float):
-    #     dev = dev, dev
-    # low_dev, high_dev = dev
-    # plt.title(f"{{{cat_id}}} {cat_stats['name']}: {n_outliers} outliers "
-    #           f"(std factor: {deviation.get(int(cat_id), default)} "
-    #           f"-> ({median - low_dev * std:.1f} - {median + high_dev * std:.1f}))")
-    # plt.xlabel('Index of sorted Areas')
-    # plt.ylabel('Areas, sorted')
-    # # plt.yscale('log')
-    # # plt.ylim(ymin=0, ymax=max(areas))
-    # plt.ylim(ymin=min(values), ymax=max(values))
-    # plt.grid(True)
-    # plt.plot(range(n)[::-1], values)
-    # plt.plot([0, n], [median, median], color='#20dd50')
-    # plt.plot([0, n], [mean, mean], color='#55ffaa')
-    # plt.plot([0, n], [median + std, median + std], color='#ff9050')
-    # plt.plot([0, n], [median - std, median - std], color='#ff9050')
-    # plt.plot([0, n], [median + high_dev * std, median + high_dev * std], color='#dd4020')
-    # plt.plot([0, n], [median - low_dev * std, median - low_dev * std], color='#dd4020')
-    # plt.show()
-
 
 STAT_FILE = 'stats.json'
 if args.plot_stats:
@@ -370,11 +368,12 @@ def gather_stats(dataset: DeepScoresV2Dataset, stats: dict):
         attributes = stats.get(cat, defaultdict(lambda: []))
         attributes['area'].append(OBBox.get_area(obbox))
         attributes['angle'].append((OBBox.get_angle(obbox)) % 90)
-        l1 = np.linalg.norm(obbox[1] - obbox[0])
-        l2 = np.linalg.norm(obbox[1] - obbox[3])
-        attributes['l1'].append(min(l1, l2))
-        attributes['l2'].append(max(l1, l2))
-        attributes['edge-ratio'].append(OBBox.get_edge_ratio(obbox))
+        l1 = np.linalg.norm(obbox[0] - obbox[1])
+        l2 = np.linalg.norm(obbox[1] - obbox[2])
+        l1, l2 = min(l1, l2), max(l1, l2)
+        attributes['l1'].append(l1)
+        attributes['l2'].append(l2)
+        attributes['edge-ratio'].append(l2 / l1)
         stats[cat] = attributes
 
 def compile_stats(stats: dict, cat_info: dict):
