@@ -23,8 +23,8 @@ class SingleStageDetectorUDA(BaseDetector):
                  test_cfg=None,
                  pretrained=None):
         super(SingleStageDetectorUDA, self).__init__()
-        self.backbone1 = builder.build_backbone(backbone1)
-        self.backbone2 = builder.build_backbone(backbone2)
+        self.backbone1 = builder.build_backbone(backbone)
+        self.backbone2 = builder.build_backbone(backbone)
 
         if neck is not None:
             self.neck = builder.build_neck(neck)
