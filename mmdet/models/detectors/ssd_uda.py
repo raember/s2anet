@@ -15,8 +15,7 @@ class SingleStageDetectorUDA(BaseDetector):
     """
 
     def __init__(self,
-                 backbone1,
-                 backbone2,
+                 backbone,
                  neck=None,
                  bbox_head=None,
                  train_cfg=None,
