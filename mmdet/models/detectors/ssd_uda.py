@@ -35,7 +35,7 @@ class SingleStageDetectorUDA(BaseDetector):
 
     def init_weights(self, pretrained=None):
         super(SingleStageDetectorUDA, self).init_weights(pretrained)
-        self.backbone.init_weights(pretrained=pretrained)
+        self.backbone1.init_weights(pretrained=pretrained)
         if self.with_neck:
             if isinstance(self.neck, nn.Sequential):
                 for m in self.neck:
