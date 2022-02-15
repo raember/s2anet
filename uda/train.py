@@ -106,13 +106,6 @@ def main():
         # apply the linear scaling rule (https://arxiv.org/abs/1706.02677)
         cfg.optimizer['lr'] = cfg.optimizer['lr'] * cfg.gpus / 8
 
-    # init distributed env first, since logger depends on the dist info.
-    # if args.launcher == 'none':
-    #     distributed = False
-    # else:
-    #     distributed = True
-    #     init_dist(args.launcher, **cfg.dist_params)
-
     num_gpus = 2
     distributed = False
     args.local_rank = 1
@@ -205,29 +198,6 @@ def main():
             s2anet_det, device_ids=[0, 1])
         torch.autograd.set_detect_anomaly(True)
         torch.distributed.barrier()
-        # pg1 = torch.distributed.new_group(range(torch.distributed.get_world_size()))
-
-        # feature_extractor = torch.nn.parallel.DistributedDataParallel(
-        #         feature_extractor, device_ids=[0,1], output_device=0,
-        #     find_unused_parameters=True, #process_group=pg1
-        # )
-
-        # pg2 = torch.distributed.new_group(range(torch.distributed.get_world_size()))
-        # classifier = torch.nn.parallel.DistributedDataParallel(
-        #     classifier, device_ids=[0,1], output_device=0,
-        #     find_unused_parameters=True, #process_group=pg2
-        # )
-        # pg3 = torch.distributed.new_group(range(torch.distributed.get_world_size()))
-        # model_D = torch.nn.parallel.DistributedDataParallel(
-        #     model_D, device_ids=[0,1], output_device=0,
-        #     find_unused_parameters=True, #process_group=pg3
-        # )
-        #
-        # # pg4 = torch.distributed.new_group(range(torch.distributed.get_world_size()))
-        # model_D = torch.nn.parallel.DistributedDataParallel(
-        #     model_D, device_ids=[0, 1], output_device=0,
-        #     find_unused_parameters=True, #process_group=pg4
-        # )
 
 
     #OPTIMIZERS
@@ -297,8 +267,7 @@ def main():
             src_fea = feature_extractor(src_input)
             src_fea2 = src_fea.to(device2)
             src_pred = classifier(src_fea2, src_size)
-            temperature = 1.8
-            src_pred = src_pred.div(temperature)
+            
             src_soft_label = F.softmax(src_pred, dim=1).detach()
             src_soft_label[src_soft_label > 0.9] = 0.9
 
@@ -308,11 +277,10 @@ def main():
             loss_obj.backward()
             #print(loss_obj, "\t", loss_reduced)
 
-            #print(tgt_input)
             tgt_fea = feature_extractor(tgt_input)
             tgt_fea2 = tgt_fea.to(device2)
             tgt_pred = classifier(tgt_fea2, tgt_size)
-            tgt_pred = tgt_pred.div(temperature)
+            
             tgt_soft_label = F.softmax(tgt_pred, dim=1)
 
             tgt_soft_label = tgt_soft_label.detach()
