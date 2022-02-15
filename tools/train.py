@@ -15,16 +15,16 @@ from mmdet.apis import (get_root_logger, init_dist, set_random_seed,
                         train_detector)
 from mmdet.datasets import build_dataset
 from mmdet.models import build_detector
-
+import wandb
 warnings.filterwarnings("ignore")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('config', help='train config file path')
-    parser.add_argument('--work_dir', help='the dir to save logs and models')
+    parser.add_argument('--config', help='test config file path', default = './configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_lowrez.py')
+    parser.add_argument('--work_dir', help='the dir to save logs and models', default='./models/train_ds2/')
     parser.add_argument(
-        '--resume_from', help='the checkpoint file to resume from')
+        '--resume_from', help='the checkpoint file to resume from', default = '')
     parser.add_argument(
         '--validate',
         action='store_true',
@@ -83,6 +83,7 @@ def maybe_init_wandb(cfg):
 
 
 def main():
+    wandb.init(project="uda", entity="adhirajghosh")
     args = parse_args()
 
     cfg = Config.fromfile(args.config)
@@ -135,7 +136,7 @@ def main():
             config=cfg.text,
             CLASSES=datasets[0].CLASSES)
 
-    maybe_init_wandb(cfg)
+    #maybe_init_wandb(cfg)
 
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
