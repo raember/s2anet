@@ -31,14 +31,15 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
-cat_selection = {'19'}
-crit_selection = {}
+cat_selection = {'85'}
 threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
+crit_selection = {*threshold_classes}
+crit_selection = {}
 area_thr_def = (1, 1.0)
 angle_thr_def = (85, 5)  # Between 5 and 85°
 l1_thr_def = (1, 1.0)
 l2_thr_def = (1, 1.0)
-ratio_thr_def = (1, 1.0)
+ratio_thr_def = (1, 2)
 thresholds = {
     # tuple: Upper and lower bound. vs single value: symmetric bounds
     # float: std deviation factor
@@ -47,31 +48,89 @@ thresholds = {
     #   Area,           Angle,          L1,         L2,         Ratio
     1:  ((1000, 30000), angle_thr_def,  (5, 50),    (10, 600),  (5, 50)),       # brace
     2:  ((23, 258),     0,              (1, 5),     (17, 100),  (5, 50)),       # ledgerLine
-    3:  ((20, 90),      None,           (4, 10),    (4, 13),    (1, 2)),        # repeatDot
+    3:  ((20, 90),      None,           (4, 10),    (4, 13),    ratio_thr_def), # repeatDot
     4:  ((1500, 9000),  angle_thr_def,  (25, 90),   (30, 110),  ratio_thr_def), # segno
     5:  ((1000, 9000),  None,           (25, 90),   (30, 110),  ratio_thr_def), # code
     6:  ((2500, 6500),  (75, 20),       (25, 50),   (70, 150),  (2, 4)),        # clefG
-    7:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  (1, 2)),        # clefCAlto
-    8:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  (1, 2)),        # clefCTenor
-    9:  ((1000, 5000),  (80, 25),       (25, 65),   (30, 80),   (1, 2)),        # clefF
+    7:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  ratio_thr_def), # clefCAlto
+    8:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  ratio_thr_def), # clefCTenor
+    9:  ((1000, 5000),  (80, 25),       (25, 65),   (30, 80),   ratio_thr_def), # clefF
     # 10 has been deleted
-    11: ((100, 200),    angle_thr_def,  (8, 13),    (10, 16),   (1, 2)),        # clef8
-    12: ((350, 450),    angle_thr_def,  (12, 20),   (20, 30),   (1, 2)),        # clef15
-    13: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   (1, 2)),        # timeSig0
+    11: ((100, 200),    angle_thr_def,  (8, 13),    (10, 16),   ratio_thr_def), # clef8
+    12: ((350, 450),    angle_thr_def,  (12, 20),   (20, 30),   ratio_thr_def), # clef15
+    13: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   ratio_thr_def), # timeSig0
     14: ((350, 700),    angle_thr_def,  (10, 20),   (25, 40),   (1, 3)),        # timeSig1
-    15: ((550, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1, 2)),        # timeSig2
-    16: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1, 2)),        # timeSig3
-    17: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   (1, 2)),        # timeSig4
-    18: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1, 2)),        # timeSig5
-    19: ((500, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1, 2)),        # timeSig6
-    25: ((5.5, 2.2),),  # noteheadBlackOnLine
-    27: ((5.5, 1.5),),  # noteheadBlackInSpace
-    # 31: ((6.0, 3.0)),  # noteheadHalfInSpace
-    # 33: ((8.0)),  # noteheadWholeOnLine
-    # 42: ((2.0, 15.0)),  # stem
-    64: (3.0,),  # accidentialSharp
-    70: ((1.0, 5.0),),  # keySharp
-    85: ((1.5, 6.0),),  # restWhole
+    15: ((550, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig2
+    16: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig3
+    17: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   ratio_thr_def), # timeSig4
+    18: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig5
+    19: ((500, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig6
+    20: ((500, 800),    (70, 5),        (18, 25),   (25, 40),   (1, 3)),        # timeSig7
+    21: ((500, 900),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig8
+    22: ((500, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig9
+    23: ((700, 3800),   (70, 10),       (25, 45),   (25, 85),   ratio_thr_def), # timeSigCommon
+    24: ((1000, 3800),  None,           (25, 45),   (30, 90),   ratio_thr_def), # timeSigCutCommon
+    25: ((85, 450),     None,           (7, 19),    (10, 25),   ratio_thr_def), # noteheadBlackOnLine
+    # 26 has been deleted
+    27: ((85, 450),     None,           (7, 19),    (10, 25),   ratio_thr_def), # noteheadBlackInSpace
+    # 28 has been deleted
+    29: ((250, 450),    None,           (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfOnLine
+    # 30 has been deleted
+    31: ((250, 450),    None,           (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfInSpace
+    # 32 has been deleted
+    33: ((400, 600),    None,           (13, 19),   (25, 35),   (1, 2.2)),      # noteheadWholeOnLine
+    # 34 has been deleted
+    35: ((400, 600),    None,           (13, 19),   (25, 35),   (1, 2.2)),      # noteheadWholeInSpace
+    # 36 has been deleted
+    37: ((650, 1000),   angle_thr_def,  (19, 35),   (30, 50),   ratio_thr_def), # noteheadDoubleWholeOnLine
+    # 38 has been deleted
+    39: ((650, 1000),   angle_thr_def,  (19, 35),   (30, 50),   ratio_thr_def), # noteheadDoubleWholeInSpace
+    # 40 has been deleted
+    41: ((20, 90),      None,           (5, 10),    (5, 12),    ratio_thr_def), # augmentationDot
+    42: ((20, 850),     (89, 1),        (1, 3),     (20, 400),  None),          # stem
+    # 43 has been deleted
+    44: ((280, 550),    (0, 25),        (14, 20),   (20, 34),   ratio_thr_def), # tremolo2
+    45: ((750, 900),    (0, 0),         (20, 25),   (35, 40),   ratio_thr_def), # tremolo3
+    46: ((1100, 1200),  (0, 0),         (20, 25),   (50, 55),   (2, 3)),        # tremolo4
+    # 47 has been deleted
+    48: ((50, 900),     None,           (4, 28),    (10, 60),   (1, 7)),        # flag8thUp
+    # 49 has been deleted
+    50: ((180, 1100),   (0, 40),        (7, 20),    (22, 65),   (2, 6)),        # flag16thUp
+    51: ((330, 1400),   (75, 5),        (7, 27),    (35, 80),   (1, 6)),        # flag32thUp
+    52: ((800, 1600),   angle_thr_def,  (11, 20),   (65, 95),   (4, 7)),        # flag64thUp
+    53: ((950, 1900),   angle_thr_def,  (11, 20),   (80, 120),  (4, 9)),        # flag128thUp
+    54: ((50, 900),     None,           (4, 28),    (10, 60),   (1, 7)),        # flag8thDown
+    # 55 has been deleted
+    56: ((400, 1200),   (45, 5),        (12, 20),   (33, 65),   (2, 4)),        # flag16thDown
+    57: ((600, 1600),   (75, 5),        (7, 27),    (35, 80),   (1, 6)),        # flag32thDown
+    58: ((800, 1700),   angle_thr_def,  (11, 22),   (65, 85),   (3, 6)),        # flag64thDown
+    59: ((950, 2600),   angle_thr_def,  (11, 25),   (80, 120),  (4, 8)),        # flag128thDown
+    60: ((165, 950),    angle_thr_def,  (6, 16),    (20, 65),   (2, 5)),        # accidentalFlat
+    # 61 has been deleted
+    62: ((170, 950),    (80, 5),        (6, 13),    (15, 85),   (3, 7)),        # accidentalNatural
+    # 63 has been deleted
+    64: ((180, 1350),   (80, 5),        (10, 20),   (22, 85),   (2, 5)),        # accidentalSharp
+    # 65 has been deleted
+    66: ((200, 650),    (80, 5),        (13, 25),   (14, 32),   ratio_thr_def), # accidentalDoubleSharp
+    67: ((800, 1400),   angle_thr_def,  (18, 40),   (30, 65),   (1, 3)),        # accidentalDoubleFlat
+    68: ((400, 950),    angle_thr_def,  (11, 17),   (35, 57),   (2, 5)),        # keyFlat
+    69: ((400, 950),    angle_thr_def,  (9, 14),    (40, 80),   (3, 7)),        # keyNatural
+    70: ((550, 1500),   angle_thr_def,  (13, 22),   (40, 80),   (2, 5)),        # keySharp
+    71: ((300, 650),    (70, 30),       (10, 25),   (23, 40),   (1, 3)),        # articAccentAbove
+    72: ((300, 650),    (70, 30),       (10, 25),   (23, 40),   (1, 3)),        # articAccentBelow
+    73: ((20, 100),     None,           (5, 10),    (4, 11),    (1, 3.0)),      # articStaccatoAbove
+    74: ((20, 100),     None,           (5, 10),    (4, 11),    (1, 3.0)),      # articStaccatoBelow
+    75: ((15, 200),     (85, 10),       (1, 8),     (15, 28),   (3, 22)),       # articTenutoAbove
+    76: ((15, 200),     (85, 10),       (1, 8),     (15, 28),   (3, 22)),       # articTenutoBelow
+    77: ((44, 150),     angle_thr_def,  (5, 10),    (9, 20),    (1, 4)),        # articStaccatissimoAbove
+    78: ((44, 150),     angle_thr_def,  (5, 10),    (9, 20),    (1, 4)),        # articStaccatissimoBelow
+    79: ((140, 500),    angle_thr_def,  (10, 20),   (13, 30),   ratio_thr_def), # articMarcatoAbove
+    80: ((140, 500),    angle_thr_def,  (10, 20),   (13, 30),   ratio_thr_def), # articMarcatoBelow
+    81: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.6, 2)),      # fermataAbove
+    82: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.6, 2)),      # fermataBelow
+    83: ((50, 300),     (70, 20),       (4, 13),    (13, 28),   (1.6, 4)),      # caesura
+    84: ((100, 350),    angle_thr_def,  (7, 18),    (13, 25),   (1, 3)),        # restDoubleWhole
+    85: ((100, 400),    angle_thr_def,  (7, 16),    (13, 35),   (1, 4)),        # restWhole
     88: ((1.8, 2.5),),  # rest8th
     90: (2.0,),  # rest32nd
     #113: (10.0),  # tuplet3
@@ -266,7 +325,14 @@ def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str):
     low_thr, high_thr = cat_thrs[thr_cls]
     low_thr = round(low_thr, 2) if low_thr is not None else None
     high_thr = round(high_thr, 2) if high_thr is not None else None
-    ax.set_title(f"{thr_cls}: {n_outliers} outliers [{minimum}, {maximum}]\n({low_thr} - {high_thr})")
+    if low_thr is not None and high_thr is not None:
+        if low_thr > high_thr:
+            bounds = f"\n]{high_thr}, {low_thr}["
+        else:
+            bounds = f"\n[{low_thr}, {high_thr}]"
+    else:
+        bounds = ''
+    ax.set_title(f"{thr_cls}: {n_outliers} outliers [{minimum}, {maximum}]{bounds}")
     ax.set_xlabel(f'Index of sorted {thr_cls}')
     ax.set_ylabel(f'{thr_cls}, sorted')
     ax.set_ylim(ymin=min(values), ymax=max(values))
