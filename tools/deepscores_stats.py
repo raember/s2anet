@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from PIL import Image, ImageDraw
 from PIL import ImageFont
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 
 from matplotlib.axes import Axes
 from matplotlib.axis import Axis
@@ -31,7 +31,7 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
-cat_selection = {'85'}
+cat_selection = {'94'}
 threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
 crit_selection = {*threshold_classes}
 crit_selection = {}
@@ -131,11 +131,56 @@ thresholds = {
     83: ((50, 300),     (70, 20),       (4, 13),    (13, 28),   (1.6, 4)),      # caesura
     84: ((100, 350),    angle_thr_def,  (7, 18),    (13, 25),   (1, 3)),        # restDoubleWhole
     85: ((100, 400),    angle_thr_def,  (7, 16),    (13, 35),   (1, 4)),        # restWhole
-    88: ((1.8, 2.5),),  # rest8th
-    90: (2.0,),  # rest32nd
-    #113: (10.0),  # tuplet3
-    122: ((1.1, 17.0),),  # beam
-    135: ((4.5, 4.5),),  # staff
+    86: ((140, 250),    angle_thr_def,  (7, 12),    (20, 30),   (2, 4)),        # restHalf
+    87: ((550, 1200),   (80, 10),       (12, 22),   (40, 60),   (2, 4)),        # restQuarter
+    88: ((350, 700),    (60, 5),        (13, 20),   (24, 35),   (1.4, 2.4)),    # rest8th
+    89: ((570, 900),    (65, 90),       (13, 20),   (39, 50),   (2, 3.3)),      # rest16th
+    90: ((750, 1300),   (65, 90),       (13, 20),   (52, 70),   (2.5, 4.2)),    # rest32nd
+    91: ((950, 1600),   (65, 90),       (13, 22),   (68, 85),   (3.3, 5.4)),    # rest64th
+    92: ((1200, 1900),  (65, 90),       (13, 22),   (80, 105),  (4.1, 6.5)),    # rest124th
+    # 93 has been deleted
+    94: ((310, 1000),   (65, 5),        (10, 30),   (21, 40),   (1, 3.4)),      # dynamicP
+    95: (),  # dynamicM
+    96: (),  # dynamicF
+    97: (),  # dynamicS
+    98: (),  # dynamicZ
+    99: (),  # dynamicR
+    # 100 has been deleted
+    # 101 has been deleted
+    # 102 has been deleted
+    # 103 has been deleted
+    104: (),  # ornamentTrill
+    105: (),  # ornamentTurn
+    106: (),  # ornamentTurnInverted
+    107: (),  # ornamentMordent
+    108: (),  # stringsDownBow
+    109: (),  # stringsDownBow
+    110: (),  # arpeggiato
+    111: (),  # keaboardPedalPed
+    112: (),  # keyboardPedalUp
+    113: (),  # tuplet3
+    114: (),  # tuplet6
+    115: (),  # fingering0
+    116: (),  # fingering1
+    117: (),  # fingering2
+    118: (),  # fingering3
+    119: (),  # fingering4
+    120: (),  # fingering5
+    121: (),  # slur
+    # 122 has been deleted
+    123: (),  # tie
+    124: (),  # restHBar
+    125: (),  # dynamicCrescendoHairpin
+    126: (),  # dynamicDiminuendoHairpin
+    # 127 has been deleted
+    129: (),  # tuplet4
+    # 130 has been deleted
+    # 131 has been deleted
+    # 132 has been deleted
+    # 133 has been deleted
+    134: (),  # tupletBracket
+    # 135 has been deleted
+    136: (),  # ottavaBracket
 }
 def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[float, float]]:
     def expand_threshold(threshold, median: float, std: float) -> Tuple[float, float]:
@@ -144,12 +189,12 @@ def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[float, float]]:
         if not isinstance(threshold, tuple):
             threshold = threshold, threshold
         low_thr, high_thr = threshold
-        if isinstance(low_thr, float):
-            low_thr *= std
-            low_thr = median - low_thr
-        if isinstance(high_thr, float):
-            high_thr *= std
-            high_thr = median + high_thr
+        # if isinstance(low_thr, float):
+        #     low_thr *= std
+        #     low_thr = median - low_thr
+        # if isinstance(high_thr, float):
+        #     high_thr *= std
+        #     high_thr = median + high_thr
         return low_thr, high_thr
     thr_list = thresholds.get(cat_stats['id'], [])
     out = defaultdict(lambda: (None, None))
@@ -162,124 +207,6 @@ def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[float, float]]:
     return {cls:out[cls] for cls in threshold_classes}
 
 
-deviation = {
-    2: (2.2, 10.0),  # ledgerLine
-    25: (5.5, 2.2),  # noteheadBlackOnLine
-    27: (5.5, 1.5),  # noteheadBlackInSpace
-    # 31: (6.0, 3.0),  # noteheadHalfInSpace
-    # 33: 8.0,  # noteheadWholeOnLine
-    # 42: (2.0, 15.0),  # stem
-    64: 3.0,  # accidentialSharp
-    70: (1.0, 5.0),  # keySharp
-    85: (1.5, 6.0),  # restWhole
-    88: (1.8, 2.5),  # rest8th
-    90: 2.0,  # rest32nd
-    #113: 10.0,  # tuplet3
-    122: (1.1, 17.0),  # beam
-    135: (4.5, 4.5),  # staff
-}
-ignore = {
-    1,  # brace
-    3,  # repeatDot
-    4,  # segno
-    5,  # coda
-    6,  # clefG
-    7,  # clefCAlto
-    8,  # clefCTenor
-    9,  # clefF
-    11,  # clef8
-    13,  # timeSig0
-    14,  # timeSig1
-    15,  # timeSig2
-    16,  # timeSig3
-    17,  # timeSig4
-    18,  # timeSig18
-    19,  # timeSig6
-    20,  # timeSig7
-    21,  # timeSig8
-    22,  # timeSig9
-    23,  # timeSigCommon
-    24,  # timeSigCutCommon
-    29,  # noteheadHalfOnLine
-    31,  # noteheadHalfInSpace
-    33,  # noteheadWholeOnLine
-    35,  # noteheadWholeInSpace
-    37,  # noteheadDoubleWholeOnLine
-    39,  # noteheadDoubleWholeInSpace
-    41,  # augmentationDot
-    42,  # stem
-    43,  # tremolo1
-    44,  # tremolo2
-    45,  # tremolo3
-    46,  # tremolo4
-    48,  # flag8thUp
-    50,  # flag16thUp
-    51,  # flag32ndUp
-    52,  # flag64thUp
-    53,  # flag128thUp
-    54,  # flag8thDown
-    56,  # flag16thDown
-    57,  # flag32ndDown
-    58,  # flag64thDown
-    59,  # flag128thDown
-    60,  # accidentialFlat
-    62,  # accidentialNatural
-    66,  # accidentialDoubleSharp
-    67,  # accidentialDoubleFlat
-    68,  # keyFlat
-    69,  # keyNatural
-    71,  # articAccentAbove
-    72,  # articAccentBelow
-    73,  # articStaccatoAbove
-    74,  # articStaccatoBelow
-    75,  # articTenutoAbove
-    76,  # articTenutoBelow
-    77,  # articStaccatissimoAbove
-    78,  # articStaccatissimoBelow
-    79,  # articMarcatoAbove
-    80,  # articMarcatoBelow
-    81,  # fermataAbove
-    82,  # fermataBelow
-    83,  # caesura
-    84,  # restDoubleWhole
-    86,  # restHalf
-    87,  # restQuarter
-    89,  # rest16th
-    91,  # rest64th
-    92,  # rest124th
-    94,  # dynamicP
-    95,  # dynamicM
-    96,  # dynamicF
-    97,  # dynamicS
-    98,  # dynamicZ
-    99,  # dynamicR
-    104,  # ornamentTrill
-    105,  # ornamentTurn
-    106,  # ornamentTurnInverted
-    107,  # ornamentMordent
-    108,  # stringsDownBow
-    109,  # stringsDownBow
-    110,  # arpeggiato
-    111,  # keaboardPedalPed
-    112,  # keyboardPedalUp
-    113,  # tuplet3
-    114,  # tuplet6
-    115,  # fingering0
-    116,  # fingering1
-    117,  # fingering2
-    118,  # fingering3
-    119,  # fingering4
-    120,  # fingering5
-    121,  # slur
-    123,  # tie
-    124,  # restHBar
-    125,  # dynamicCrescendoHairpin
-    126,  # dynamicDiminuendoHairpin
-    129,  # tuplet4
-    134,  # tupletBracket
-    136,  # ottavaBracket
-}
-default = 1.0
 def is_attribute_an_outlier(cat_stats: dict, cat_thresholds: Dict[str, Tuple[float, float]], cls: str, value: float) -> bool:
     if len(crit_selection) != 0 and cls not in crit_selection:
         return False
@@ -290,27 +217,30 @@ def is_attribute_an_outlier(cat_stats: dict, cat_thresholds: Dict[str, Tuple[flo
         return high_thr < value < low_thr
     return not (low_thr <= value <= high_thr)
 
-def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> bool:
+def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> Dict[str, float]:
     if isinstance(obbox, list):
         obbox = np.array(obbox)
     obbox = np.array(obbox).reshape((4, 2))
     cat_stats = stats[str(cat_id)]
     cat_thrs = get_thresholds(cat_stats)
     # check all attributes
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'area', OBBox.get_area(obbox)):
-        return True
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'angle', (OBBox.get_angle(obbox)) % 90 ):
-        return True
+    reasons = {}
+    area = OBBox.get_area(obbox)
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'area', area):
+        reasons['area'] = area
+    angle = (OBBox.get_angle(obbox)) % 90
+    if is_attribute_an_outlier(cat_stats, cat_thrs, 'angle', angle):
+        reasons['angle'] = angle
     l1 = np.linalg.norm(obbox[0] - obbox[1])
     l2 = np.linalg.norm(obbox[1] - obbox[2])
     l1, l2 = min(l1, l2), max(l1, l2)
     if is_attribute_an_outlier(cat_stats, cat_thrs, 'l1', l1):
-        return True
+        reasons['l1'] = l1
     if is_attribute_an_outlier(cat_stats, cat_thrs, 'l2', l2):
-        return True
+        reasons['l2'] = l2
     if is_attribute_an_outlier(cat_stats, cat_thrs, 'edge-ratio', l2 / l1):
-        return True
-    return False
+        reasons['edge-ratio'] = l2 / l1
+    return reasons
 
 def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str):
     cls_stats = cat_stats[thr_cls]
@@ -368,10 +298,7 @@ if args.plot_stats:
 if args.to_geogebra:
     print("Converting to geogebra")
     print("\033[1m")
-    # data = json.loads(input("JSON: "))
     data = json.loads(args.to_geogebra)
-    # data = {"a_bbox":[1218,1047,1261,1125],"o_bbox":[1261,1125,1235.844482421875,1045.1585693359375,1215.930908203125,1051.4327392578125,1241.08642578125,1131.274169921875],"cat_id":["25","157"],"area":284,"img_id":"1550","comments":"instance:#00020d;duration:8*2/3;rel_position:0;"}
-    # a_bbox = OBBox.expand_corners(np.array(data['a_bbox'])).reshape((4, 2))
     a_bbox = np.array(data['a_bbox']).reshape((2, 2))
     o_bbox = np.array(data['o_bbox']).reshape((4, 2))
     i = 65
@@ -476,33 +403,41 @@ def filter_bboxes(dataset: DeepScoresV2Dataset, stats: dict) -> dict:
     ):
         cat = int(cat_id[0])
         if len(cat_selection) > 0 and str(cat) in cat_selection:
-            if flag_outlier(o_bbox, cat, stats):
-                # print(f"Found outlier '{cat_info[cat]['name']}'({cat})")
+            flags = flag_outlier(o_bbox, cat, stats)
+            if len(flags) > 0:
                 if img_id not in imgs.keys():
                     img_info, _ = dataset.obb.get_img_ann_pair(idxs=None, ids=[int(img_id)])
                     filename = img_info[0]['filename']
                     imgs[img_id] = (osp.join(img_dir, filename), [])
-                imgs[img_id][1].append((cat, a_bbox, o_bbox, idx))
+                imgs[img_id][1].append((cat, a_bbox, o_bbox, idx, flags))
     return imgs
 
 def draw_outliers(imgs: dict, cat_info: dict) -> dict:
     outlier_stats = {}
     for img_id, (img_fp, bboxes) in sorted(imgs.items(), reverse=True, key=lambda kvp: len(kvp[1])):
         img = Image.open(img_fp)
-        draw = ImageDraw.Draw(img)
+        draw = ImageDraw.Draw(img, 'RGBA')
         cats = set(map(lambda tpl: tpl[0], bboxes))
         print(f"Visualized {len(bboxes)} outliers in {osp.basename(img_fp)} from the categories: {cats}")
-        for cat, a_bbox, bbox, idx in bboxes:
-            draw.rectangle(a_bbox, outline='#223CF0', width=3)
-            draw.line(bbox + bbox[:2], fill='#F03C22', width=3)
-            text = f"[{idx}] {cat_info[cat]['name']}({cat}): {OBBox.get_area(np.array(bbox).reshape((4, 2))):.1f}"
-            print(f"  * {text}")
+        for cat, a_bbox, bbox, idx, flags in bboxes:
+            draw.rectangle(a_bbox, outline='#223CF088', width=3)
+            draw.line(bbox + bbox[:2], fill='#F03C2288', width=3)
+            flag_str = '\n'.join(map(lambda kv: f"{kv[0]}: {round(kv[1], 2)}", list(flags.items())))
+            text = f"[{idx}] {cat_info[cat]['name']}({cat}):\n{flag_str}"
+            print(f"  * {text.replace(chr(10), ' ')}")
+            # Get text position
             bbox_np = np.array(bbox).reshape((4, 2))
             position = int(bbox_np.max(axis=0)[0]), int(bbox_np.min(axis=0)[1])
-            x1, y1 = ImageFont.load_default().getsize(text)
-            x1 += position[0] + 4
-            y1 += position[1] + 4
-            draw.rectangle((position[0], position[1], x1, y1), fill='#DCDCDC')
+            # Get text dimensions for gray bg box
+            x, y = 0.0, 0.0
+            for line in text.splitlines():
+                x1, y1 = ImageFont.load_default().getsize(line)
+                x = max(x, x1)
+                y += y1 + 3  # 3: interline spacing
+            x += position[0] + 4
+            y += position[1] + 4
+            # Draw gray bg for text
+            draw.rectangle((position[0], position[1], x, y), fill='#DCDCDC88')
             draw.text((position[0] + 2, position[1] + 2), text, '#F03C22')
             outlier_stats[cat] = outlier_stats.get(cat, 0) + 1
         img.save(osp.join('out_debug', osp.basename(img_fp)))
