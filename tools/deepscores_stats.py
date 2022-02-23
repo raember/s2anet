@@ -31,7 +31,7 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
-cat_selection = {'94'}
+cat_selection = {'120'}
 threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
 crit_selection = {*threshold_classes}
 crit_selection = {}
@@ -140,32 +140,32 @@ thresholds = {
     92: ((1200, 1900),  (65, 90),       (13, 22),   (80, 105),  (4.1, 6.5)),    # rest124th
     # 93 has been deleted
     94: ((310, 1000),   (65, 5),        (10, 30),   (21, 40),   (1, 3.4)),      # dynamicP
-    95: (),  # dynamicM
-    96: (),  # dynamicF
-    97: (),  # dynamicS
-    98: (),  # dynamicZ
-    99: (),  # dynamicR
+    95: ((300, 800),    angle_thr_def,  (15, 22),   (21, 37),   (1.2, 1.9)),    # dynamicM
+    96: ((180, 950),    (45, 5),        (6, 20),    (28, 55),   (2.2, 4.5)),    # dynamicF
+    97: ((135, 380),    (65, 5),        (9, 15),    (15, 37),   (1.3, 3.8)),    # dynamicS
+    98: ((160, 580),    (60, 10),       (11, 22),   (14, 28),   (1, 1.8)),      # dynamicZ
+    99: ((170, 410),    (40, 5),        (9, 18),    (17, 26),   (1, 2.1)),      # dynamicR
     # 100 has been deleted
     # 101 has been deleted
     # 102 has been deleted
     # 103 has been deleted
-    104: (),  # ornamentTrill
-    105: (),  # ornamentTurn
-    106: (),  # ornamentTurnInverted
-    107: (),  # ornamentMordent
-    108: (),  # stringsDownBow
-    109: (),  # stringsDownBow
-    110: (),  # arpeggiato
-    111: (),  # keaboardPedalPed
-    112: (),  # keyboardPedalUp
-    113: (),  # tuplet3
-    114: (),  # tuplet6
-    115: (),  # fingering0
-    116: (),  # fingering1
-    117: (),  # fingering2
-    118: (),  # fingering3
-    119: (),  # fingering4
-    120: (),  # fingering5
+    104: ((620, 1200),  (30, 70),       (20, 34),   (25, 38),   (1, 1.6)),      # ornamentTrill
+    105: ((400, 800),   angle_thr_def,  (13, 19),   (30, 45),   (2, 2.5)),      # ornamentTurn
+    106: ((420, 1150),  (70, 5),        (14, 27),   (31, 46),   (1.5, 2.5)),    # ornamentTurnInverted
+    107: ((330, 850),   (35, 80),       (13, 26),   (24, 38),   ratio_thr_def), # ornamentMordent
+    108: ((415, 800),   angle_thr_def,  (19, 25),   (22, 32),   (1, 1.4)),      # stringsDownBow
+    109: ((330, 1000),  (70, 20),       (11, 25),   (25, 42),   (1.4, 2.9)),    # stringsUpBow
+    110: ((85, 2400),   (60, 10),       (5, 26),    (15, 180),  (1, 25)),       # arpeggiato
+    111: ((1550, 3300), angle_thr_def,  (30, 45),   (52, 75),   (1.5, 1.9)),    # keyboardPedalPed
+    112: ((520, 4800),  (60, 30),       (22, 50),   (23, 105),  (1, 2.9)),      # keyboardPedalUp
+    113: ((260, 300),   angle_thr_def,  (13, 15),   (20, 22),   (1.4, 1.7)),    # tuplet3
+    114: ((290, 300),   angle_thr_def,  14,         21,         1.5),           # tuplet6
+    115: ((190, 235),   angle_thr_def,  (11, 15),   (15, 20),   (1.1, 1)),      # fingering0
+    116: ((100, 230),   (0, 16),        (6, 12),    (13, 22),   (1.6, 3)),      # fingering1
+    117: ((145, 245),   (80, 5),        (10, 14),   (14, 21),   (1.1, 2.1)),    # fingering2
+    118: ((90, 240),    angle_thr_def,  (7, 13),    (11, 22),   (1.4, 2.1)),    # fingering3
+    119: ((105, 280),   (90, 75),       (9, 16),    (12, 23),   (1.1, 2)),      # fingering4
+    120: ((120, 250),   0,              (9, 14),    (14, 22),   (1.2, 2)),      # fingering5
     121: (),  # slur
     # 122 has been deleted
     123: (),  # tie
