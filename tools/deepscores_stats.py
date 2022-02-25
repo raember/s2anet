@@ -31,7 +31,7 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
-cat_selection = {'136'}
+cat_selection = set(map(str, range(1, 137)))
 threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
 crit_selection = {*threshold_classes}
 crit_selection = {}
