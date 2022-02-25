@@ -88,7 +88,7 @@ thresholds = {
     # 40 has no samples
     41: ((20, 90),      None,           (5, 10),    (5, 12),    ratio_thr_def), # augmentationDot
     42: ((20, 850),     (89, 1),        (1, 3),     (20, 400),  None),          # stem
-    # 43 has no samples
+    43: ((135, 200),    (65, 80),       (6, 9),     (23, 28),   (3, 5)),        # tremolo1
     44: ((280, 550),    (0, 25),        (14, 20),   (20, 34),   ratio_thr_def), # tremolo2
     45: ((750, 900),    (0, 0),         (20, 25),   (35, 40),   ratio_thr_def), # tremolo3
     46: ((1100, 1200),  (0, 0),         (20, 25),   (50, 55),   (2, 3)),        # tremolo4
