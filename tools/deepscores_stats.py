@@ -244,7 +244,7 @@ def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> Dict[str, float
 
 def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str):
     cls_stats = cat_stats[thr_cls]
-    values = cls_stats['sorted']
+    values = sorted(cls_stats['values'], reverse=True)
     n = len(values)
     n_outliers = sum(map(lambda value: is_attribute_an_outlier(cat_stats, cat_thrs, thr_cls, value), values))
     median = cls_stats['median']
@@ -378,7 +378,7 @@ def compile_stats(stats: dict, cat_info: dict):
             'median': np.median(values),
             'std': np.std(values),
             'length': len(values),
-            'sorted': sorted(values, reverse=True)
+            'values': values
         }
     for cat, data in stats.items():
         stats[cat] = {
