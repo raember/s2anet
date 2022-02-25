@@ -282,7 +282,7 @@ def plot(cat_id: int, cat_stats: dict):
     cat_thrs = get_thresholds(cat_stats)
     for ax, thr_cls in zip(axs.reshape((6,)), threshold_classes):
         plot_attribute(ax, cat_stats, cat_thrs, thr_cls)
-    fig.suptitle(f"[{cat_id}] {cat_stats['name']}")
+    fig.suptitle(f"[{cat_id}] {cat_stats['name']}: {len(cat_stats[threshold_classes[0]]['values'])}")
     fig.show()
 
 STAT_FILE = 'stats.json'
