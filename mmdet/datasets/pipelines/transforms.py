@@ -652,8 +652,11 @@ class OBBox:
     @staticmethod
     def get_angle(corners: np.ndarray) -> float:
         assert corners.shape == (4, 2)
-        a, b, _, _ = corners
-        v = b - a
+        a, b, _, d = corners
+        if np.linalg.norm(b - a) > np.linalg.norm(d - a):  # The longer edge provides a better measurement for the angle
+            v = b - a
+        else:
+            v = d - a
         v = v/np.sqrt(np.dot(v, v))
         return np.rad2deg(np.arccos(v))[0]
 
