@@ -42,10 +42,9 @@ l2_thr_def = (1, 1.0)
 ratio_thr_def = (1, 2)
 thresholds = {
     # tuple: Upper and lower bound. vs single value: symmetric bounds
-    # float: std deviation factor
-    # int: absolute threshold
+    # int/float: absolute threshold
     # If high value first: Inverted threshold (mainly used for angles)
-    #   Area,           Angle,          L1,         L2,         Ratio
+    #   Area,           Angle,          L1,         L2,         Ratio           # Class name
     1:  ((1000, 30000), angle_thr_def,  (5, 50),    (10, 600),  (5, 50)),       # brace
     2:  ((23, 258),     (90, 0),        (1, 5),     (17, 100),  (5, 50)),       # ledgerLine
     3:  ((20, 90),      None,           (4, 10),    (4, 13),    ratio_thr_def), # repeatDot
