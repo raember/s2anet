@@ -45,129 +45,129 @@ thresholds = {
     # int/float: absolute threshold
     # If high value first: Inverted threshold (mainly used for angles)
     #   Area,           Angle,          L1,         L2,         Ratio           # Class name
-    1:  ((1000, 30000), angle_thr_def,  (5, 50),    (10, 600),  (5, 50)),       # brace
-    2:  ((23, 258),     (90, 0),        (1, 5),     (17, 100),  (5, 50)),       # ledgerLine
-    3:  ((20, 90),      None,           (4, 10),    (4, 13),    ratio_thr_def), # repeatDot
-    4:  ((1500, 9000),  angle_thr_def,  (25, 90),   (30, 110),  ratio_thr_def), # segno
-    5:  ((1000, 9000),  None,           (25, 90),   (30, 110),  ratio_thr_def), # code
-    6:  ((2500, 6500),  (75, 20),       (25, 50),   (70, 150),  (2, 4)),        # clefG
-    7:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  ratio_thr_def), # clefCAlto
-    8:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  ratio_thr_def), # clefCTenor
-    9:  ((1000, 5000),  (80, 25),       (25, 65),   (30, 80),   ratio_thr_def), # clefF
+    1:  ((1000, 30000), angle_thr_def,  (5, 50),    (10, 600),  (7, 50)),       # brace
+    2:  ((23, 258),     (90, 0),        (1, 5),     (17, 100),  (5, 100)),      # ledgerLine
+    3:  ((20, 90),      None,           (4, 10),    (4, 13),    (1, 1.5)),      # repeatDot
+    4:  ((1500, 9000),  angle_thr_def,  (25, 90),   (30, 110),  (1, 1.7)),      # segno
+    5:  ((1000, 9000),  None,           (25, 90),   (30, 110),  (1, 1.5)),      # code
+    6:  ((2500, 6500),  (75, 20),       (25, 50),   (70, 150),  (2, 3.5)),      # clefG
+    7:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  (1.3, 2.1)),    # clefCAlto
+    8:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  (1.3, 2.1)),    # clefCTenor
+    9:  ((1000, 5000),  (65, 15),       (25, 65),   (30, 80),   (1, 1.5)),      # clefF
     10: (),                                                                     # clefUnpitchedPercussion (no samples)
-    11: ((100, 200),    angle_thr_def,  (8, 13),    (10, 16),   ratio_thr_def), # clef8
-    12: ((350, 450),    angle_thr_def,  (12, 20),   (20, 30),   ratio_thr_def), # clef15
+    11: ((100, 200),    angle_thr_def,  (8, 13),    (10, 16),   (1.25, 1.5)),   # clef8
+    12: ((350, 450),    angle_thr_def,  (12, 20),   (20, 30),   (1.4, 1.6)),    # clef15
     13: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   ratio_thr_def), # timeSig0
-    14: ((350, 700),    angle_thr_def,  (10, 20),   (25, 40),   (1, 3)),        # timeSig1
-    15: ((550, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig2
-    16: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig3
-    17: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   ratio_thr_def), # timeSig4
-    18: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig5
-    19: ((500, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig6
-    20: ((500, 800),    (70, 5),        (18, 25),   (25, 40),   (1, 3)),        # timeSig7
-    21: ((500, 900),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig8
-    22: ((500, 800),    angle_thr_def,  (18, 25),   (25, 40),   ratio_thr_def), # timeSig9
-    23: ((700, 3800),   (70, 10),       (25, 45),   (25, 85),   ratio_thr_def), # timeSigCommon
-    24: ((1000, 3800),  None,           (25, 45),   (30, 90),   ratio_thr_def), # timeSigCutCommon
-    25: ((85, 450),     None,           (7, 19),    (10, 25),   ratio_thr_def), # noteheadBlackOnLine
+    14: ((350, 700),    (85, 15),       (10, 20),   (25, 40),   (1.5, 2.7)),    # timeSig1
+    15: ((550, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1.1, 2)),      # timeSig2
+    16: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1.3, 2)),      # timeSig3
+    17: ((500, 900),    (85, 45),       (20, 30),   (25, 40),   (1, 1.8)),      # timeSig4
+    18: ((450, 800),    angle_thr_def,  (18, 25),   (25, 40),   (1.2, 1.9)),    # timeSig5
+    19: ((500, 800),    (85, 10),       (18, 25),   (25, 40),   (1.2, 2)),      # timeSig6
+    20: ((500, 800),    (85, 18),       (18, 25),   (25, 40),   (1.2, 2.2)),    # timeSig7
+    21: ((500, 900),    (85, 10),       (18, 25),   (25, 40),   (1.1, 1.9)),    # timeSig8
+    22: ((500, 800),    (85, 25),       (18, 25),   (25, 40),   (1.2, 1.9)),    # timeSig9
+    23: ((700, 3800),   (10, 50),       (25, 45),   (25, 85),   ratio_thr_def), # timeSigCommon
+    24: ((1000, 3800),  (85, 50),       (25, 45),   (30, 90),   ratio_thr_def), # timeSigCutCommon
+    25: ((85, 450),     (40, 5),        (7, 19),    (10, 25),   (1, 1.7)),      # noteheadBlackOnLine
     26: (),                                                                     # noteheadBlackOnLineSmall (no samples)
-    27: ((85, 450),     None,           (7, 19),    (10, 25),   ratio_thr_def), # noteheadBlackInSpace
+    27: ((85, 450),     (40, 5),        (7, 19),    (10, 25),   (1, 1.7)),      # noteheadBlackInSpace
     28: (),                                                                     # noteheadBlackInSpaceSmall (no samples)
-    29: ((250, 450),    None,           (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfOnLine
+    29: ((250, 450),    (40, 5),        (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfOnLine
     30: (),                                                                     # noteheadHalfOnLineSmall (no samples)
-    31: ((250, 450),    None,           (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfInSpace
+    31: ((250, 450),    (40, 5),        (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfInSpace
     32: (),                                                                     # noteheadHalfInSpaceSmall (no samples)
-    33: ((400, 600),    None,           (13, 19),   (25, 35),   (1, 2.2)),      # noteheadWholeOnLine
+    33: ((400, 600),    (65, 5),        (13, 19),   (25, 35),   (1.5, 2.2)),    # noteheadWholeOnLine
     34: (),                                                                     # noteheadWholeOnLineSmall (no samples)
-    35: ((400, 600),    None,           (13, 19),   (25, 35),   (1, 2.2)),      # noteheadWholeInSpace
+    35: ((400, 600),    (65, 5),        (13, 19),   (25, 35),   (1.5, 2.2)),    # noteheadWholeInSpace
     36: (),                                                                     # noteheadWholeInSpaceSmall (no samples)
-    37: ((650, 1000),   angle_thr_def,  (19, 35),   (30, 50),   ratio_thr_def), # noteheadDoubleWholeOnLine
+    37: ((650, 1000),   (80, 5),        (19, 35),   (30, 50),   (1.1, 2.2)),    # noteheadDoubleWholeOnLine
     38: (),                                                                     # noteheadDoubleWholeOnLineSmall (no samples)
-    39: ((650, 1000),   angle_thr_def,  (19, 35),   (30, 50),   ratio_thr_def), # noteheadDoubleWholeInSpace
+    39: ((650, 1000),   (80, 5),        (19, 35),   (30, 50),   (1.1, 2.3)),    # noteheadDoubleWholeInSpace
     40: (),                                                                     # noteheadDoubleWholeInSpaceSmall (no samples)
-    41: ((20, 90),      None,           (5, 10),    (5, 12),    ratio_thr_def), # augmentationDot
+    41: ((20, 90),      None,           (5, 10),    (5, 12),    (1, 1.5)),      # augmentationDot
     42: ((20, 850),     (89, 1),        (1, 3),     (20, 400),  None),          # stem
-    43: ((135, 200),    (65, 80),       (6, 9),     (23, 28),   (3, 5)),        # tremolo1
-    44: ((280, 550),    (0, 25),        (14, 20),   (20, 34),   ratio_thr_def), # tremolo2
-    45: ((750, 900),    (0, 0),         (20, 25),   (35, 40),   ratio_thr_def), # tremolo3
-    46: ((1100, 1200),  (0, 0),         (20, 25),   (50, 55),   (2, 3)),        # tremolo4
+    43: ((135, 200),    (65, 80),       (6, 9),     (23, 28),   (3.4, 4.3)),    # tremolo1
+    44: ((280, 550),    (60, 10),       (14, 20),   (20, 34),   (1.3, 1.9)),    # tremolo2
+    45: ((750, 900),    (0, 0),         (20, 25),   (35, 40),   (1.6, 1.8)),    # tremolo3
+    46: ((1100, 1200),  (0, 0),         (20, 25),   (50, 55),   (2.2, 2.4)),    # tremolo4
     47: (),                                                                     # tremolo5 (no samples)
-    48: ((50, 900),     None,           (4, 28),    (10, 60),   (1, 7)),        # flag8thUp
+    48: ((50, 900),     (0, 60),        (4, 28),    (10, 60),   (1, 7)),        # flag8thUp
     49: (),                                                                     # flag8thUpSmall (no samples)
-    50: ((180, 1100),   (0, 40),        (7, 20),    (22, 65),   (2, 6)),        # flag16thUp
-    51: ((330, 1400),   (75, 5),        (7, 27),    (35, 80),   (1, 6)),        # flag32thUp
-    52: ((800, 1600),   angle_thr_def,  (11, 20),   (65, 95),   (4, 7)),        # flag64thUp
-    53: ((950, 1900),   angle_thr_def,  (11, 20),   (80, 120),  (4, 9)),        # flag128thUp
+    50: ((180, 1100),   (0, 40),        (7, 20),    (22, 65),   (2.5, 5.5)),    # flag16thUp
+    51: ((330, 1400),   (85, 10),       (7, 27),    (35, 80),   (1.8, 6)),      # flag32thUp
+    52: ((800, 1600),   angle_thr_def,  (11, 20),   (65, 95),   (4.6, 7)),      # flag64thUp
+    53: ((950, 1900),   angle_thr_def,  (11, 20),   (80, 120),  (5, 9)),        # flag128thUp
     54: ((50, 900),     None,           (4, 28),    (10, 60),   (1, 7)),        # flag8thDown
     55: (),                                                                     # flag8thDownSmall (no samples)
-    56: ((400, 1200),   (45, 5),        (12, 20),   (33, 65),   (2, 4)),        # flag16thDown
-    57: ((600, 1600),   (75, 5),        (7, 27),    (35, 80),   (1, 6)),        # flag32thDown
-    58: ((800, 1700),   angle_thr_def,  (11, 22),   (65, 85),   (3, 6)),        # flag64thDown
-    59: ((950, 2600),   angle_thr_def,  (11, 25),   (80, 120),  (4, 8)),        # flag128thDown
-    60: ((165, 950),    angle_thr_def,  (6, 16),    (20, 65),   (2, 5)),        # accidentalFlat
+    56: ((400, 1200),   (85, 45),       (12, 20),   (33, 65),   (2.5, 3.5)),    # flag16thDown
+    57: ((600, 1600),   angle_thr_def,  (7, 27),    (35, 80),   (2.8, 4.8)),    # flag32thDown
+    58: ((800, 1700),   angle_thr_def,  (11, 22),   (65, 85),   (3.5, 6)),      # flag64thDown
+    59: ((950, 2600),   angle_thr_def,  (11, 25),   (80, 120),  (4.1, 7.5)),    # flag128thDown
+    60: ((165, 950),    angle_thr_def,  (6, 16),    (20, 65),   (2.3, 4.5)),    # accidentalFlat
     61: (),                                                                     # accidentalFlatSmall (no samples)
-    62: ((170, 950),    (80, 5),        (6, 13),    (15, 85),   (3, 7)),        # accidentalNatural
+    62: ((170, 950),    angle_thr_def,  (6, 13),    (15, 85),   (3.5, 6.8)),    # accidentalNatural
     63: (),                                                                     # accidentalNaturalSmall (no samples)
-    64: ((180, 1350),   (80, 5),        (10, 20),   (22, 85),   (2, 5)),        # accidentalSharp
+    64: ((180, 1350),   angle_thr_def,  (10, 20),   (22, 85),   (2.5, 4.4)),    # accidentalSharp
     65: (),                                                                     # accidentalSharpSmall (no samples)
-    66: ((200, 650),    (80, 5),        (13, 25),   (14, 32),   ratio_thr_def), # accidentalDoubleSharp
+    66: ((200, 650),    angle_thr_def,  (13, 25),   (14, 32),   (1, 1.5)),      # accidentalDoubleSharp
     67: ((800, 1400),   angle_thr_def,  (18, 40),   (30, 65),   (1, 3)),        # accidentalDoubleFlat
     68: ((400, 950),    angle_thr_def,  (11, 17),   (35, 57),   (2, 5)),        # keyFlat
-    69: ((400, 950),    angle_thr_def,  (9, 14),    (40, 80),   (3, 7)),        # keyNatural
-    70: ((550, 1500),   angle_thr_def,  (13, 22),   (40, 80),   (2, 5)),        # keySharp
-    71: ((300, 650),    (70, 30),       (10, 25),   (23, 40),   (1, 3)),        # articAccentAbove
-    72: ((300, 650),    (70, 30),       (10, 25),   (23, 40),   (1, 3)),        # articAccentBelow
-    73: ((20, 100),     None,           (5, 10),    (4, 11),    (1, 3.0)),      # articStaccatoAbove
-    74: ((20, 100),     None,           (5, 10),    (4, 11),    (1, 3.0)),      # articStaccatoBelow
-    75: ((15, 200),     (85, 10),       (1, 8),     (15, 28),   (3, 22)),       # articTenutoAbove
-    76: ((15, 200),     (85, 10),       (1, 8),     (15, 28),   (3, 22)),       # articTenutoBelow
-    77: ((44, 150),     angle_thr_def,  (5, 10),    (9, 20),    (1, 4)),        # articStaccatissimoAbove
-    78: ((44, 150),     angle_thr_def,  (5, 10),    (9, 20),    (1, 4)),        # articStaccatissimoBelow
-    79: ((140, 500),    angle_thr_def,  (10, 20),   (13, 30),   ratio_thr_def), # articMarcatoAbove
-    80: ((140, 500),    angle_thr_def,  (10, 20),   (13, 30),   ratio_thr_def), # articMarcatoBelow
-    81: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.6, 2)),      # fermataAbove
-    82: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.6, 2)),      # fermataBelow
-    83: ((50, 300),     (70, 20),       (4, 13),    (13, 28),   (1.6, 4)),      # caesura
-    84: ((100, 350),    angle_thr_def,  (7, 18),    (13, 25),   (1, 3)),        # restDoubleWhole
-    85: ((100, 400),    angle_thr_def,  (7, 16),    (13, 35),   (1, 4)),        # restWhole
-    86: ((140, 250),    angle_thr_def,  (7, 12),    (20, 30),   (2, 4)),        # restHalf
-    87: ((550, 1200),   (80, 10),       (12, 22),   (40, 60),   (2, 4)),        # restQuarter
-    88: ((350, 700),    (60, 5),        (13, 20),   (24, 35),   (1.4, 2.4)),    # rest8th
-    89: ((570, 900),    (65, 90),       (13, 20),   (39, 50),   (2, 3.3)),      # rest16th
-    90: ((750, 1300),   (65, 90),       (13, 20),   (52, 70),   (2.5, 4.2)),    # rest32nd
-    91: ((950, 1600),   (65, 90),       (13, 22),   (68, 85),   (3.3, 5.4)),    # rest64th
-    92: ((1200, 1900),  (65, 90),       (13, 22),   (80, 105),  (4.1, 6.5)),    # rest124th
+    69: ((400, 950),    angle_thr_def,  (9, 14),    (40, 80),   (3.5, 7)),      # keyNatural
+    70: ((550, 1500),   (85, 10),       (13, 22),   (40, 80),   (2.5, 4.3)),    # keySharp
+    71: ((300, 650),    (60, 5),        (10, 25),   (23, 40),   (1.5, 3)),      # articAccentAbove
+    72: ((300, 650),    (60, 5),        (10, 25),   (23, 40),   (1.5, 3)),      # articAccentBelow
+    73: ((20, 100),     (85, 65),       (5, 10),    (4, 11),    (1, 1.6)),      # articStaccatoAbove
+    74: ((20, 100),     (85, 65),       (5, 10),    (4, 11),    (1, 1.6)),      # articStaccatoBelow
+    75: ((15, 200),     angle_thr_def,  (1, 8),     (15, 28),   (3, 22)),       # articTenutoAbove
+    76: ((15, 200),     angle_thr_def,  (1, 8),     (15, 28),   (3, 22)),       # articTenutoBelow
+    77: ((44, 150),     angle_thr_def,  (5, 10),    (9, 20),    (1.5, 3.5)),    # articStaccatissimoAbove
+    78: ((44, 150),     angle_thr_def,  (5, 10),    (9, 20),    (1.5, 3.5)),    # articStaccatissimoBelow
+    79: ((140, 500),    (85, 30),       (10, 20),   (13, 30),   ratio_thr_def), # articMarcatoAbove
+    80: ((140, 500),    (85, 30),       (10, 20),   (13, 30),   ratio_thr_def), # articMarcatoBelow
+    81: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.6, 2.2)),    # fermataAbove
+    82: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.6, 2.2)),    # fermataBelow
+    83: ((50, 300),     (85, 20),       (4, 13),    (13, 28),   (1.6, 4)),      # caesura
+    84: ((100, 350),    angle_thr_def,  (7, 18),    (13, 25),   (1, 2.5)),      # restDoubleWhole
+    85: ((100, 400),    angle_thr_def,  (7, 16),    (13, 35),   (1, 4.5)),      # restWhole
+    86: ((140, 250),    angle_thr_def,  (7, 12),    (20, 30),   (2.2, 4.6)),    # restHalf
+    87: ((550, 1200),   (80, 10),       (12, 22),   (40, 60),   (2.2, 4.4)),    # restQuarter
+    88: ((350, 700),    (85, 30),       (13, 20),   (24, 35),   (1.4, 2.4)),    # rest8th
+    89: ((570, 900),    (1, 25),        (13, 20),   (39, 50),   (2, 3.3)),      # rest16th
+    90: ((750, 1300),   (1, 20),        (13, 20),   (52, 70),   (2.5, 4.2)),    # rest32nd
+    91: ((950, 1600),   (1, 20),        (13, 22),   (68, 85),   (3.3, 5.4)),    # rest64th
+    92: ((1200, 1900),  (1, 20),        (13, 22),   (80, 105),  (4.1, 6.5)),    # rest124th
     93: (),                                                                     # restHNr (no samples)
-    94: ((310, 1000),   (65, 5),        (10, 30),   (21, 40),   (1, 3.4)),      # dynamicP
+    94: ((310, 1000),   (0, 22),        (10, 30),   (21, 40),   (1, 3.5)),      # dynamicP
     95: ((300, 800),    angle_thr_def,  (15, 22),   (21, 37),   (1.2, 1.9)),    # dynamicM
-    96: ((180, 950),    (45, 5),        (6, 20),    (28, 55),   (2.2, 4.5)),    # dynamicF
-    97: ((135, 380),    (65, 5),        (9, 15),    (15, 37),   (1.3, 3.8)),    # dynamicS
-    98: ((160, 580),    (60, 10),       (11, 22),   (14, 28),   (1, 1.8)),      # dynamicZ
-    99: ((170, 410),    (40, 5),        (9, 18),    (17, 26),   (1, 2.1)),      # dynamicR
+    96: ((180, 950),    (85, 45),       (6, 20),    (28, 55),   (2.2, 4.5)),    # dynamicF
+    97: ((135, 380),    (85, 25),       (9, 15),    (15, 37),   (1.3, 3.8)),    # dynamicS
+    98: ((160, 580),    (85, 30),       (11, 22),   (14, 28),   (1, 1.8)),      # dynamicZ
+    99: ((170, 410),    (85, 55),       (9, 18),    (17, 26),   (1, 2.1)),      # dynamicR
     100: (),                                                                    # graceNoteAcciaccaturaStemUp (no samples)
     101: (),                                                                    # graceNoteAppoggiaturaStemUp (no samples)
     102: (),                                                                    # graceNoteAcciaccaturaStemDown (no samples)
     103: (),                                                                    # graceNoteAppoggiaturaStemDown (no samples)
-    104: ((620, 1200),  (30, 70),       (20, 34),   (25, 38),   (1, 1.6)),      # ornamentTrill
+    104: ((620, 1200),  (20, 70),       (20, 34),   (25, 38),   (1, 1.6)),      # ornamentTrill
     105: ((400, 800),   angle_thr_def,  (13, 19),   (30, 45),   (2, 2.5)),      # ornamentTurn
     106: ((420, 1150),  (70, 5),        (14, 27),   (31, 46),   (1.5, 2.5)),    # ornamentTurnInverted
-    107: ((330, 850),   (35, 80),       (13, 26),   (24, 38),   ratio_thr_def), # ornamentMordent
+    107: ((330, 850),   (45, 85),       (13, 26),   (24, 38),   ratio_thr_def), # ornamentMordent
     108: ((415, 800),   angle_thr_def,  (19, 25),   (22, 32),   (1, 1.4)),      # stringsDownBow
-    109: ((330, 1000),  (70, 20),       (11, 25),   (25, 42),   (1.4, 2.9)),    # stringsUpBow
-    110: ((85, 2400),   (60, 10),       (5, 26),    (15, 180),  (1, 25)),       # arpeggiato
+    109: ((330, 1000),  (85, 20),       (11, 25),   (25, 42),   (1.4, 2.9)),    # stringsUpBow
+    110: ((85, 2400),   (85, 25),       (5, 26),    (15, 180),  (1, 25)),       # arpeggiato
     111: ((1550, 3300), angle_thr_def,  (30, 45),   (52, 75),   (1.5, 1.9)),    # keyboardPedalPed
     112: ((520, 4800),  (60, 30),       (22, 50),   (23, 105),  (1, 2.9)),      # keyboardPedalUp
     113: ((260, 300),   angle_thr_def,  (13, 15),   (20, 22),   (1.4, 1.7)),    # tuplet3
     114: ((290, 300),   angle_thr_def,  14,         21,         1.5),           # tuplet6
     115: ((190, 235),   angle_thr_def,  (11, 15),   (15, 20),   (1.1, 1)),      # fingering0
-    116: ((100, 230),   (0, 16),        (6, 12),    (13, 22),   (1.6, 3)),      # fingering1
-    117: ((145, 245),   (80, 5),        (10, 14),   (14, 21),   (1.1, 2.1)),    # fingering2
-    118: ((90, 240),    angle_thr_def,  (7, 13),    (11, 22),   (1.4, 2.1)),    # fingering3
-    119: ((105, 280),   (90, 75),       (9, 16),    (12, 23),   (1.1, 2)),      # fingering4
-    120: ((120, 250),   (90, 0),        (9, 14),    (14, 22),   (1.2, 2)),      # fingering5
-    121: ((75, 250000), None,           (4, 100),   (18, 2500), (2, 90)),       # slur
-    122: ((50, 11000),  (52, 38),       (4, 9),     (12, 1600), (1.5, 500)),    # beam
-    123: ((10, 25000),  (80, 10),       (2, 15),    (5, 2000),  (1.5, 150)),    # tie
+    116: ((100, 230),   (0, 17),        (6, 12),    (13, 22),   (1.6, 3)),      # fingering1
+    117: ((145, 245),   (90, 10),       (10, 14),   (14, 21),   (1.1, 2.1)),    # fingering2
+    118: ((90, 240),    (90, 10),       (7, 13),    (11, 22),   (1.4, 2.1)),    # fingering3
+    119: ((105, 280),   (90, 40),       (9, 16),    (12, 23),   (1.1, 2)),      # fingering4
+    120: ((120, 250),   (90, 5),        (9, 14),    (14, 22),   (1.2, 2)),      # fingering5
+    121: ((75, 250000), (40, 5),        (4, 100),   (18, 2500), (2, 90)),       # slur
+    122: ((50, 11000),  (50, 5),        (4, 9),     (12, 1600), (1.5, 500)),    # beam
+    123: ((10, 25000),  (80, 5),        (2, 15),    (5, 2000),  (1.5, 150)),    # tie
     124: ((8000, 10000),(90, 0),        (32, 34),   (260, 280), (8, 9)),        # restHBar
     125: ((240, 70000), angle_thr_def,  (11, 27),   (22, 3500), (1, 200)),      # dynamicCrescendoHairpin
     126: ((240, 70000), angle_thr_def,  (11, 27),   (22, 3500), (1, 200)),      # dynamicDiminuendoHairpin
