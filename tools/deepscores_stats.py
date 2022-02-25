@@ -31,7 +31,7 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
-cat_selection = {'120'}
+cat_selection = {'136'}
 threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
 crit_selection = {*threshold_classes}
 crit_selection = {}
@@ -47,7 +47,7 @@ thresholds = {
     # If high value first: Inverted threshold (mainly used for angles)
     #   Area,           Angle,          L1,         L2,         Ratio
     1:  ((1000, 30000), angle_thr_def,  (5, 50),    (10, 600),  (5, 50)),       # brace
-    2:  ((23, 258),     0,              (1, 5),     (17, 100),  (5, 50)),       # ledgerLine
+    2:  ((23, 258),     (90, 0),        (1, 5),     (17, 100),  (5, 50)),       # ledgerLine
     3:  ((20, 90),      None,           (4, 10),    (4, 13),    ratio_thr_def), # repeatDot
     4:  ((1500, 9000),  angle_thr_def,  (25, 90),   (30, 110),  ratio_thr_def), # segno
     5:  ((1000, 9000),  None,           (25, 90),   (30, 110),  ratio_thr_def), # code
@@ -55,7 +55,7 @@ thresholds = {
     7:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  ratio_thr_def), # clefCAlto
     8:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  ratio_thr_def), # clefCTenor
     9:  ((1000, 5000),  (80, 25),       (25, 65),   (30, 80),   ratio_thr_def), # clefF
-    # 10 has been deleted
+    # 10 has no samples
     11: ((100, 200),    angle_thr_def,  (8, 13),    (10, 16),   ratio_thr_def), # clef8
     12: ((350, 450),    angle_thr_def,  (12, 20),   (20, 30),   ratio_thr_def), # clef15
     13: ((500, 900),    angle_thr_def,  (20, 30),   (25, 40),   ratio_thr_def), # timeSig0
@@ -71,46 +71,46 @@ thresholds = {
     23: ((700, 3800),   (70, 10),       (25, 45),   (25, 85),   ratio_thr_def), # timeSigCommon
     24: ((1000, 3800),  None,           (25, 45),   (30, 90),   ratio_thr_def), # timeSigCutCommon
     25: ((85, 450),     None,           (7, 19),    (10, 25),   ratio_thr_def), # noteheadBlackOnLine
-    # 26 has been deleted
+    # 26 has no samples
     27: ((85, 450),     None,           (7, 19),    (10, 25),   ratio_thr_def), # noteheadBlackInSpace
-    # 28 has been deleted
+    # 28 has no samples
     29: ((250, 450),    None,           (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfOnLine
-    # 30 has been deleted
+    # 30 has no samples
     31: ((250, 450),    None,           (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfInSpace
-    # 32 has been deleted
+    # 32 has no samples
     33: ((400, 600),    None,           (13, 19),   (25, 35),   (1, 2.2)),      # noteheadWholeOnLine
-    # 34 has been deleted
+    # 34 has no samples
     35: ((400, 600),    None,           (13, 19),   (25, 35),   (1, 2.2)),      # noteheadWholeInSpace
-    # 36 has been deleted
+    # 36 has no samples
     37: ((650, 1000),   angle_thr_def,  (19, 35),   (30, 50),   ratio_thr_def), # noteheadDoubleWholeOnLine
-    # 38 has been deleted
+    # 38 has no samples
     39: ((650, 1000),   angle_thr_def,  (19, 35),   (30, 50),   ratio_thr_def), # noteheadDoubleWholeInSpace
-    # 40 has been deleted
+    # 40 has no samples
     41: ((20, 90),      None,           (5, 10),    (5, 12),    ratio_thr_def), # augmentationDot
     42: ((20, 850),     (89, 1),        (1, 3),     (20, 400),  None),          # stem
-    # 43 has been deleted
+    # 43 has no samples
     44: ((280, 550),    (0, 25),        (14, 20),   (20, 34),   ratio_thr_def), # tremolo2
     45: ((750, 900),    (0, 0),         (20, 25),   (35, 40),   ratio_thr_def), # tremolo3
     46: ((1100, 1200),  (0, 0),         (20, 25),   (50, 55),   (2, 3)),        # tremolo4
-    # 47 has been deleted
+    # 47 has no samples
     48: ((50, 900),     None,           (4, 28),    (10, 60),   (1, 7)),        # flag8thUp
-    # 49 has been deleted
+    # 49 has no samples
     50: ((180, 1100),   (0, 40),        (7, 20),    (22, 65),   (2, 6)),        # flag16thUp
     51: ((330, 1400),   (75, 5),        (7, 27),    (35, 80),   (1, 6)),        # flag32thUp
     52: ((800, 1600),   angle_thr_def,  (11, 20),   (65, 95),   (4, 7)),        # flag64thUp
     53: ((950, 1900),   angle_thr_def,  (11, 20),   (80, 120),  (4, 9)),        # flag128thUp
     54: ((50, 900),     None,           (4, 28),    (10, 60),   (1, 7)),        # flag8thDown
-    # 55 has been deleted
+    # 55 has no samples
     56: ((400, 1200),   (45, 5),        (12, 20),   (33, 65),   (2, 4)),        # flag16thDown
     57: ((600, 1600),   (75, 5),        (7, 27),    (35, 80),   (1, 6)),        # flag32thDown
     58: ((800, 1700),   angle_thr_def,  (11, 22),   (65, 85),   (3, 6)),        # flag64thDown
     59: ((950, 2600),   angle_thr_def,  (11, 25),   (80, 120),  (4, 8)),        # flag128thDown
     60: ((165, 950),    angle_thr_def,  (6, 16),    (20, 65),   (2, 5)),        # accidentalFlat
-    # 61 has been deleted
+    # 61 has no samples
     62: ((170, 950),    (80, 5),        (6, 13),    (15, 85),   (3, 7)),        # accidentalNatural
-    # 63 has been deleted
+    # 63 has no samples
     64: ((180, 1350),   (80, 5),        (10, 20),   (22, 85),   (2, 5)),        # accidentalSharp
-    # 65 has been deleted
+    # 65 has no samples
     66: ((200, 650),    (80, 5),        (13, 25),   (14, 32),   ratio_thr_def), # accidentalDoubleSharp
     67: ((800, 1400),   angle_thr_def,  (18, 40),   (30, 65),   (1, 3)),        # accidentalDoubleFlat
     68: ((400, 950),    angle_thr_def,  (11, 17),   (35, 57),   (2, 5)),        # keyFlat
@@ -138,17 +138,17 @@ thresholds = {
     90: ((750, 1300),   (65, 90),       (13, 20),   (52, 70),   (2.5, 4.2)),    # rest32nd
     91: ((950, 1600),   (65, 90),       (13, 22),   (68, 85),   (3.3, 5.4)),    # rest64th
     92: ((1200, 1900),  (65, 90),       (13, 22),   (80, 105),  (4.1, 6.5)),    # rest124th
-    # 93 has been deleted
+    # 93 has no samples
     94: ((310, 1000),   (65, 5),        (10, 30),   (21, 40),   (1, 3.4)),      # dynamicP
     95: ((300, 800),    angle_thr_def,  (15, 22),   (21, 37),   (1.2, 1.9)),    # dynamicM
     96: ((180, 950),    (45, 5),        (6, 20),    (28, 55),   (2.2, 4.5)),    # dynamicF
     97: ((135, 380),    (65, 5),        (9, 15),    (15, 37),   (1.3, 3.8)),    # dynamicS
     98: ((160, 580),    (60, 10),       (11, 22),   (14, 28),   (1, 1.8)),      # dynamicZ
     99: ((170, 410),    (40, 5),        (9, 18),    (17, 26),   (1, 2.1)),      # dynamicR
-    # 100 has been deleted
-    # 101 has been deleted
-    # 102 has been deleted
-    # 103 has been deleted
+    # 100 has no samples
+    # 101 has no samples
+    # 102 has no samples
+    # 103 has no samples
     104: ((620, 1200),  (30, 70),       (20, 34),   (25, 38),   (1, 1.6)),      # ornamentTrill
     105: ((400, 800),   angle_thr_def,  (13, 19),   (30, 45),   (2, 2.5)),      # ornamentTurn
     106: ((420, 1150),  (70, 5),        (14, 27),   (31, 46),   (1.5, 2.5)),    # ornamentTurnInverted
@@ -165,22 +165,23 @@ thresholds = {
     117: ((145, 245),   (80, 5),        (10, 14),   (14, 21),   (1.1, 2.1)),    # fingering2
     118: ((90, 240),    angle_thr_def,  (7, 13),    (11, 22),   (1.4, 2.1)),    # fingering3
     119: ((105, 280),   (90, 75),       (9, 16),    (12, 23),   (1.1, 2)),      # fingering4
-    120: ((120, 250),   0,              (9, 14),    (14, 22),   (1.2, 2)),      # fingering5
-    121: (),  # slur
-    # 122 has been deleted
-    123: (),  # tie
-    124: (),  # restHBar
-    125: (),  # dynamicCrescendoHairpin
-    126: (),  # dynamicDiminuendoHairpin
-    # 127 has been deleted
-    129: (),  # tuplet4
-    # 130 has been deleted
-    # 131 has been deleted
-    # 132 has been deleted
-    # 133 has been deleted
-    134: (),  # tupletBracket
-    # 135 has been deleted
-    136: (),  # ottavaBracket
+    120: ((120, 250),   (90, 0),        (9, 14),    (14, 22),   (1.2, 2)),      # fingering5
+    121: ((75, 250000), None,           (4, 100),   (18, 2500), (2, 90)),       # slur
+    122: ((50, 11000),  (52, 38),       (4, 9),     (12, 1600), (1.5, 500)),    # beam
+    123: ((10, 25000),  (80, 10),       (2, 15),    (5, 2000),  (1.5, 150)),    # tie
+    124: ((8000, 10000),(90, 0),        (32, 34),   (260, 280), (8, 9)),        # restHBar
+    125: ((240, 70000), angle_thr_def,  (11, 27),   (22, 3500), (1, 200)),      # dynamicCrescendoHairpin
+    126: ((240, 70000), angle_thr_def,  (11, 27),   (22, 3500), (1, 200)),      # dynamicDiminuendoHairpin
+    127: ((250, 300),   angle_thr_def,  (10, 14),   (12, 24),   (1.3, 2.2)),    # tuplet1
+    128: ((250, 330),   angle_thr_def,  (13, 18),   (18, 24),   (1.3, 1.8)),    # tuplet2 (no samples)
+    129: ((300, 380),   angle_thr_def,  (13, 20),   (15, 24),   (1, 1.5)),      # tuplet4
+    130: ((250, 330),   angle_thr_def,  (13, 18),   (18, 24),   (1.1, 1.5)),    # tuplet5
+    131: ((250, 330),   angle_thr_def,  (13, 18),   (18, 24),   (1.3, 1.8)),    # tuplet7
+    132: ((250, 330),   angle_thr_def,  (13, 18),   (18, 24),   (1.3, 1.8)),    # tuplet8
+    133: ((280, 350),   angle_thr_def,  (13, 18),   (18, 24),   (1.3, 1.8)),    # tuplet9
+    134: ((580, 10000), (75, 15),       (10, 30),   (55, 700),  (4, 80)),       # tupletBracket
+    135: ((271, 250000),angle_thr_def,  (1, 70),    (400, 4500),(6, 4500)),     # staff
+    136: ((50, 25000),  (80, 10),       (1, 17),    (10, 2500), (2, 2500)),     # ottavaBracket
 }
 def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[float, float]]:
     def expand_threshold(threshold, median: float, std: float) -> Tuple[float, float]:
