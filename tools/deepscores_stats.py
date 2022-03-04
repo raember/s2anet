@@ -500,11 +500,13 @@ def fix_annotations(anns: OBBAnns):
             print(".", end='')
         return list(map(int, bbox.reshape((8,))))
     def per_row(x):
-        abbox, obbox = x[0], x[1]
+        abbox, obbox, cls_id = x[0], x[1], x[2]
         # make abbox into a 8-tuple like obbox
         abbox = [abbox[2], abbox[3], abbox[2], abbox[1], abbox[0], abbox[1], abbox[0], abbox[3]]
         abbox = fix_ann(abbox)
         x[0] = [abbox[0], abbox[1], abbox[4], abbox[5]]
+        if '81' in cls_id or '82' in cls_id:  # Align obbox to abbox for fermata
+             obbox = abbox
         obbox = fix_ann(obbox)
         x[1] = obbox
         x[3] = int(OBBox.get_area(np.array([obbox[0::2], obbox[1::2]]).T))
