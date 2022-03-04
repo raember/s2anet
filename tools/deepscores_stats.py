@@ -47,7 +47,7 @@ thresholds = {
     #   Area,           Angle,          L1,         L2,         Ratio           # Class name
     1:  ((1000, 30000), angle_thr_def,  (5, 50),    (10, 600),  (7, 50)),       # brace
     2:  ((23, 258),     (90, 0),        (1, 5),     (17, 100),  (5, 100)),      # ledgerLine
-    3:  ((20, 90),      None,           (4, 10),    (4, 13),    (1, 1.5)),      # repeatDot
+    3:  ((20, 90),      None,           (4, 10),    (4, 13),    (1, 1.7)),      # repeatDot
     4:  ((1500, 9000),  angle_thr_def,  (25, 90),   (30, 110),  (1, 1.7)),      # segno
     5:  ((1000, 9000),  None,           (25, 90),   (30, 110),  (1, 1.5)),      # code
     6:  ((2500, 6500),  (75, 20),       (25, 50),   (70, 150),  (2, 3.5)),      # clefG
@@ -67,11 +67,11 @@ thresholds = {
     20: ((500, 800),    (85, 18),       (18, 25),   (25, 40),   (1.2, 2.2)),    # timeSig7
     21: ((500, 900),    (85, 10),       (18, 25),   (25, 40),   (1.1, 1.9)),    # timeSig8
     22: ((500, 800),    (85, 25),       (18, 25),   (25, 40),   (1.2, 1.9)),    # timeSig9
-    23: ((700, 3800),   (10, 50),       (25, 45),   (25, 85),   ratio_thr_def), # timeSigCommon
+    23: ((700, 3800),   (0, 25),        (25, 45),   (25, 85),   ratio_thr_def), # timeSigCommon
     24: ((1000, 3800),  (85, 50),       (25, 45),   (30, 90),   ratio_thr_def), # timeSigCutCommon
-    25: ((85, 450),     (40, 5),        (7, 19),    (10, 25),   (1, 1.7)),      # noteheadBlackOnLine
+    25: ((85, 450),     (40, 5),        (7, 19),    (10, 25),   (1, 1.8)),      # noteheadBlackOnLine
     26: (),                                                                     # noteheadBlackOnLineSmall (no samples)
-    27: ((85, 450),     (40, 5),        (7, 19),    (10, 25),   (1, 1.7)),      # noteheadBlackInSpace
+    27: ((85, 450),     (40, 5),        (7, 19),    (10, 25),   (1, 1.8)),      # noteheadBlackInSpace
     28: (),                                                                     # noteheadBlackInSpaceSmall (no samples)
     29: ((250, 450),    (40, 5),        (13, 19),   (16, 27),   ratio_thr_def), # noteheadHalfOnLine
     30: (),                                                                     # noteheadHalfOnLineSmall (no samples)
@@ -85,7 +85,7 @@ thresholds = {
     38: (),                                                                     # noteheadDoubleWholeOnLineSmall (no samples)
     39: ((650, 1000),   (80, 5),        (19, 35),   (30, 50),   (1.1, 2.3)),    # noteheadDoubleWholeInSpace
     40: (),                                                                     # noteheadDoubleWholeInSpaceSmall (no samples)
-    41: ((20, 90),      None,           (5, 10),    (5, 12),    (1, 1.5)),      # augmentationDot
+    41: ((20, 90),      None,           (5, 10),    (5, 12),    (1, 1.6)),      # augmentationDot
     42: ((20, 850),     (89, 1),        (1, 3),     (20, 400),  None),          # stem
     43: ((135, 200),    (65, 80),       (6, 9),     (23, 28),   (3.4, 4.3)),    # tremolo1
     44: ((280, 550),    (60, 10),       (14, 20),   (20, 34),   (1.3, 1.9)),    # tremolo2
@@ -106,9 +106,9 @@ thresholds = {
     59: ((950, 2600),   angle_thr_def,  (11, 25),   (80, 120),  (4.1, 7.5)),    # flag128thDown
     60: ((165, 950),    angle_thr_def,  (6, 16),    (20, 65),   (2.3, 4.5)),    # accidentalFlat
     61: (),                                                                     # accidentalFlatSmall (no samples)
-    62: ((170, 950),    angle_thr_def,  (6, 13),    (15, 85),   (3.5, 6.8)),    # accidentalNatural
+    62: ((150, 950),    angle_thr_def,  (6, 13),    (15, 85),   (3.5, 6.8)),    # accidentalNatural
     63: (),                                                                     # accidentalNaturalSmall (no samples)
-    64: ((180, 1350),   angle_thr_def,  (10, 20),   (22, 85),   (2.5, 4.4)),    # accidentalSharp
+    64: ((180, 1350),   (85, 10),       (8, 20),   (22, 85),   (2.5, 4.4)),    # accidentalSharp
     65: (),                                                                     # accidentalSharpSmall (no samples)
     66: ((200, 650),    angle_thr_def,  (13, 25),   (14, 32),   (1, 1.5)),      # accidentalDoubleSharp
     67: ((800, 1400),   angle_thr_def,  (18, 40),   (30, 65),   (1, 3)),        # accidentalDoubleFlat
@@ -117,20 +117,20 @@ thresholds = {
     70: ((550, 1500),   (85, 10),       (13, 22),   (40, 80),   (2.5, 4.3)),    # keySharp
     71: ((300, 650),    (60, 5),        (10, 25),   (23, 40),   (1.5, 3)),      # articAccentAbove
     72: ((300, 650),    (60, 5),        (10, 25),   (23, 40),   (1.5, 3)),      # articAccentBelow
-    73: ((20, 100),     (85, 65),       (5, 10),    (4, 11),    (1, 1.6)),      # articStaccatoAbove
-    74: ((20, 100),     (85, 65),       (5, 10),    (4, 11),    (1, 1.6)),      # articStaccatoBelow
+    73: ((20, 100),     (85, 65),       (5, 12),    (5, 14),    (1, 1.7)),      # articStaccatoAbove
+    74: ((20, 100),     (85, 65),       (5, 12),    (5, 14),    (1, 1.7)),      # articStaccatoBelow
     75: ((15, 200),     angle_thr_def,  (1, 8),     (15, 28),   (3, 22)),       # articTenutoAbove
     76: ((15, 200),     angle_thr_def,  (1, 8),     (15, 28),   (3, 22)),       # articTenutoBelow
     77: ((44, 150),     angle_thr_def,  (5, 10),    (9, 20),    (1.5, 3.5)),    # articStaccatissimoAbove
     78: ((44, 150),     angle_thr_def,  (5, 10),    (9, 20),    (1.5, 3.5)),    # articStaccatissimoBelow
     79: ((140, 500),    (85, 30),       (10, 20),   (13, 30),   ratio_thr_def), # articMarcatoAbove
     80: ((140, 500),    (85, 30),       (10, 20),   (13, 30),   ratio_thr_def), # articMarcatoBelow
-    81: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.6, 2.2)),    # fermataAbove
-    82: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.6, 2.2)),    # fermataBelow
-    83: ((50, 300),     (85, 20),       (4, 13),    (13, 28),   (1.6, 4)),      # caesura
+    81: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.5, 2.2)),    # fermataAbove
+    82: ((320, 1300),   angle_thr_def,  (10, 30),   (28, 55),   (1.5, 2.2)),    # fermataBelow
+    83: ((50, 300),     (85, 20),       (4, 13),    (13, 28),   (1.5, 4)),      # caesura
     84: ((100, 350),    angle_thr_def,  (7, 18),    (13, 25),   (1, 2.5)),      # restDoubleWhole
     85: ((100, 400),    angle_thr_def,  (7, 16),    (13, 35),   (1, 4.5)),      # restWhole
-    86: ((140, 250),    angle_thr_def,  (7, 12),    (20, 30),   (2.2, 4.6)),    # restHalf
+    86: ((140, 450),    angle_thr_def,  (7, 12),    (20, 45),   (2.2, 4.6)),    # restHalf
     87: ((550, 1200),   (80, 10),       (12, 22),   (40, 60),   (2.2, 4.4)),    # restQuarter
     88: ((350, 700),    (85, 30),       (13, 20),   (24, 35),   (1.4, 2.4)),    # rest8th
     89: ((570, 900),    (1, 25),        (13, 20),   (39, 50),   (2, 3.3)),      # rest16th
@@ -165,9 +165,9 @@ thresholds = {
     118: ((90, 240),    (90, 10),       (7, 13),    (11, 22),   (1.4, 2.1)),    # fingering3
     119: ((105, 280),   (90, 40),       (9, 16),    (12, 23),   (1.1, 2)),      # fingering4
     120: ((120, 250),   (90, 5),        (9, 14),    (14, 22),   (1.2, 2)),      # fingering5
-    121: ((75, 250000), (40, 5),        (4, 100),   (18, 2500), (2, 90)),       # slur
-    122: ((50, 11000),  (50, 5),        (4, 9),     (12, 1600), (1.5, 500)),    # beam
-    123: ((10, 25000),  (80, 5),        (2, 15),    (5, 2000),  (1.5, 150)),    # tie
+    121: ((60, 250000), (40, 5),        (4, 100),   (13, 2500), (2, 90)),       # slur
+    122: ((50, 11000),  (50, 5),        (4, 9),     (12, 2000), (1.5, 500)),    # beam
+    123: ((8, 25000),   (80, 5),        (2, 15),    (4, 2000),  (1.5, 150)),    # tie
     124: ((8000, 10000),(90, 0),        (32, 34),   (260, 280), (8, 9)),        # restHBar
     125: ((240, 70000), angle_thr_def,  (11, 27),   (22, 3500), (1, 200)),      # dynamicCrescendoHairpin
     126: ((240, 70000), angle_thr_def,  (11, 27),   (22, 3500), (1, 200)),      # dynamicDiminuendoHairpin
