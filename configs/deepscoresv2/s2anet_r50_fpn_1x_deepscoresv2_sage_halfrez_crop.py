@@ -1,3 +1,5 @@
+import math
+
 # model settings
 model = dict(
     type='S2ANetDetector',
@@ -139,7 +141,7 @@ data = dict(
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test.json',
+        ann_file=data_root + 'deepscores_test_small.json', # TODO: remove _small! (only for debugging)
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
@@ -147,19 +149,26 @@ data = dict(
 #     gt_dir='data/dota/test/labelTxt/', # change it to valset for offline validation
 #     imagesetfile='data/dota/test/test.txt')
 # optimizer
-optimizer = dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0075, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
+
 # learning policy
+n_warmup_epochs = 70
+n_snapshots = 5
+snapshot_epoch_interval = 15
+
+n_steps = math.ceil(1362 / data['imgs_per_gpu'])
+assert n_steps == 341  # TODO: delme
+
 lr_config = dict(
     policy='CosineRestart',
     warmup='constant',
-    warmup_iters=50 * 341,  # 1 epoch = 1362 steps
-    warmup_ratio=1. / 5,
-    # gamma = 0.5,
-    periods=[15 * 341, 15 * 341, 15 * 341, 15 * 341, 15 * 341],
-    by_epoch=False,
+    warmup_iters=n_warmup_epochs * n_steps,  # 1 epoch = 1362 steps
+    warmup_ratio=1. / 3,
+    periods=[n_warmup_epochs * n_steps] + ([snapshot_epoch_interval * n_steps] * n_snapshots),
+    by_epoch=False,  # cannot use epochs, lr is only updated after epoch -> cosine annealing needs update per step
     warmup_by_epoch=False,
-    restart_weights=[1, 1, 1, 1, 1],
+    restart_weights=[1] * n_snapshots,
     min_lr_ratio=1e-5,
 )
 checkpoint_config = dict(interval=1)
