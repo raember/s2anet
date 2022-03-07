@@ -1,5 +1,3 @@
-import math
-
 # model settings
 model = dict(
     type='S2ANetDetector',
@@ -157,9 +155,7 @@ n_warmup_epochs = 150
 n_snapshots = 5
 snapshot_epoch_interval = 20
 
-n_steps = math.ceil(1362 / data['imgs_per_gpu'])
-assert n_steps == 341  # TODO: delme
-
+n_steps = -(-1362 // data['imgs_per_gpu']) # -(-numerator // denominator) is a way to round up an integer without importing a module like math
 lr_config = dict(
     policy='CosineRestart',
     warmup='constant',
@@ -168,7 +164,7 @@ lr_config = dict(
     periods=[n_warmup_epochs * n_steps] + ([snapshot_epoch_interval * n_steps] * n_snapshots),
     by_epoch=False,  # cannot use epochs, lr is only updated after epoch -> cosine annealing needs update per step
     warmup_by_epoch=False,
-    restart_weights=[1] * n_snapshots,
+    restart_weights=[1] * (n_snapshots + 1),
     min_lr_ratio=1e-5,
 )
 checkpoint_config = dict(interval=1)
