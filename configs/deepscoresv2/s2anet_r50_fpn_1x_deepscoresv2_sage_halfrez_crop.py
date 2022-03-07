@@ -153,9 +153,9 @@ optimizer = dict(type='SGD', lr=0.0075, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 
 # learning policy
-n_warmup_epochs = 70
+n_warmup_epochs = 150
 n_snapshots = 5
-snapshot_epoch_interval = 15
+snapshot_epoch_interval = 20
 
 n_steps = math.ceil(1362 / data['imgs_per_gpu'])
 assert n_steps == 341  # TODO: delme
@@ -190,7 +190,7 @@ wandb_cfg = dict(
 
 
 # runtime settings
-total_epochs = 126
+total_epochs = n_warmup_epochs + n_snapshots * snapshot_epoch_interval + 1
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
