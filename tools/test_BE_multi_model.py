@@ -15,9 +15,11 @@ from mmdet.core import coco_eval, results2json, wrap_fp16_model
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
 from mmdet.core import rotated_box_to_poly_np
+
+
 # Code based on test_BE.py
 
-def single_gpu_test(model, data_loader, show=False, cfg = None):
+def single_gpu_test(model, data_loader, show=False, cfg=None):
     model.eval()
     results = []
     dataset = data_loader.dataset
@@ -28,12 +30,12 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
         results.append(result)
         if show:
             print("asdf")
-            #for nr, sub_list in enumerate(bbox_list):
+            # for nr, sub_list in enumerate(bbox_list):
             #    bbox_list[nr] = [rotated_box_to_poly_np(sub_list[0].cpu().numpy()), sub_list[1].cpu().numpy()]
 
             model.module.show_result(data, result, show=show, dataset=dataset.CLASSES,
                                      bbox_transform=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
-                                    # typo in bbox_transorm -> bbox_transform?
+            # typo in bbox_transorm -> bbox_transform?
 
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
@@ -109,7 +111,8 @@ def collect_results(result_part, size, tmpdir=None):
 def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
     parser.add_argument('config', help='test config file path')
-    parser.add_argument('--checkpoints', nargs='+', help='checkpoint files (use like --checkpoints file1 file2 file3 ...', required=True)
+    parser.add_argument('--checkpoints', nargs='+',
+                        help='checkpoint files (use like --checkpoints file1 file2 file3 ...', required=True)
     parser.add_argument('--out', help='output result file')
     parser.add_argument(
         '--json_out',
@@ -132,7 +135,7 @@ def parse_args():
     # add dataset type for more dataset eval other than coco
     parser.add_argument(
         '--data',
-        choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024','dsv2'],
+        choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024', 'dsv2'],
         default='dota',
         type=str,
         help='eval dataset type')
@@ -185,102 +188,106 @@ def main():
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
         wrap_fp16_model(model)
-    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
-    # old versions did not save class info in checkpoints, this walkaround is
-    # for backward compatibility
-    if 'CLASSES' in checkpoint['meta']:
-        model.CLASSES = checkpoint['meta']['CLASSES']
-    else:
-        model.CLASSES = dataset.CLASSES
-    if not distributed:  # Only implemented BatchEnsemble here
-        model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader, args.show, cfg)
-    else:
-        model = MMDistributedDataParallel(model.cuda())
-        outputs = multi_gpu_test(model, data_loader, args.tmpdir)
-    rank, _ = get_dist_info()
-    if args.out and rank == 0:
-        
-        # Reshape outputs: first needed to calculate the 30 ensemble-outputs per image
-        # and then end up with a nested_list of the wrong shape
-        # (outputs = {list: 10}) but need outputs_m = {list: 30})
-        # TODO: How to solve this in a better way? Just ugly not slow.
-        outputs_m = []
-        for j in range(len(outputs[0])):
-            outputs_reshaped_m = []
-            for i in range(len(outputs)):
-                outputs_reshaped_m.append(outputs[i][j])
-            outputs_m.append(outputs_reshaped_m)
+
+    outputs_m = []
+    for i, checkpoint_file in enumerate(args.checkpoints):
+        checkpoint = load_checkpoint(model, checkpoint_file, map_location='cpu')
+        # old versions did not save class info in checkpoints, this walkaround is
+        # for backward compatibility
+        if 'CLASSES' in checkpoint['meta']:
+            model.CLASSES = checkpoint['meta']['CLASSES']
+        else:
+            model.CLASSES = dataset.CLASSES
+        if not distributed:
+            model = MMDataParallel(model, device_ids=[0])
+            outputs_m.append(single_gpu_test(model, data_loader, args.show, cfg))
+        else:
+            model = MMDistributedDataParallel(model.cuda())
+            outputs_m.append(multi_gpu_test(model, data_loader, args.tmpdir))
+        rank, _ = get_dist_info()
+
+        # if args.out and rank == 0:
+        #     # Reshape outputs: first needed to calculate the 30 ensemble-outputs per image
+        #     # and then end up with a nested_list of the wrong shape
+        #     # (outputs = {list: 10}) but need outputs_m = {list: 30})
+        #     # TODO: How to solve this in a better way? Just ugly not slow.
+        #     outputs_m = []
+        #     for j in range(len(outputs[0])):
+        #         outputs_reshaped_m = []
+        #         for i in range(len(outputs)):
+        #             outputs_reshaped_m.append(outputs[i][j])
+        #         outputs_m.append(outputs_reshaped_m)
 
         # TODO: This loop is brutally slow -> need a better way to evaluate outputs.
-        for i in range(len(outputs_m)):
-            # Reformat out-path to save ensemble member specific output seperately.
-            fp_out = '/'.join(args.out.split('/')[0:2]) + '/' + \
-            args.out.split('/')[2][:-4] + \
-            '_' + str(i) + '.pkl'
-            
-            print('\nwriting results to {}'.format(fp_out))
-            
-            mmcv.dump(outputs_m[i], fp_out)
-            eval_types = args.eval
-            data_name = args.data
-            if data_name == 'coco':
-                if eval_types:
-                    print('Starting evaluate {}'.format(' and '.join(eval_types)))
-                    if eval_types == ['proposal_fast']:
-                        result_file = args.out
-                        coco_eval(result_file, eval_types, dataset.coco)
+        # Reformat out-path to save ensemble member specific output seperately.
+        fp_out = '/'.join(args.out.split('/')[0:2]) + '/' + \
+                 args.out.split('/')[2][:-4] + \
+                 '_' + str(i) + '.pkl'
+
+        print('\nwriting results to {}'.format(fp_out))
+
+        mmcv.dump(outputs_m[i], fp_out)
+        eval_types = args.eval
+        data_name = args.data
+        if data_name == 'coco':
+            if eval_types:
+                print('Starting evaluate {}'.format(' and '.join(eval_types)))
+                if eval_types == ['proposal_fast']:
+                    result_file = args.out
+                    coco_eval(result_file, eval_types, dataset.coco)
+                else:
+                    if not isinstance(outputs_m[i][0], dict):
+                        result_files = results2json(dataset, outputs_m[i], args.out)
+                        coco_eval(result_files, eval_types, dataset.coco)
                     else:
-                        if not isinstance(outputs_m[i][0], dict):
-                            result_files = results2json(dataset, outputs_m[i], args.out)
+                        for name in outputs_m[i][0]:
+                            print('\nEvaluating {}'.format(name))
+                            outputs_m[i] = [out[name] for out in outputs_m[i]]
+                            result_file = args.out + '.{}'.format(name)
+                            result_files = results2json(dataset, outputs_m[i],
+                                                        result_file)
                             coco_eval(result_files, eval_types, dataset.coco)
-                        else:
-                            for name in outputs_m[i][0]:
-                                print('\nEvaluating {}'.format(name))
-                                outputs_m[i] = [out[name] for out in outputs_m[i]]
-                                result_file = args.out + '.{}'.format(name)
-                                result_files = results2json(dataset, outputs_m[i],
-                                                            result_file)
-                                coco_eval(result_files, eval_types, dataset.coco)
-    
-            elif data_name in ['dota', 'hrsc2016']:
-                eval_kwargs = cfg.get('evaluation', {}).copy()
-                work_dir = osp.dirname(args.out)
-                dataset.evaluate(outputs_m[i], work_dir, **eval_kwargs)
-            elif data_name in ['dsv2']:
-                from mmdet.core import outputs_rotated_box_to_poly_np
-                # for page in outputs:
-                #     for cla in page:
-                #         for detec in cla:
-                #             if min(detec[:4]) < 0:
-                #                 detec[:4][detec[:4] < 0] = 0
-                #TODO: fix ugly hack to make the labels match
-                import numpy as np
-                for page in outputs_m[i]:
-                    page.insert(0, np.array([]))
-    
-                outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
-                work_dir = osp.dirname(args.out)
-                work_dir = work_dir + '_' + str(i)
-                dataset.evaluate(outputs_m[i], work_dir = work_dir)
-                # print("asdfsdf")
-                # for page in outputs:
-                #     for cla in page:
-                #         for detec in cla:
-                #             if min(detec[:4]) < 0:
-                #                 print(detec)
+
+        elif data_name in ['dota', 'hrsc2016']:
+            eval_kwargs = cfg.get('evaluation', {}).copy()
+            work_dir = osp.dirname(args.out)
+            dataset.evaluate(outputs_m[i], work_dir=work_dir, **eval_kwargs)
+        elif data_name in ['dsv2']:
+            from mmdet.core import outputs_rotated_box_to_poly_np
+            # for page in outputs:
+            #     for cla in page:
+            #         for detec in cla:
+            #             if min(detec[:4]) < 0:
+            #                 detec[:4][detec[:4] < 0] = 0
+            # TODO: fix ugly hack to make the labels match
+            import numpy as np
+            for page in outputs_m[i]:
+                page.insert(0, np.array([]))
+
+            outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
+            work_dir = osp.dirname(args.out)
+            work_dir = work_dir + '/result_' + str(i)
+            if not os.path.exists(work_dir):
+                os.mkdir(work_dir)
+
+            dataset.evaluate(outputs_m[i], result_json_filename=work_dir+"/deepscores_results.json", work_dir=work_dir)
+            # print("asdfsdf")
+            # for page in outputs:
+            #     for cla in page:
+            #         for detec in cla:
+            #             if min(detec[:4]) < 0:
+            #                 print(detec)
 
 
-
-    # Save predictions in the COCO json format
-    if args.json_out and rank == 0:
-        if not isinstance(outputs[0], dict):
-            results2json(dataset, outputs, args.json_out)
-        else:
-            for name in outputs[0]:
-                outputs_ = [out[name] for out in outputs]
-                result_file = args.json_out + '.{}'.format(name)
-                results2json(dataset, outputs_, result_file)
+        # Save predictions in the COCO json format
+        if args.json_out and rank == 0:
+            if not isinstance(outputs_m[i][0], dict):
+                results2json(dataset, outputs_m[i], args.json_out)
+            else:
+                for name in outputs_m[i][0]:
+                    outputs_ = [out[name] for out in outputs_m[i]]
+                    result_file = args.json_out + '.{}'.format(name)
+                    results2json(dataset, outputs_, result_file)
 
 
 if __name__ == '__main__':
