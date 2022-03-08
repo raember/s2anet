@@ -9,6 +9,7 @@ from typing import Tuple, List, Dict, Optional
 from matplotlib.axes import Axes
 from matplotlib.axis import Axis
 from matplotlib.figure import Figure
+from pandas import DataFrame, Series
 
 from mmdet.datasets import DeepScoresV2Dataset
 import numpy as np
@@ -31,10 +32,13 @@ parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='s
                     help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
-cat_selection = set(map(str, range(1, 137)))
+cat_selection = {}
+if len(cat_selection) == 0:
+    cat_selection = set(map(str, range(1, 137)))
 threshold_classes = ['area', 'angle', 'l1', 'l2', 'edge-ratio']
-crit_selection = {*threshold_classes}
 crit_selection = {}
+if len(crit_selection) == 0:
+    crit_selection = {*threshold_classes}
 area_thr_def = (1, 1.0)
 angle_thr_def = (85, 5)  # Between 5 and 85°
 l1_thr_def = (1, 1.0)
@@ -499,22 +503,55 @@ def fix_annotations(anns: OBBAnns):
                 bbox[3, 1] = bbox[0, 1]
             print(".", end='')
         return list(map(int, bbox.reshape((8,))))
-    def per_row(x):
-        abbox, obbox, cls_id = x[0], x[1], x[2]
+    def map_row(x: Series) -> Series:
+        abbox, obbox, cls_id = x['a_bbox'], x['o_bbox'], x['cat_id']
         # make abbox into a 8-tuple like obbox
         abbox = [abbox[2], abbox[3], abbox[2], abbox[1], abbox[0], abbox[1], abbox[0], abbox[3]]
         abbox = fix_ann(abbox)
-        x[0] = [abbox[0], abbox[1], abbox[4], abbox[5]]
+        x['a_bbox'] = [abbox[4], abbox[5], abbox[0], abbox[1]]
         if '81' in cls_id or '82' in cls_id:  # Align obbox to abbox for fermata
-             obbox = abbox
-        obbox = fix_ann(obbox)
-        x[1] = obbox
-        x[3] = int(OBBox.get_area(np.array([obbox[0::2], obbox[1::2]]).T))
+            obbox = abbox
+        else:
+            obbox = fix_ann(obbox)
+        x['o_bbox'] = obbox
+        x['area'] = int(OBBox.get_area(np.array([obbox[0::2], obbox[1::2]]).T))
         return x
-    anns.ann_info = anns.ann_info.apply(per_row, axis=1, raw=True)
+    stem_min_l2 = get_thresholds(stats['42'])['l2'][0]
+    def flag_row(x: Series) -> bool:
+        abbox, cls_id = x['a_bbox'], x['cat_id']
+        if '42' in cls_id:  # delete stems that are too short (likely because of overlapping stems)
+            l2 = max(abs(abbox[0] - abbox[2]), abs(abbox[1] - abbox[3]))
+            return l2 < stem_min_l2
+        return False
+    def del_annotation(ann_id: int):
+        for im in anns.img_info:
+            if ann_id in im['ann_ids']:
+                del im['ann_ids'][ann_id]
+                break
+    # Fix bboxes
+    anns.ann_info.to_csv('data_vanilla.csv')
+    anns.ann_info = anns.ann_info.apply(map_row, axis=1)
+    anns.ann_info.to_csv('data_fixed.csv')
+    # Delete bboxes
+    to_delete = anns.ann_info.apply(flag_row, axis=1)
+    to_delete |= anns.ann_info.index.isin([
+        # vanished clef 8
+        670134, 670132, 670186, 670147, 670142,
+        # faulty slur
+        346823,
+    ])
+    to_del_anns = anns.ann_info[to_delete]
+    print(len(anns.ann_info))
+    anns.ann_info.drop(to_del_anns.index, inplace=True, errors='ignore')
+    anns.ann_info.to_csv('data_fixed_and_cleaned.csv')
+    print(len(anns.ann_info))
+    list(map(del_annotation, list(to_del_anns.index)))
     print()
 
 if args.fix_annotations:
+    if 'stats' not in globals():
+        with open(STAT_FILE, 'r') as fp:
+            stats = json.load(fp)
     print('[TRAIN] Fixing annotations')
     fix_annotations(dataset_train.obb)
     print('[TRAIN] Saving dataset to deepscores_train.fixed.json')
