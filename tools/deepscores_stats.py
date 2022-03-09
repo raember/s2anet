@@ -41,7 +41,7 @@ if len(crit_selection) == 0:
     crit_selection = {*threshold_classes}
 
 
-def is_attribute_an_outlier(cat_stats: dict, cat_thresholds: Dict[str, Tuple[float, float]], cls: str, value: float) -> bool:
+def is_attribute_an_outlier(cat_thresholds: Dict[str, Tuple[float, float]], cls: str, value: float) -> bool:
     if len(crit_selection) != 0 and cls not in crit_selection:
         return False
     low_thr, high_thr = cat_thresholds.get(cls, (None, None))
@@ -60,19 +60,19 @@ def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> Dict[str, float
     # check all attributes
     reasons = {}
     area = OBBox.get_area(obbox)
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'area', area):
+    if is_attribute_an_outlier(cat_thrs, 'area', area):
         reasons['area'] = area
     angle = (OBBox.get_angle(obbox)) % 90
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'angle', angle):
+    if is_attribute_an_outlier(cat_thrs, 'angle', angle):
         reasons['angle'] = angle
     l1 = np.linalg.norm(obbox[0] - obbox[1])
     l2 = np.linalg.norm(obbox[1] - obbox[2])
     l1, l2 = min(l1, l2), max(l1, l2)
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'l1', l1):
+    if is_attribute_an_outlier(cat_thrs, 'l1', l1):
         reasons['l1'] = l1
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'l2', l2):
+    if is_attribute_an_outlier(cat_thrs, 'l2', l2):
         reasons['l2'] = l2
-    if is_attribute_an_outlier(cat_stats, cat_thrs, 'edge-ratio', l2 / l1):
+    if is_attribute_an_outlier(cat_thrs, 'edge-ratio', l2 / l1):
         reasons['edge-ratio'] = l2 / l1
     return reasons
 
@@ -80,7 +80,7 @@ def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str):
     cls_stats = cat_stats[thr_cls]
     values = sorted(cls_stats['values'], reverse=True)
     n = len(values)
-    n_outliers = sum(map(lambda value: is_attribute_an_outlier(cat_stats, cat_thrs, thr_cls, value), values))
+    n_outliers = sum(map(lambda value: is_attribute_an_outlier(cat_thrs, thr_cls, value), values))
     median = cls_stats['median']
     mean = cls_stats['mean']
     std = cls_stats['std']
