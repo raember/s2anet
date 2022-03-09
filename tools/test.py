@@ -31,7 +31,8 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
             #    bbox_list[nr] = [rotated_box_to_poly_np(sub_list[0].cpu().numpy()), sub_list[1].cpu().numpy()]
 
             model.module.show_result(data, result, show=show, dataset=dataset.CLASSES,
-                                     bbox_transorm=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
+                                     bbox_transform=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
+                                    # typo in bbox_transorm -> bbox_transform?
 
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
@@ -106,23 +107,21 @@ def collect_results(result_part, size, tmpdir=None):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
-    parser.add_argument('--config', help='test config file path', default = './configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_lowrez.py')
-    parser.add_argument('--checkpoint', help='checkpoint file', default = './models/epoch_500.pth')
-    parser.add_argument('--out', help='output result file', default = './models/test.pkl')
+    parser.add_argument('config', help='test config file path')
+    parser.add_argument('checkpoint', help='checkpoint file')
+    parser.add_argument('--out', help='output result file')
     parser.add_argument(
         '--json_out',
         help='output result file name without extension',
-        default='./models/output',
         type=str)
     parser.add_argument(
         '--eval',
         type=str,
         nargs='+',
         choices=['proposal', 'proposal_fast', 'bbox', 'segm', 'keypoints'],
-        default='bbox',
         help='eval types')
     parser.add_argument('--show', action='store_true', help='show results')
-    parser.add_argument('--tmpdir', default='./models/test_ds2/', help='tmp dir for writing some results')
+    parser.add_argument('--tmpdir', help='tmp dir for writing some results')
     parser.add_argument(
         '--launcher',
         choices=['none', 'pytorch', 'slurm', 'mpi'],
@@ -133,7 +132,7 @@ def parse_args():
     parser.add_argument(
         '--data',
         choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024','dsv2'],
-        default='dsv2',
+        default='dota',
         type=str,
         help='eval dataset type')
     args = parser.parse_args()
@@ -192,7 +191,6 @@ def main():
         model.CLASSES = checkpoint['meta']['CLASSES']
     else:
         model.CLASSES = dataset.CLASSES
-
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])
         outputs = single_gpu_test(model, data_loader, args.show, cfg)
@@ -230,6 +228,11 @@ def main():
             dataset.evaluate(outputs, work_dir, **eval_kwargs)
         elif data_name in ['dsv2']:
             from mmdet.core import outputs_rotated_box_to_poly_np
+            # for page in outputs:
+            #     for cla in page:
+            #         for detec in cla:
+            #             if min(detec[:4]) < 0:
+            #                 detec[:4][detec[:4] < 0] = 0
             #TODO: fix ugly hack to make the labels match
             import numpy as np
             for page in outputs:
@@ -237,7 +240,13 @@ def main():
 
             outputs = outputs_rotated_box_to_poly_np(outputs)
             work_dir = osp.dirname(args.out)
-            dataset.evaluate(outputs, work_dir = work_dir, iou_thrs=0.5)
+            dataset.evaluate(outputs, work_dir = work_dir)
+            # print("asdfsdf")
+            # for page in outputs:
+            #     for cla in page:
+            #         for detec in cla:
+            #             if min(detec[:4]) < 0:
+            #                 print(detec)
 
 
 

@@ -20,9 +20,9 @@ echo "Loading meta data"
 data=($(jq ".images[] | select(.ann_ids[] | select(. == \"$ID\")) | .filename, .width, .height" "$FP"))
 echo "filepath: ${data[0]}"
 #echo -e "\033[1mggbApplet.deleteObject(\"I\")\033[m"
-echo -e "\033[1mggbApplet.evalCommand(\"I = (0, -${data[2]})\")\033[m"
+echo -e "\033[1;31mggbApplet.evalCommand(\"I = (0, -${data[2]})\")\033[m"
 #echo -e "\033[1mggbApplet.deleteObject(\"J\")\033[m"
-echo -e "\033[1mggbApplet.evalCommand(\"J = (${data[1]}, -${data[2]})\")\033[m"
+echo -e "\033[1;31mggbApplet.evalCommand(\"J = (${data[1]}, -${data[2]})\")\033[m"
 
 echo "Use JS to retreive the new a_bbox coords:"
 echo

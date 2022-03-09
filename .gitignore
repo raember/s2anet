@@ -122,7 +122,7 @@ wandb/
 # Pytorch
 *.pth
 demo_results
-
-
-
-docker/.*
+exps
+DOTA_devkit/polyiou/csrc/polyiou_wrap.cxx
+DOTA_devkit/polyiou/csrc/polyiou.py
+*_bak

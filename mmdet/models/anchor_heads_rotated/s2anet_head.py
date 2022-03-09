@@ -4,14 +4,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 from mmcv.cnn import normal_init
+from mmdet.core import (AnchorGeneratorRotated, anchor_target,
+                        build_bbox_coder, delta2bbox_rotated, force_fp32,
+                        images_to_levels, multi_apply, multiclass_nms_rotated)
 
-from mmdet.core import (anchor_target, delta2bbox_rotated, AnchorGeneratorRotated,
-                        force_fp32, multi_apply, multiclass_nms_rotated)
+from ...ops import DeformConv
+from ...ops.orn import ORConv2d, RotationInvariantPooling
 from ..builder import build_loss
 from ..registry import HEADS
 from ..utils import ConvModule, bias_init_with_prob
-from ...ops import DeformConv
-from ...ops.orn import ORConv2d, RotationInvariantPooling
 
 # Visualization imports
 import debugging.visualization_tools as vt
@@ -300,10 +301,10 @@ class S2ANetHead(nn.Module):
         return refine_anchors_list, valid_flag_list
 
     @force_fp32(apply_to=(
-            'fam_cls_scores',
-            'fam_bbox_preds',
-            'odm_cls_scores',
-            'odm_bbox_preds'))
+        'fam_cls_scores',
+        'fam_bbox_preds',
+        'odm_cls_scores',
+        'odm_bbox_preds'))
     def loss(self,
              fam_cls_scores,
              fam_bbox_preds,
@@ -325,13 +326,22 @@ class S2ANetHead(nn.Module):
 
         device = odm_cls_scores[0].device
 
-        anchors_list, valid_flag_list = self.get_init_anchors(
+        anchor_list, valid_flag_list = self.get_init_anchors(
             featmap_sizes, img_metas, device=device)
+
+        # anchor number of multi levels
+        num_level_anchors = [anchors.size(0) for anchors in anchor_list[0]]
+        # concat all level anchors and flags to a single tensor
+        concat_anchor_list = []
+        for i in range(len(anchor_list)):
+            concat_anchor_list.append(torch.cat(anchor_list[i]))
+        all_anchor_list = images_to_levels(concat_anchor_list,
+                                           num_level_anchors)
 
         # Feature Alignment Module
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
         cls_reg_targets = anchor_target(
-            anchors_list,
+            anchor_list,
             valid_flag_list,
             gt_bboxes,
             img_metas,
@@ -353,6 +363,7 @@ class S2ANetHead(nn.Module):
             self.loss_fam_single,
             fam_cls_scores,
             fam_bbox_preds,
+            all_anchor_list,
             labels_list,
             label_weights_list,
             bbox_targets_list,
@@ -363,6 +374,16 @@ class S2ANetHead(nn.Module):
         # Oriented Detection Module targets
         refine_anchors_list, valid_flag_list = self.get_refine_anchors(
             featmap_sizes, refine_anchors, img_metas, device=device)
+
+        # anchor number of multi levels
+        num_level_anchors = [anchors.size(0)
+                             for anchors in refine_anchors_list[0]]
+        # concat all level anchors and flags to a single tensor
+        concat_anchor_list = []
+        for i in range(len(refine_anchors_list)):
+            concat_anchor_list.append(torch.cat(refine_anchors_list[i]))
+        all_anchor_list = images_to_levels(concat_anchor_list,
+                                           num_level_anchors)
 
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
         cls_reg_targets = anchor_target(
@@ -388,6 +409,7 @@ class S2ANetHead(nn.Module):
             self.loss_odm_single,
             odm_cls_scores,
             odm_bbox_preds,
+            all_anchor_list,
             labels_list,
             label_weights_list,
             bbox_targets_list,
@@ -418,6 +440,7 @@ class S2ANetHead(nn.Module):
     def loss_fam_single(self,
                         fam_cls_score,
                         fam_bbox_pred,
+                        anchors,
                         labels,
                         label_weights,
                         bbox_targets,
@@ -436,6 +459,17 @@ class S2ANetHead(nn.Module):
         bbox_weights = bbox_weights.reshape(-1, 5)
         fam_bbox_pred = fam_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
 
+        reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+        if reg_decoded_bbox:
+            # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
+            # is applied directly on the decoded bounding boxes, it
+            # decodes the already encoded coordinates to absolute format.
+            bbox_coder_cfg = cfg.get('bbox_coder', '')
+            if bbox_coder_cfg == '':
+                bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
+            bbox_coder = build_bbox_coder(bbox_coder_cfg)
+            anchors = anchors.reshape(-1, 5)
+            fam_bbox_pred = bbox_coder.decode(anchors, fam_bbox_pred)
         loss_fam_bbox = self.loss_fam_bbox(
             fam_bbox_pred,
             bbox_targets,
@@ -446,6 +480,7 @@ class S2ANetHead(nn.Module):
     def loss_odm_single(self,
                         odm_cls_score,
                         odm_bbox_pred,
+                        anchors,
                         labels,
                         label_weights,
                         bbox_targets,
@@ -464,6 +499,17 @@ class S2ANetHead(nn.Module):
         bbox_weights = bbox_weights.reshape(-1, 5)
         odm_bbox_pred = odm_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
 
+        reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
+        if reg_decoded_bbox:
+            # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
+            # is applied directly on the decoded bounding boxes, it
+            # decodes the already encoded coordinates to absolute format.
+            bbox_coder_cfg = cfg.get('bbox_coder', '')
+            if bbox_coder_cfg == '':
+                bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
+            bbox_coder = build_bbox_coder(bbox_coder_cfg)
+            anchors = anchors.reshape(-1, 5)
+            odm_bbox_pred = bbox_coder.decode(anchors, odm_bbox_pred)
         loss_odm_bbox = self.loss_odm_bbox(
             odm_bbox_pred,
             bbox_targets,
@@ -472,10 +518,10 @@ class S2ANetHead(nn.Module):
         return loss_odm_cls, loss_odm_bbox
 
     @force_fp32(apply_to=(
-            'fam_cls_scores',
-            'fam_bbox_preds',
-            'odm_cls_scores',
-            'odm_bbox_preds'))
+        'fam_cls_scores',
+        'fam_bbox_preds',
+        'odm_cls_scores',
+        'odm_bbox_preds'))
     def get_bboxes(self,
                    fam_cls_scores,
                    fam_bbox_preds,

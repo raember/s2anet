@@ -44,7 +44,7 @@ class BaseDetector(nn.Module):
             yield self.extract_feat(img)
 
     @abstractmethod
-    def forward_train(self, imgs, img_metas, gt_bboxes, gt_labels, **kwargs):
+    def forward_train(self, imgs, img_metas, **kwargs):
         """
         Args:
             img (list[Tensor]): list of tensors of shape (1, C, H, W).
@@ -95,13 +95,13 @@ class BaseDetector(nn.Module):
             return self.aug_test(imgs, img_metas, **kwargs)
 
     @auto_fp16(apply_to=('img', ))
-    def forward(self, img, img_meta, gt_bboxes, gt_labels, return_loss=True, **kwargs):
+    def forward(self, img, img_meta, return_loss=True, **kwargs):
         if return_loss:
-            return self.forward_train(img, img_meta,gt_bboxes, gt_labels, **kwargs)
+            return self.forward_train(img, img_meta, **kwargs)
         else:
-            return self.forward_test(img, img_meta, gt_bboxes, gt_labels, **kwargs)
+            return self.forward_test(img, img_meta, **kwargs)
 
-    def show_result(self, data, result, dataset=None, score_thr=0.3):
+    def show_result(self, data, result, dataset=None, score_thr=0.3, **kwargs):
         if isinstance(result, tuple):
             bbox_result, segm_result = result
         else:
@@ -148,4 +148,4 @@ class BaseDetector(nn.Module):
                 bboxes,
                 labels,
                 class_names=class_names,
-                score_thr=score_thr)
+                score_thr=score_thr, **kwargs)
