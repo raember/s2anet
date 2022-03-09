@@ -23,9 +23,15 @@ model = dict(
         feat_channels=256,
         stacked_convs=2,
         with_orconv=True,
+        # Original config from s2anet
         anchor_ratios=[1.0],
         anchor_strides=[8, 16, 32, 64, 128],
         anchor_scales=[4],
+        # Working config form RCNN
+        # anchor_ratios=[0.05, 0.3],
+        # anchor_strides=[8, 16, 32, 64, 128],
+        # anchor_scales=[1.0],
+
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
@@ -93,7 +99,7 @@ train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
     dict(type='ScoreAug', blank_pages_path=data_root+'blanks'),
-    dict(type='RandomCrop', crop_size=(1400, 1400), threshold_rel=0.6, threshold_abs=20.0),
+    dict(type='RandomCrop', crop_size=(512, 512), threshold_rel=0.6, threshold_abs=200.0),
     dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
@@ -117,8 +123,8 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=1,
-    workers_per_gpu=0,
+    imgs_per_gpu=4,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'deepscores_train.json',
@@ -133,7 +139,7 @@ data = dict(
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test_small.json',
+        ann_file=data_root + 'deepscores_small.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
@@ -141,7 +147,7 @@ data = dict(
 #     gt_dir='data/dota/test/labelTxt/', # change it to valset for offline validation
 #     imagesetfile='data/dota/test/test.txt')
 # optimizer
-optimizer = dict(type='SGD', lr=0.0001, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -149,25 +155,26 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[8, 11])
-checkpoint_config = dict(interval=1)
+    step=[50, 100])
+checkpoint_config = dict(interval=20)
 log_config = dict(
-    interval=1,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity='raember',
-    project='s2anet_augment',
-    dryrun=True,
-    name_prefix = "raember_"
+    entity="raember",
+    project='s2anet_scoreaug',
+    dryrun=False,
+    name_prefix = "tugg_"
 )
 
 
+
 # runtime settings
-total_epochs = 12
+total_epochs = 120
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
