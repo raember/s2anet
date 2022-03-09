@@ -523,15 +523,8 @@ def fix_annotations(anns: OBBAnns):
             l2 = max(abs(abbox[0] - abbox[2]), abs(abbox[1] - abbox[3]))
             return l2 < stem_min_l2
         return False
-    def del_annotation(ann_id: int):
-        for im in anns.img_info:
-            if ann_id in im['ann_ids']:
-                del im['ann_ids'][ann_id]
-                break
     # Fix bboxes
-    anns.ann_info.to_csv('data_vanilla.csv')
     anns.ann_info = anns.ann_info.apply(map_row, axis=1)
-    anns.ann_info.to_csv('data_fixed.csv')
     # Delete bboxes
     to_delete = anns.ann_info.apply(flag_row, axis=1)
     to_delete |= anns.ann_info.index.isin([
@@ -541,11 +534,14 @@ def fix_annotations(anns: OBBAnns):
         346823,
     ])
     to_del_anns = anns.ann_info[to_delete]
-    print(len(anns.ann_info))
     anns.ann_info.drop(to_del_anns.index, inplace=True, errors='ignore')
-    anns.ann_info.to_csv('data_fixed_and_cleaned.csv')
-    print(len(anns.ann_info))
-    list(map(del_annotation, list(to_del_anns.index)))
+    ann_ids = set(map(str, to_del_anns.index))
+    if len(ann_ids) > 0:
+        for im in anns.img_info:
+            for ann_id in ann_ids.intersection(im['ann_ids']):
+                im['ann_ids'].remove(ann_id)
+    else:
+        print('No annotations to delete')
     print()
 
 if args.fix_annotations:
