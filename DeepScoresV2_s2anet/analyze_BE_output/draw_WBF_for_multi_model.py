@@ -260,7 +260,7 @@ def visualize_BE(self,
 def main():
     # Settings from config file that was used to generate
     # the respective proposals
-    dataset_type = 'DeepScoresV2Dataset_BE'
+    dataset_type = 'DeepScoresV2Dataset'
     data_root = '/s2anet/data/deep_scores_dense/'
     img_norm_cfg = dict(
         mean=[240, 240, 240],
@@ -283,7 +283,7 @@ def main():
     ]
     data_dict = dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test_small.json',
+        ann_file=data_root + 'deepscores_test.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True)
@@ -294,7 +294,7 @@ def main():
     dataset = build_dataset(data_dict)
 
     # Deduce m (number of BatchEnsemble members)
-    m = max([int(x.split('_')[-1]) for x in os.listdir(json_results_dir) if "result_" in x]) + 1
+    m = max([int(x.split('_')[-1]) for x in os.listdir(json_results_dir) if "result_" in x and not "metrics.csv" in x]) + 1
 
     # Load proposals from deepscores_results_i.json
     boxes_list = []
