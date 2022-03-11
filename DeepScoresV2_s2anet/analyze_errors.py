@@ -58,13 +58,14 @@ def add_averages(dframes):
 def store_csv(dframes, evaluations_folder):
     for key, dframe in dframes.items():
         path = os.path.join(evaluations_folder, key+"_metrics.csv")
+        print(path)
         dframe.to_csv(path)
     return None
 
 
 def main():
 
-    evaluations_folder = "./DeepScoresV2_s2anet"
+    evaluations_folder = "/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/result_4"
     error_metrics = get_pickles(evaluations_folder)
     dframes = create_dframe(error_metrics)
 

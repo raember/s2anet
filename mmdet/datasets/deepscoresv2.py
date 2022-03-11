@@ -157,7 +157,8 @@ class DeepScoresV2Dataset(CocoDataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thrs=np.arange(0.5, 0.96, 0.05),
                  average_thrs=False,
-                 work_dir = None):
+                 work_dir = None,
+                 result_json_filename=None):
         """Evaluation in COCO protocol.
 
         Args:
@@ -186,7 +187,7 @@ class DeepScoresV2Dataset(CocoDataset):
             if metric not in allowed_metrics:
                 raise KeyError(f'metric {metric} is not supported')
 
-        filename = self.write_results_json(results)
+        filename = self.write_results_json(results, filename=result_json_filename)
 
         self.obb.load_proposals(filename)
         metric_results = self.obb.calculate_metrics(iou_thrs=iou_thrs, classwise=classwise, average_thrs=average_thrs)
@@ -206,7 +207,8 @@ class DeepScoresV2Dataset(CocoDataset):
             pickle.dump(metric_results, open(out_file, 'wb'))
             
             if self.data_root is None:
-                self.data_root = '/'.join(self.ann_file.split('/')[0:2]) + '/'
+                from pathlib import Path
+                self.data_root = Path('/'.join(self.ann_file.split('/')[0:2]) + '/')
 
             out_dir = os.path.join(work_dir, "visualized_proposals/")
             if not os.path.exists(out_dir):
