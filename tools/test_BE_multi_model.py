@@ -174,23 +174,22 @@ def main():
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
-    # build the dataloader
-    # TODO: support multiple images per gpu (only minor changes are needed)
-    dataset = build_dataset(cfg.data.test)
-    data_loader = build_dataloader(
-        dataset,
-        imgs_per_gpu=1,
-        workers_per_gpu=cfg.data.workers_per_gpu,
-        dist=distributed,
-        shuffle=False)
-    # build the model and load checkpoint
-    model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
-
     outputs_m = []
     for i, checkpoint_file in enumerate(args.checkpoints):
+        # build the dataloader
+        dataset = build_dataset(cfg.data.test)
+        data_loader = build_dataloader(
+            dataset,
+            imgs_per_gpu=1,
+            workers_per_gpu=cfg.data.workers_per_gpu,
+            dist=distributed,
+            shuffle=False)
+        # build the model and load checkpoint
+        model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+        fp16_cfg = cfg.get('fp16', None)
+        if fp16_cfg is not None:
+            wrap_fp16_model(model)
+
         checkpoint = load_checkpoint(model, checkpoint_file, map_location='cpu')
         # old versions did not save class info in checkpoints, this walkaround is
         # for backward compatibility
