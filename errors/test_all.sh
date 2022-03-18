@@ -1,0 +1,7 @@
+#!/bin/bash
+python tools/test.py DeepScoresV2_s2anet/halfrez_nocrop/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_nocrop.py DeepScoresV2_s2anet/halfrez_nocrop/epoch_480.pth   --eval bbox --out DeepScoresV2_s2anet/halfrez_nocrop/evaluation.pkl --data dsv2
+python tools/test.py DeepScoresV2_s2anet/fullrez_nocrop/s2anet_r50_fpn_1x_deepscoresv2_tugg_fullrez_nocrop.py DeepScoresV2_s2anet/fullrez_nocrop/epoch_240.pth  --eval bbox --out DeepScoresV2_s2anet/fullrez_nocrop/evaluation.pkl --data dsv2
+python tools/test.py DeepScoresV2_s2anet/IOU_halfrez_nocrop/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_IoU.py DeepScoresV2_s2anet/IOU_halfrez_nocrop/epoch_120.pth  --eval bbox --out DeepScoresV2_s2anet/IOU_halfrez_nocrop/evaluation.pkl --data dsv2
+python tools/test.py DeepScoresV2_s2anet/cascade_IOU_halfrez_nocrop/cascade_s2anet_2s_r50_fpn_1x_deepscoresv2_halfrez_IoU.py DeepScoresV2_s2anet/cascade_IOU_halfrez_nocrop/epoch_120.pth  --eval bbox --out DeepScoresV2_s2anet/cascade_IOU_halfrez_nocrop/evaluation.pkl --data dsv2
+python tools/test.py DeepScoresV2_s2anet/fullrez_crop/s2anet_r50_fpn_1x_deepscoresv2_tugg_lowrez.py /home/tugg/Documents/RealScores/s2anet/DeepScoresV2_s2anet/fullrez_crop/epoch_500.pth  --eval bbox --out DeepScoresV2_s2anet/fullrez_crop/evaluation.pkl --data dsv2
+python tools/test.py DeepScoresV2_s2anet/halfrez_crop/s2anet_r50_fpn_1x_deepscoresv2_tugg_actual_lowrez.py DeepScoresV2_s2anet/halfrez_crop/epoch_400.pth  --eval bbox --out DeepScoresV2_s2anet/halfrez_crop/evaluation.pkl --data dsv2
