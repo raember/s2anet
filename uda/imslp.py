@@ -37,7 +37,7 @@ class ImslpDataset(Dataset):
                                 self.split[idx][:-1])
 
         image = io.imread(img_name)
-        image = cv2.resize(image, (1024, 512))
+        image = cv2.resize(image, (1024, 1024))
         sample = {'image': image}
 
         if self.transform:

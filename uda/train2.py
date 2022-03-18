@@ -6,11 +6,15 @@ import os.path as osp
 import warnings
 import wandb
 import torch
+import pickle
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import transforms, utils
 from mmcv import Config
+from mmcv.runner.dist_utils import master_only
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+
+from mmdet import __version__
 from mmdet.apis import (get_root_logger, init_dist, set_random_seed,
                         train_detector)
 from mmdet.apis.train import build_optimizer
@@ -20,7 +24,7 @@ from imslp import ImslpDataset
 from transforms_imslp import *
 from core.utils.metric_logger import MetricLogger
 from core.utils.logger import setup_logger
-from core.models import build_adversarial_discriminator, build_feature_extractor, build_classifier
+from core.models import build_model, build_adversarial_discriminator, build_feature_extractor, build_classifier
 from core.solver import adjust_learning_rate
 from core.utils.loss_ops import reduce_loss_dict, summarise_loss, soft_label_cross_entropy
 warnings.filterwarnings("ignore")
@@ -28,7 +32,7 @@ warnings.filterwarnings("ignore")
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
     parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py')
-    parser.add_argument('--work_dir', help='the dir to save logs and models', default='models/uda/no_pretrain/')
+    parser.add_argument('--work_dir', help='the dir to save logs and models', default='models/uda/')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from', default = 'models/deepscoresV2_tugg_halfrez_crop_epoch250.pth')
         # '--resume_from', help='the checkpoint file to resume from', default = None)
@@ -39,7 +43,7 @@ def parse_args():
     parser.add_argument(
         '--gpus',
         type=int,
-        default=3,
+        default=2,
         help='number of gpus to use '
              '(only applicable to non-distributed training)')
     parser.add_argument('--seed', type=int, default=None, help='random seed')
@@ -79,7 +83,7 @@ def main():
     if args.autoscale_lr:
         cfg.optimizer['lr'] = cfg.optimizer['lr'] * cfg.gpus / 8
 
-    num_gpus = 3
+    num_gpus = 2
     distributed = True
     args.local_rank = 1
 
@@ -126,22 +130,22 @@ def main():
 
     classifier = build_classifier(cfg2)
     classifier.cuda()
-    dev_ids = [0,1,2]
+
     if distributed:
         pg1 = torch.distributed.new_group(range(torch.distributed.get_world_size()))
         feature_extractor = torch.nn.parallel.DistributedDataParallel(
-                feature_extractor, device_ids=dev_ids, output_device=2,
+                feature_extractor, device_ids=[0,1], output_device=0,
             find_unused_parameters=False, process_group=pg1
         )
 
         pg2 = torch.distributed.new_group(range(torch.distributed.get_world_size()))
         classifier = torch.nn.parallel.DistributedDataParallel(
-            classifier, device_ids=dev_ids, output_device=2,
+            classifier, device_ids=[0,1], output_device=0,
             find_unused_parameters=False, process_group=pg2
         )
         pg3 = torch.distributed.new_group(range(torch.distributed.get_world_size()))
         model_D = torch.nn.parallel.DistributedDataParallel(
-            model_D, device_ids=dev_ids, output_device=2,
+            model_D, device_ids=[0,1], output_device=0,
             find_unused_parameters=False, process_group=pg3
         )
         torch.autograd.set_detect_anomaly(True)

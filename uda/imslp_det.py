@@ -26,7 +26,7 @@ if not os.path.isdir(out_folder):
     print("Created folder ",out_folder)
     os.makedirs(out_folder)
 
-resize = 1.3
+resize = 0.5
 
 model = init_detector(config_file, checkpoint_file, device='cuda:0')
 
