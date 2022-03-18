@@ -22,8 +22,8 @@ class SingleStageDetectorUDA(BaseDetector):
                  test_cfg=None,
                  pretrained=None):
         super(SingleStageDetectorUDA, self).__init__()
-        self.backbone1 = builder.build_backbone(backbone)
-        self.backbone2 = builder.build_backbone(backbone)
+        self.backbone_src = builder.build_backbone(backbone)
+        self.backbone_tgt = builder.build_backbone(backbone)
 
         if neck is not None:
             self.neck = builder.build_neck(neck)
@@ -35,7 +35,7 @@ class SingleStageDetectorUDA(BaseDetector):
 
     def init_weights(self, pretrained=None):
         super(SingleStageDetectorUDA, self).init_weights(pretrained)
-        self.backbone1.init_weights(pretrained=pretrained)
+        self.backbone_src.init_weights(pretrained=pretrained)
         if self.with_neck:
             if isinstance(self.neck, nn.Sequential):
                 for m in self.neck:
@@ -44,10 +44,13 @@ class SingleStageDetectorUDA(BaseDetector):
                 self.neck.init_weights()
         self.bbox_head.init_weights()
 
-    def extract_feat(self, img):
+    def extract_feat(self, img, src=True):
         """Directly extract features from the backbone+neck
         """
-        x = self.backbone(img)
+        if src:
+            x = self.backbone_src(img)
+        else:
+            x = self.backbone_tgt(img)
         if self.with_neck:
             x = self.neck(x)
         return x
@@ -79,7 +82,7 @@ class SingleStageDetectorUDA(BaseDetector):
         self.last_vals = dict(img=src_img)
 
         #Target
-        x_tgt = self.extract_feat(tgt_img)
+        x_tgt = self.extract_feat(tgt_img, src=False)
         outs_tgt = self.bbox_head(x_tgt) #DO WE NEED THIS?
         return losses, x_src, x_tgt
         # return losses, outs_src, outs_tgt

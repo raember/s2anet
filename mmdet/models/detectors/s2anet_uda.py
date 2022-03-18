@@ -1,9 +1,9 @@
+from .ssd_uda import SingleStageDetectorUDA
 from ..registry import DETECTORS
-from .single_stage import SingleStageDetector
 
 
 @DETECTORS.register_module
-class FOVEA(SingleStageDetector):
+class S2ANetDA(SingleStageDetectorUDA):
 
     def __init__(self,
                  backbone,
@@ -12,5 +12,5 @@ class FOVEA(SingleStageDetector):
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None):
-        super(FOVEA, self).__init__(backbone, neck, bbox_head, train_cfg,
-                                    test_cfg, pretrained)
+        super(S2ANetDA, self).__init__(backbone, neck, bbox_head, train_cfg,
+                                             test_cfg, pretrained)
