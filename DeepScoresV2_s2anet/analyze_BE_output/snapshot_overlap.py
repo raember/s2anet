@@ -8,8 +8,6 @@ import numpy as np
 import pandas as pd
 from obb_anns import OBBAnns
 
-img_idx_0 = pd.read_csv("sage_tmp.csv")
-
 
 def _read_args():
     parser = argparse.ArgumentParser(description='Compare Overlap between Models')
@@ -123,8 +121,8 @@ def main():
         metric_results, categories, occurences_by_class = _calculate_metrics(obb, get_anns_f, count_class_gt_f,
                                                                              json_file)
 
-        f1 = args.json_gt.split("/")[-1] if "/" in args.json_gt else args.json_gt
-        f2 = json_file.split("/")[-1] if "/" in json_file else json_file
+        f1 = args.json_gt.split("/")[-2] if "/" in args.json_gt else args.json_gt
+        f2 = json_file.split("/")[-2] if "/" in json_file else json_file
         filename = f"{f1}_{f2}_overlap.pkl"
 
         _store_results(args.out_dir, filename, metric_results, categories, occurences_by_class)
