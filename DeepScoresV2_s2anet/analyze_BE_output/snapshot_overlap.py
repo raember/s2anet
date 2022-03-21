@@ -79,7 +79,7 @@ def _calculate_metrics(o, _get_anns_f, count_class_gt_f, proposal_fp):
     o.get_anns = _get_anns_f
     o._count_class_gt = count_class_gt_f
 
-    metric_results = o.calculate_metrics(iou_thrs=np.arange(0.5, 0.96, 0.05), classwise=True, average_thrs=False)
+    metric_results = o.calculate_metrics(iou_thrs=np.array([0.5, 0.8, 0.9]), classwise=True, average_thrs=False)
     categories = o.get_cats()
     occurences_by_class = o.get_class_occurences()
 
@@ -123,9 +123,14 @@ def main():
 
         f1 = args.json_gt.split("/")[-2] if "/" in args.json_gt else args.json_gt
         f2 = json_file.split("/")[-2] if "/" in json_file else json_file
-        filename = f"{f1}_{f2}_overlap.pkl"
 
-        _store_results(args.out_dir, filename, metric_results, categories, occurences_by_class)
+        out_path = os.path.join(args.out_dir, f"{f1}_{f2}/")
+        if not os.path.exists(out_path):
+            os.mkdir(out_path)
+
+        filename = "overlap.pkl"
+
+        _store_results(out_path, filename, metric_results, categories, occurences_by_class)
 
 
 if __name__ == '__main__':
