@@ -79,19 +79,29 @@ def _calculate_metrics(o, _get_anns_f, count_class_gt_f, proposal_fp):
     o.get_anns = _get_anns_f
     o._count_class_gt = count_class_gt_f
 
-    metric_results = o.calculate_metrics(iou_thrs=np.array([0.5, 0.8, 0.9]), classwise=True, average_thrs=False)
+    metric_results = o.calculate_metrics(iou_thrs=np.array([0.5, 0.8, 0.9]), classwise=False, average_thrs=False)
     categories = o.get_cats()
     occurences_by_class = o.get_class_occurences()
 
     return metric_results, categories, occurences_by_class
 
 
-def _store_results(work_dir, filename, metric_results, categories, occurences_by_class):
+def _store_results_classwise(work_dir, filename, metric_results, categories, occurences_by_class):
     metric_results = {categories[key]['name']: value for (key, value) in metric_results.items()}
 
     for (key, value) in metric_results.items():
         value.update(no_occurences=occurences_by_class[key])
 
+    if work_dir is not None and work_dir != "":
+        if not os.path.isdir(work_dir):
+            os.mkdir(work_dir)
+        out_file = os.path.join(work_dir, filename)
+        pickle.dump(metric_results, open(out_file, 'wb'))
+
+    print(metric_results)
+
+
+def _store_results(work_dir, filename, metric_results, categories, occurences_by_class):
     if work_dir is not None and work_dir != "":
         if not os.path.isdir(work_dir):
             os.mkdir(work_dir)
