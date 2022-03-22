@@ -130,9 +130,9 @@ def get_np_arrays(evaluations_folder):
 
 
 def main():
-    input_folder_p = '/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/'
+    input_folder_p = 'work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/'
     input_folder = sorted([input_folder_p + x for x in os.listdir(input_folder_p) if "result_" in x])
-    output_folder = '/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/'
+    output_folder = 'work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/'
     metrics_df = get_np_arrays(input_folder)
     metrics_df = round(metrics_df, 2)
     metrics_df.astype({'nr_occurrences': np.float})

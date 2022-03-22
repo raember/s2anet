@@ -261,7 +261,7 @@ def main():
     # Settings from config file that was used to generate
     # the respective proposals
     dataset_type = 'DeepScoresV2Dataset'
-    data_root = '/s2anet/data/deep_scores_dense/'
+    data_root = 'data/deep_scores_dense/'
     img_norm_cfg = dict(
         mean=[240, 240, 240],
         std=[57, 57, 57],
@@ -289,8 +289,8 @@ def main():
         use_oriented_bboxes=True)
 
     # TODO: Fix paths
-    json_results_dir = "/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop"
-    work_dir = "/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/"
+    json_results_dir = "work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop"
+    work_dir = "work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/"
     dataset = build_dataset(data_dict)
 
     # Deduce m (number of BatchEnsemble members)
