@@ -50,7 +50,15 @@ model = dict(
             loss_weight=1.0),
         loss_odm_bbox=dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
-        stats_file='stats.json'
+        loss_stat=dict(
+            type='StatisticalLoss',
+            stats_file='stats.json'),
+        nms=dict(
+            nms_pre=5000,
+            min_bbox_size=0,
+            score_thr=0.3,
+            nms=dict(type='nms_rotated', iou_thr=0.1),
+            max_per_img=1000)
     ))
 # training and testing settings
 train_cfg = dict(
