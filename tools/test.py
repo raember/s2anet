@@ -225,7 +225,7 @@ def main():
         elif data_name in ['dota', 'hrsc2016']:
             eval_kwargs = cfg.get('evaluation', {}).copy()
             work_dir = osp.dirname(args.out)
-            dataset.evaluate(outputs, work_dir, **eval_kwargs)
+            dataset.evaluate(outputs, work_dir=work_dir, **eval_kwargs)
         elif data_name in ['dsv2']:
             from mmdet.core import outputs_rotated_box_to_poly_np
             # for page in outputs:
