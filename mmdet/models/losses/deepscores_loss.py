@@ -1,14 +1,14 @@
 import json
 from abc import ABC
 from pathlib import Path
-from typing import Union, List
+from typing import Union, List, Tuple
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 
 from ..registry import LOSSES
-from ...core import delta2bbox_rotated, multiclass_nms_rotated
+from ...datasets.deepscoresv2 import get_thresholds
 
 
 @LOSSES.register_module
@@ -23,39 +23,42 @@ class StatisticalLoss(nn.Module):
         self.target_means = target_means
         self.target_stds = target_stds
 
-    def forward(self, cls_scores: Tensor, bbox_preds: Tensor, refine_anchors: Tensor, img_metas: dict, **kwargs):
-        num_levels = len(cls_scores)
-        mlvl_bboxes = []
-        mlvl_scores = []
-        cls_score_list = [
-            cls_scores[i].detach() for i in range(num_levels)
-        ]
-        bbox_pred_list = [
-            bbox_preds[i].detach() for i in range(num_levels)
-        ]
-        img_shape = img_metas['img_shape']
-        scale_factor = img_metas['scale_factor']
-        mlvl_anchors = refine_anchors[0][0]
-        for cls_score, bbox_pred, anchors in zip(cls_score_list,
-                                                 bbox_pred_list, mlvl_anchors):
-            assert cls_score.size()[-2:] == bbox_pred.size()[-2:]
-            # 135, 176, 124  vs  5, 176, 124
-            cls_score = cls_score.permute(
-                1, 2, 0).reshape(-1, self.cls_out_channels)
+    def forward(self, area: Tensor, angle: Tensor, l1: Tensor, l2: Tensor, ratio: Tensor, cls: Tensor):
+        loss_bbox = 0.0
+        losses = torch.zeros((area.shape[0], 0), device=cls.device)
+        for val, (val_min, val_max, val_std) in zip((area, angle, l1, l2, ratio), self.get_thresholds_by_classes(cls)):
+            mean = torch.mean(torch.cat((val_min.reshape((val.shape[0], 1)), val_max.reshape((val.shape[0], 1))), dim=1), dim=1)
+            zeros = torch.zeros_like(val, device=val.device)
+            value = zeros.addcdiv(torch.abs(val - mean) - (val_max - mean), val_std)
+            # Anything above 0 is outside a threshold and already scaled for loss
+            losses = torch.cat((losses, value.where(value > 0.0, zeros).reshape((val.shape[0], 1))), dim=1)
+        loss_bbox = losses.mean()
+        #TODO: Calculate loss for class
+        loss_cls = torch.zeros((1,), device=cls.device)
+        return loss_bbox, loss_cls
 
-            if self.use_sigmoid_cls:
-                scores = cls_score.sigmoid()
-            else:
-                scores = cls_score.softmax(-1)
+    def get_thresholds_by_classes(self, cls: Tensor) -> Tuple[
+        Tuple[Tensor, Tensor, Tensor],
+        Tuple[Tensor, Tensor, Tensor],
+        Tuple[Tensor, Tensor, Tensor],
+        Tuple[Tensor, Tensor, Tensor],
+        Tuple[Tensor, Tensor, Tensor]]:
+        area_min, area_max, area_std = torch.zeros_like(cls, device=cls.device), torch.full_like(cls, 2 ** 24, device=cls.device), torch.ones_like(cls, device=cls.device)
+        angle_min, angle_max, angle_std = torch.zeros_like(cls, device=cls.device), torch.full_like(cls, 2 ** 24, device=cls.device), torch.ones_like(cls, device=cls.device)
+        l1_min, l1_max, l1_std = torch.zeros_like(cls, device=cls.device), torch.full_like(cls, 2 ** 24, device=cls.device), torch.ones_like(cls, device=cls.device)
+        l2_min, l2_max, l2_std = torch.zeros_like(cls, device=cls.device), torch.full_like(cls, 2 ** 24, device=cls.device), torch.ones_like(cls, device=cls.device)
+        ratio_min, ratio_max, ratio_std = torch.zeros_like(cls, device=cls.device), torch.full_like(cls, 2 ** 24, device=cls.device), torch.ones_like(cls, device=cls.device)
 
-            bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 5)
-            bboxes = delta2bbox_rotated(anchors, bbox_pred, self.target_means,
-                                        self.target_stds, img_shape)
-            mlvl_bboxes.append(bboxes)
-            mlvl_scores.append(scores)
-        mlvl_bboxes = torch.cat(mlvl_bboxes)
-        mlvl_scores = torch.cat(mlvl_scores)
-        # Add a dummy background class to the front when using sigmoid
-        padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)
-        mlvl_scores = torch.cat([padding, mlvl_scores], dim=1)
-        return 0.0
+        all_threshold_tensors = (area_min, area_max, area_std), (angle_min, angle_max, angle_std),\
+                                (l1_min, l1_max, l1_std), (l2_min, l2_max, l2_std), (ratio_min, ratio_max, ratio_std)
+        for i, cls_id in enumerate(cls.tolist()):
+            cls_id = int(cls_id) + 2
+            cls_stat = self.stats.get(str(cls_id), {'id': cls_id})
+            threshs = get_thresholds(cls_stat)
+            for (key, (low, high)), (val_min, val_max, val_std) in zip(threshs.items(), all_threshold_tensors):
+                if low is None or high is None:
+                    continue
+                val_min[i] = low
+                val_max[i] = high
+                val_std[i] = max(1.0, cls_stat[key]['std'])
+        return all_threshold_tensors

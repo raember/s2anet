@@ -1,4 +1,5 @@
 import json
+import math
 
 from mmdet.models.anchor_heads_rotated import S2ANetHead
 import torch
@@ -20,8 +21,8 @@ from ..utils import ConvModule, bias_init_with_prob
 class S2ANetUDAHead(S2ANetHead):
 
     def __init__(self, *args,
-                 nms: dict,
                  loss_stat=dict(type='StatisticalLoss'),
+                 nms={},
                  **kwargs):
         super(S2ANetUDAHead, self).__init__(*args, **kwargs)
         self.nms = nms
@@ -63,26 +64,17 @@ class S2ANetUDAHead(S2ANetHead):
         else:
             result = {}
         # Make new loss
-        full = torch.empty((0, 7))
-        bboxes: torch.Tensor
-        classes: torch.Tensor
-        for bboxes, classes in self.get_bboxes(None, None, refine_anchors, odm_cls_scores, odm_bbox_preds, img_metas, self.nms):
-            block = torch.cat([bboxes, classes.reshape((len(classes), 1))], 1)
-            full = torch.cat([full, block])
-            areas = bboxes[:,3] * bboxes[:,2]
-            angle = torch.rad2deg(bboxes[:,4])
-            l1 = bboxes[:,2:4].min(dim=1)
-            l2 = bboxes[:,2:4].max(dim=1)
-            ratio = torch.div(l2, l1)
-            torch.tens
-
-        loss_stat_cls, loss_stat_bbox = multi_apply(
-            self.loss_stat_single,
-            odm_cls_scores,
-            odm_bbox_preds,
-            all_anchor_list,
-            img_metas,
-            cfg=cfg.odm_cfg)
+        propsals = []
+        for ref_anch, odm_cls, odm_bbox in zip(refine_anchors, odm_cls_scores, odm_bbox_preds):
+            lvl_propsals = self.get_bboxes(None, None, [ref_anch], [odm_cls], [odm_bbox], img_metas, self.nms)
+            # In case it's empty, dtype long will be assumed
+            bboxes = lvl_propsals[0][0].type(torch.float32)
+            classes = lvl_propsals[0][1].type(torch.float32)
+            for bboxs, clsses in lvl_propsals[1:]:
+                bboxes = torch.cat((bboxes, bboxs.type(torch.float32)))
+                classes = torch.cat((classes, clsses.type(torch.float32)))
+            propsals.append((bboxes, classes))
+        loss_stat_bbox, loss_stat_cls = multi_apply(self.loss_stat_single, propsals)
 
         if sum(loss_stat_cls) > 1E10 or \
            sum(loss_stat_bbox) > 1E10:
@@ -93,20 +85,14 @@ class S2ANetUDAHead(S2ANetHead):
         )
         return result
 
-    def loss_stat_single(self, area, l1, l2, ratio, angle):
-        # odm_bbox_pred = odm_bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
-        # reg_decoded_bbox = cfg.get('reg_decoded_bbox', False)
-        # if reg_decoded_bbox:
-        #     # When the regression loss (e.g. `IouLoss`, `GIouLoss`)
-        #     # is applied directly on the decoded bounding boxes, it
-        #     # decodes the already encoded coordinates to absolute format.
-        #     bbox_coder_cfg = cfg.get('bbox_coder', '')
-        #     if bbox_coder_cfg == '':
-        #         bbox_coder_cfg = dict(type='DeltaXYWHBBoxCoder')
-        #     bbox_coder = build_bbox_coder(bbox_coder_cfg)
-        #     anchors = anchors.reshape(-1, 5)
-        #     odm_bbox_pred = bbox_coder.decode(anchors, odm_bbox_pred)
-        featmap_sizes = [featmap.size()[-2:] for featmap in odm_cls_score]
-        device = odm_cls_score[0].device
-        refine_anchors = self.get_refine_anchors(featmap_sizes, anchors, img_metas, is_train=False, device=device)
-        return self.loss_stat(odm_cls_score, odm_bbox_pred, refine_anchors, img_metas)
+    def loss_stat_single(self, proposals):
+        bboxes, classes = proposals
+        if bboxes.shape[0] == 0:
+            zero = torch.zeros((1,), device=bboxes.device)
+            return zero, zero
+        area = bboxes[:,3] * bboxes[:,2]
+        angle = torch.fmod(bboxes[:,4] / math.pi * 180.0, 90.0)
+        l1 = bboxes[:,2:4].min(dim=1).values
+        l2 = bboxes[:,2:4].max(dim=1).values
+        ratio = torch.addcdiv(torch.zeros_like(l1), 1, l2, l1)
+        return self.loss_stat(area, angle, l1, l2, ratio, classes)

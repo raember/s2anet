@@ -381,9 +381,8 @@ def get_thresholds(cat_stats: dict) -> Dict[str, Tuple[float, float]]:
             thresh = thresh, thresh
         low_thr, high_thr = thresh
         return low_thr, high_thr
-    thr_list = thresholds.get(cat_stats['id'], [])
+    thr_list = thresholds.get(cat_stats.get('id', -1), [])
     out = defaultdict(lambda: (None, None))
     for thr_cls, threshold in zip(threshold_classes, thr_list):
-        klass_stat = cat_stats[thr_cls]
-        out[thr_cls] = expand_threshold(threshold, klass_stat['median'], klass_stat['std'])
+        out[thr_cls] = expand_threshold(threshold)
     return {cls:out[cls] for cls in threshold_classes}
