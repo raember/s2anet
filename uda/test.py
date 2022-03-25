@@ -4,7 +4,7 @@ import os
 import os.path as osp
 import shutil
 import tempfile
-
+import wandb
 import mmcv
 import torch
 import torch.distributed as dist
@@ -17,6 +17,7 @@ from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
 from mmdet.core import rotated_box_to_poly_np
 
+from results import get_pickles, create_dframe, add_averages, store_csv, strip_prefix_if_present
 
 def single_gpu_test(model, data_loader, show=False, cfg = None):
     model.eval()
@@ -83,9 +84,13 @@ def collect_results(result_part, size, tmpdir=None):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
-    parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_ghos_halfrez_crop.py')
-    parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/uda_100.pth')
-    parser.add_argument('--out', help='output result file', default = 'models/test_imslp/test.pkl')
+    parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_ghos_halfrez_no_aug.py')
+    # parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/uda/model_020.pth')
+    # parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/deepscoresV2_tugg_halfrez_crop_epoch250.pth')
+    parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/epoch_40.pth')
+    parser.add_argument('--out', help='output result file', default = 'results/test_imslp/s2anet_no_aug/test_imslp.pkl')
+    parser.add_argument('--eval_folder', help='Evaluation folder', default = 'results/test_imslp/s2anet_no_aug')
+    parser.add_argument('--model_type', help='Type of model (Basic s2anet or UDA)', default = 's2anet')
     parser.add_argument(
         '--json_out',
         help='output result file name without extension',
@@ -99,7 +104,7 @@ def parse_args():
         default='bbox',
         help='eval types')
     parser.add_argument('--show', action='store_true', help='show results')
-    parser.add_argument('--tmpdir', default='models/test/', help='tmp dir for writing some results')
+    parser.add_argument('--tmpdir', default='results/test/', help='tmp dir for writing some results')
     parser.add_argument(
         '--launcher',
         choices=['none', 'pytorch', 'slurm', 'mpi'],
@@ -119,6 +124,7 @@ def parse_args():
     return args
 
 def main():
+    wandb.init(project="uda", entity="adhirajghosh")
     args = parse_args()
     args.show = False
     assert args.out or args.show or args.json_out, \
@@ -161,17 +167,24 @@ def main():
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
         wrap_fp16_model(model)
+
     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
-    # old versions did not save class info in checkpoints, this walkaround is
-    # for backward compatibility
-    if 'CLASSES' in checkpoint['meta']:
-        model.CLASSES = checkpoint['meta']['CLASSES']
-    else:
-        model.CLASSES = dataset.CLASSES
+    model.CLASSES = checkpoint['meta']['CLASSES']
+    # print(checkpoint)
+    # if args.model_type == 's2anet':
+    #
+    #     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
+    #     model.CLASSES = checkpoint['meta']['CLASSES']
+    # elif args.model_type == 'uda':
+    #     checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
+    #     print(checkpoint.keys())
+    #     model_weights = strip_prefix_if_present(checkpoint['detector'], 'module.')
+    #     model.load_state_dict(model_weights)
+    #     model.CLASSES = dataset.CLASSES
 
     model = MMDataParallel(model, device_ids=[0])
     outputs = single_gpu_test(model, data_loader, args.show, cfg)
-
+    # print(outputs)
     rank, _ = get_dist_info()
     if args.out and rank == 0:
         print('\nwriting results to {}'.format(args.out))
@@ -211,7 +224,7 @@ def main():
             outputs = outputs_rotated_box_to_poly_np(outputs)
             work_dir = osp.dirname(args.out)
             print("Printing work dir",work_dir)
-            metrics = dataset.evaluate(outputs, work_dir=None, iou_thrs=[0.3, 0.5])
+            metrics = dataset.evaluate(outputs, work_dir=None, iou_thrs=[0.3])
 
 
     # Save predictions in the COCO json format
@@ -224,9 +237,19 @@ def main():
                 result_file = args.json_out + '.{}'.format(name)
                 results2json(dataset, outputs_, result_file)
 
-    output = open('models/test_imslp/imslp_metrics.pkl', 'wb')
+    # output = open(os.path.join(args.eval_folder, 'ds2_metrics.pkl'), 'wb')
+    output = open(args.out, 'wb')
     pickle.dump(metrics, output)
     output.close()
+    error_metrics = get_pickles(args.eval_folder, args.out.split('/')[-1])
+    dframes = create_dframe(error_metrics)
+
+    # add averages
+    dframes = add_averages(dframes)
+
+    # store as csv
+    store_csv(dframes, args.eval_folder)
+
 
 
 
