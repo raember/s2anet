@@ -265,7 +265,10 @@ def main():
 
             outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
             work_dir = osp.dirname(args.out)
-            work_dir = work_dir + '/result_' + str(i)
+
+            model_name = checkpoint_file.split("/")[-1].split(".pth")[0]
+
+            work_dir = work_dir + '/result_' + model_name
             if not os.path.exists(work_dir):
                 os.mkdir(work_dir)
 
