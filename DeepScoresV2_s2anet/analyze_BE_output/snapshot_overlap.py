@@ -12,8 +12,8 @@ from obb_anns import OBBAnns
 def _read_args():
     parser = argparse.ArgumentParser(description='Compare Overlap between Models')
     parser.add_argument('config', help='test config file path')
-    parser.add_argument('json_gt', help='Path to JSON file with proposals which is used as ground truth')
-    parser.add_argument('--jsons', nargs='+', default=[], help='Path to JSON file(s) with proposals')
+    parser.add_argument('jsons_gt', nargs='+', default=[], help='Path to JSON file(s) with proposals which is used as ground truth')
+    parser.add_argument('--jsons_pr', nargs='+', default=[], help='Path to JSON file(s) with proposals')
     parser.add_argument('--out_dir', default=None, help='Path where to save metrics')
     args = parser.parse_args()
     return args
@@ -124,23 +124,24 @@ def main():
     args = _read_args()
     cfg = mmcv.Config.fromfile(args.config)
     obb = _setup_obb_anns(cfg)
-    df = _proposal_to_df(obb, args.json_gt)
-    get_anns_f = _get_anns_custom(df)
-    count_class_gt_f = _get_custom_class_gt(df)
-    for json_file in args.jsons:
-        metric_results, categories, occurences_by_class = _calculate_metrics(obb, get_anns_f, count_class_gt_f,
-                                                                             json_file)
+    for json_gt in args.jsons_gt:
+        df = _proposal_to_df(obb, json_gt)
+        get_anns_f = _get_anns_custom(df)
+        count_class_gt_f = _get_custom_class_gt(df)
+        for json_pr in args.jsons_pr:
+            metric_results, categories, occurences_by_class = _calculate_metrics(obb, get_anns_f, count_class_gt_f,
+                                                                                 json_pr)
 
-        f1 = args.json_gt.split("/")[-2] if "/" in args.json_gt else args.json_gt
-        f2 = json_file.split("/")[-2] if "/" in json_file else json_file
+            f1 = json_gt.split("/")[-2] if "/" in json_gt else json_gt
+            f2 = json_pr.split("/")[-2] if "/" in json_pr else json_pr
 
-        out_path = os.path.join(args.out_dir, f"{f1}_{f2}/")
-        if not os.path.exists(out_path):
-            os.mkdir(out_path)
+            out_path = os.path.join(args.out_dir, f"{f1}_{f2}/")
+            if not os.path.exists(out_path):
+                os.mkdir(out_path)
 
-        filename = "overlap.pkl"
+            filename = "overlap.pkl"
 
-        _store_results(out_path, filename, metric_results, categories, occurences_by_class)
+            _store_results(out_path, filename, metric_results, categories, occurences_by_class)
 
 
 if __name__ == '__main__':
