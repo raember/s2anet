@@ -2,22 +2,19 @@
 # https://github.com/ZFTurbo/Weighted-Boxes-Fusion/ensemble_boxes/ensemble_boxes_wbf.py, 4.1.2022
 
 
-from ensemble_boxes import *
-from rotated_ensemble_boxes_wbf import *
-
-from mmdet.datasets import build_dataset
 import os
+import os.path as osp
 import pickle
 from itertools import compress, chain
 
-import os.path as osp
-from PIL import Image, ImageColor, ImageDraw, ImageFont
-import numpy as np
-import pandas as pd
-import colorcet as cc
-
-from matplotlib import colors
 import matplotlib.cm as cm
+import pandas as pd
+from PIL import Image, ImageDraw, ImageFont
+from matplotlib import colors
+
+from mmdet.datasets import build_dataset
+from rotated_ensemble_boxes_wbf import *
+
 
 # Functions _draw_bbox_BE and visualize_BE are based on code from obb_anns/obb_anns.py
 # https://github.com/raember/obb_anns, 26.1.2022
@@ -58,18 +55,18 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
     cat_id = ann['cat_id']
     if isinstance(cat_id, list):
         cat_id = int(cat_id[annotation_set])
-    
+
     if 'comments' in ann.keys():
         parsed_comments = self.parse_comments(ann['comments'])
-    
+
     score_thr = 0.5  # fused score thr: below this value, transparent polygons are plotted.
     if oriented:
         bbox = ann.get('o_bbox', list(ann.get('bbox', [])))
         color = cm.RdYlGn(ann['score'])
         color = colors.rgb2hex(color)
         if ann['score'] < score_thr:
-            #color2 = colors.to_rgba(color, alpha=round(1/30, 2))  # TODO add 1/m; with parameter m
-            #color2 = colors.to_hex(color2, keep_alpha=True)
+            # color2 = colors.to_rgba(color, alpha=round(1/30, 2))  # TODO add 1/m; with parameter m
+            # color2 = colors.to_hex(color2, keep_alpha=True)
             draw.polygon(bbox + bbox[:2], outline=None, fill='#ff000040')
         else:
             draw.line(bbox + bbox[:2], fill=color, width=3)
@@ -78,17 +75,17 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         color = cm.RdYlGn(ann['score'])
         color = colors.rgb2hex(color)
         if ann['score'] < score_thr:
-            color2 = colors.to_rgba(color, alpha=round(1/30, 2))  #TODO add 1/m; with parameter m
+            color2 = colors.to_rgba(color, alpha=round(1 / 30, 2))  # TODO add 1/m; with parameter m
             color2 = colors.to_hex(color2, keep_alpha=True)
             draw.rectangle(bbox, outline=None, width=2, fill='#ff000040')
         else:
             draw.rectangle(bbox, outline=color, width=2)
-    
+
     # Now draw the label below the bbox
     x0 = min(bbox[::2])
     y0 = max(bbox[1::2])
     pos = (x0, y0)
-    
+
     def print_text_label(position, text, color_text, color_box):
         x1, y1 = ImageFont.load_default().getsize(text)
         x1 += position[0] + 4
@@ -96,7 +93,7 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         draw.rectangle((position[0], position[1], x1, y1), fill=color_box)
         draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
-    
+
     def print_scores(position, text, color_text, score_thr):
         if float(text) < score_thr:
             x1, y1 = ImageFont.load_default().getsize(text)
@@ -109,11 +106,11 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
             y1 += position[1] + 4
             draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
-    
+
     if instances:
         label = str(int(parsed_comments['instance'].lstrip('#'), 16))
         print_text_label(pos, label, '#ffffff', '#303030')
-    
+
     else:
         label = self.cat_info[cat_id]['name']
         score = str(round(ann['score'], 2))
@@ -127,7 +124,7 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         if print_staff_pos and 'rel_position' in parsed_comments.keys():
             print_text_label(pos, parsed_comments['rel_position'],
                              '#ffffff', '#0a7313')
-    
+
     return draw
 
 
@@ -170,22 +167,22 @@ def visualize_BE(self,
     # tuple that's why we use list comprehension
     img_idx = [img_idx] if img_idx is not None else None
     img_id = [img_id] if img_id is not None else None
-    
+
     if annotation_set is None:
         annotation_set = 0
         self.chosen_ann_set = self.annotation_sets[0]
     else:
         annotation_set = self.annotation_sets.index(annotation_set)
         self.chosen_ann_set = self.chosen_ann_set[annotation_set]
-    
+
     img_info, ann_info = [i[0] for i in
                           self.get_img_ann_pair(
                               idxs=img_idx, ids=img_id)]
-    
+
     # Get the data_root from the ann_file path if it doesn't exist
     if data_root is None:
         data_root = osp.split(self.ann_file)[0]
-    
+
     img_dir = osp.join(data_root, 'images')
     seg_dir = osp.join(data_root, 'segmentation')
     inst_dir = osp.join(data_root, 'instance')
@@ -193,10 +190,10 @@ def visualize_BE(self,
     # Get the actual image filepath and the segmentation filepath
     img_fp = osp.join(img_dir, img_info['filename'])
     print(f'Visualizing {img_fp}...')
-    
+
     # Remember: PIL Images are in form (h, w, 3)
     img = Image.open(img_fp)
-    
+
     # if instances:
     #     # Do stuff
     #     inst_fp = osp.join(
@@ -235,21 +232,21 @@ def visualize_BE(self,
     #
     #     img = Image.composite(img, overlay.convert('RGB'), mask)
     draw = ImageDraw.Draw(img, 'RGBA')
-    
+
     # Now draw the gt bounding boxes onto the image
     # for ann in ann_info.to_dict('records'):
     #     draw = self._draw_bbox(draw, ann, '#43ff64d9', oriented,  # Get rgba hexcode from: https://rgbacolorpicker.com/rgba-to-hex, 22.12.21
     #                            annotation_set, instances)
-    
+
     # Draw the proposals
     if self.proposals is not None:
         prop_info = self.get_img_props(idxs=img_idx, ids=img_id)
-        
+
         for prop in prop_info.to_dict('records'):
             prop_oriented = len(prop['bbox']) == 8
             # Use alpha = 1/m; m = size of ensemble. If all props overlap alpha = 1.
             draw = _draw_bbox_BE(self, draw, prop, '#ff436408', prop_oriented)
-    
+
     if show:
         img.show()
     if out_dir is not None:
@@ -294,7 +291,8 @@ def main():
     dataset = build_dataset(data_dict)
 
     # Deduce m (number of BatchEnsemble members)
-    m = max([int(x.split('_')[-1]) for x in os.listdir(json_results_dir) if "result_" in x and not "metrics.csv" in x]) + 1
+    m = max(
+        [int(x.split('_')[-1]) for x in os.listdir(json_results_dir) if "result_" in x and not "metrics.csv" in x]) + 1
 
     # Load proposals from deepscores_results_i.json
     boxes_list = []
@@ -302,7 +300,6 @@ def main():
     labels_list = []
     img_idx_list = []
     for i in range(m):
-
         json_result_fp = osp.join(json_results_dir, f"result_{i}/deepscores_results.json")
         dataset.obb.load_proposals(json_result_fp)
         boxes_list.append(dataset.obb.proposals['bbox'].to_list())
@@ -318,7 +315,7 @@ def main():
     # score_thr: value is set below; skips visualization if fused score is below score_thr
     weights = None  # Could weight proposals from a specific ensemble member
     proposals_WBF = []
-    
+
     # rotated_weighted_boxes mixes boxes from different images during calculation.
     # Thus, execute it on proposals of each image seperately, then concatenate results.
     for i in range(max_img_idx + 1):
@@ -327,12 +324,12 @@ def main():
         boxes_list_i = [list(compress(boxes_list[j], s[j])) for j in
                         range(len(boxes_list))]
         scores_list_i = [list(compress(scores_list[j], s[j])) for j in
-                        range(len(scores_list))]
+                         range(len(scores_list))]
         labels_list_i = [list(compress(labels_list[j], s[j])) for j in
-                        range(len(labels_list))]
+                         range(len(labels_list))]
         img_idx_list_i = [list(compress(img_idx_list[j], s[j])) for j in
-                        range(len(img_idx_list))]
-        
+                          range(len(img_idx_list))]
+
         boxes, scores, labels = rotated_weighted_boxes_fusion(boxes_list_i,
                                                               scores_list_i,
                                                               labels_list_i,
@@ -347,8 +344,8 @@ def main():
         zipped = list(zip(boxes, labels, img_idxs, scores))
 
         proposals_WBF_i = pd.DataFrame(zipped,
-                                     columns=['bbox', 'cat_id', 'img_idx',
-                                              'score'])
+                                       columns=['bbox', 'cat_id', 'img_idx',
+                                                'score'])
         proposals_WBF.append(proposals_WBF_i)
     proposals_WBF = pd.concat(proposals_WBF)
 
@@ -365,11 +362,11 @@ def main():
     # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and all others make no proposal; the fused score is: 0.3/30=0.01)
     score_thr = 0.00001
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
-    
+
     # Drop 'staff'-class (looks ugly on plot)
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
     dataset.obb.proposals = proposals_WBF
-    
+
     for img_info in dataset.obb.img_info:
         # TODO: If implementation works visualize_BE could be added as an OBBAnns method
         visualize_BE(self=dataset.obb,
