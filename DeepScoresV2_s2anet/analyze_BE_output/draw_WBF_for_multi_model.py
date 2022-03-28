@@ -14,6 +14,8 @@ from matplotlib import colors
 from mmdet.datasets import build_dataset
 from rotated_ensemble_boxes_wbf import *
 
+import mmcv
+
 
 # Functions _draw_bbox_BE and visualize_BE are based on code from obb_anns/obb_anns.py
 # https://github.com/raember/obb_anns, 26.1.2022
@@ -24,7 +26,7 @@ from rotated_ensemble_boxes_wbf import *
 
 
 parser = argparse.ArgumentParser(description='Weighted Box Fusion')
-
+parser.add_argument('config', help='test config file path')
 parser.add_argument(
     '--inp',
     type=str,
@@ -268,37 +270,9 @@ def visualize_BE(self,
 
 
 def main():
-    # Settings from config file that was used to generate
-    # the respective proposals
-    dataset_type = 'DeepScoresV2Dataset'
-    data_root = 'data/deep_scores_dense/'
-    img_norm_cfg = dict(
-        mean=[240, 240, 240],
-        std=[57, 57, 57],
-        to_rgb=False)
-    test_pipeline = [
-        dict(type='LoadImageFromFile'),
-        dict(
-            type='MultiScaleFlipAug',
-            img_scale=1.0,
-            flip=False,
-            transforms=[
-                dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
-                dict(type='RotatedRandomFlip'),
-                dict(type='Normalize', **img_norm_cfg),
-                dict(type='Pad', size_divisor=32),
-                dict(type='ImageToTensor', keys=['img']),
-                dict(type='Collect', keys=['img']),
-            ])
-    ]
-    data_dict = dict(
-        type=dataset_type,
-        ann_file=data_root + 'deepscores_test.json',
-        img_prefix=data_root + 'images/',
-        pipeline=test_pipeline,
-        use_oriented_bboxes=True)
+    cfg = mmcv.Config.fromfile(args.config)
 
-    dataset = build_dataset(data_dict)
+    dataset = build_dataset(cfg.data)
 
     # Deduce m (number of BatchEnsemble members)
     m = max(
