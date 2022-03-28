@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(description='Analyze errors')
 #         '--filename',
 #         type=str,
 #         default=".pkl",
-#         help="Name of the file(s) to evalute (must be inside the folder defined by --ev_folder)")
+#         help="Name of the file(s) to evaluate (must be inside the folder defined by --ev_folder)")
 
 parser.add_argument(
     '--ev_folder',
@@ -26,7 +26,7 @@ parser.add_argument(
     '--filename',
     type=str,
     default="dsv2_metrics.pkl",
-    help="Name of the file(s) to evalute (must be inside the folder defined by --ev_folder)")
+    help="Name of the file(s) to evaluate (must be inside the folder defined by --ev_folder)")
 args = parser.parse_args()
 
 

@@ -325,9 +325,8 @@ def main():
         scores = pd.Series(list(scores))
         zipped = list(zip(boxes, labels, img_idxs, scores))
 
-        proposals_WBF_i = pd.DataFrame(zipped,
-                                       columns=['bbox', 'cat_id', 'img_idx',
-                                                'score'])
+        proposals_WBF_i = pd.DataFrame(zipped, columns=['bbox', 'cat_id', 'img_idx',
+                                                        'score'])
         proposals_WBF.append(proposals_WBF_i)
     proposals_WBF = pd.concat(proposals_WBF)
 
@@ -349,10 +348,16 @@ def main():
 
         proposals_WBF_per_img.append(result_prop)
 
-    metrics = build_dataset(cfg.data.test).evaluate(proposals_WBF_per_img,
-                                                    result_json_filename=args.out + "/deepscores_ensemble_results.json",
-                                                    work_dir=args.out)
+    dataset = build_dataset(cfg.data.test)
+    metrics = dataset.evaluate(proposals_WBF_per_img,
+                               result_json_filename=args.out + "/deepscores_ensemble_results.json",
+                               work_dir=args.out)
+
     print("Mean AP for Threshold=0.5 is ", np.mean([v[0.5]['ap'] for v in metrics.values()]))
+
+    out_file = open(os.path.join(args.out, "deepscores_ensemble_metrics.pkl"), 'wb')
+    pickle.dump(metrics, out_file)
+    out_file.close()
 
     ############## DRAW WBF PROPOSALS ###############
 

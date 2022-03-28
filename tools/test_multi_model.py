@@ -3,8 +3,10 @@ import os
 import os.path as osp
 import shutil
 import tempfile
+from pathlib import Path
 
 import mmcv
+import numpy as np
 import torch
 import torch.distributed as dist
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
@@ -12,9 +14,9 @@ from mmcv.runner import get_dist_info, load_checkpoint
 
 from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model
+from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
-from mmdet.core import rotated_box_to_poly_np
 
 
 # Code based on test_BE.py
@@ -176,6 +178,7 @@ def main():
 
     outputs_m = []
     for i, checkpoint_file in enumerate(args.checkpoints):
+        checkpoint_file = Path(checkpoint_file)
         # build the dataloader
         dataset = build_dataset(cfg.data.test)
         data_loader = build_dataloader(
@@ -190,7 +193,7 @@ def main():
         if fp16_cfg is not None:
             wrap_fp16_model(model)
 
-        checkpoint = load_checkpoint(model, checkpoint_file, map_location='cpu')
+        checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
         # old versions did not save class info in checkpoints, this walkaround is
         # for backward compatibility
         if 'CLASSES' in checkpoint['meta']:
@@ -239,33 +242,19 @@ def main():
             dataset.evaluate(outputs_m[i], work_dir=work_dir, **eval_kwargs)
         elif data_name in ['dsv2']:
             from mmdet.core import outputs_rotated_box_to_poly_np
-            # for page in outputs:
-            #     for cla in page:
-            #         for detec in cla:
-            #             if min(detec[:4]) < 0:
-            #                 detec[:4][detec[:4] < 0] = 0
-            # TODO: fix ugly hack to make the labels match
-            import numpy as np
+
             for page in outputs_m[i]:
                 page.insert(0, np.array([]))
 
             outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
-            work_dir = osp.dirname(args.out)
+            work_dir = Path(args.out).parent / 'result_' / model_name
 
-            model_name = checkpoint_file.split("/")[-1].split(".pth")[0]
+            model_name = checkpoint_file.stem
 
-            work_dir = work_dir + '/result_' + model_name
-            if not os.path.exists(work_dir):
-                os.mkdir(work_dir)
+            work_dir.mkdir(parents=True, exist_ok=True)
 
-            dataset.evaluate(outputs_m[i], result_json_filename=work_dir+"/deepscores_results.json", work_dir=work_dir)
-            # print("asdfsdf")
-            # for page in outputs:
-            #     for cla in page:
-            #         for detec in cla:
-            #             if min(detec[:4]) < 0:
-            #                 print(detec)
-
+            dataset.evaluate(outputs_m[i], result_json_filename=str(work_dir / "deepscores_results.json"),
+                             work_dir=str(work_dir))
 
         # Save predictions in the COCO json format
         if args.json_out and rank == 0:

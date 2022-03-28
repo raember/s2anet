@@ -1,10 +1,10 @@
 import argparse
+import json
 import os
 import pickle
 
 import numpy as np
 import pandas as pa
-
 
 # Includes code snippets adapted from analyze_errors.py
 
@@ -19,8 +19,14 @@ parser.add_argument(
     '--out',
     type=str,
     default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
-    help="Pth to the output folder")
+    help="Path to the output folder")
+parser.add_argument(
+    '--wbf',
+    type=str,
+    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/deepscores_ensemble_metrics.pkl",
+    help="Path to the result JSON of the WBF algorithm")
 args = parser.parse_args()
+
 
 # TODO: Claculate performance with wbf
 
@@ -82,9 +88,9 @@ def get_np_arrays(evaluations_folder):
         metrics_df = pa.DataFrame(np.zeros((len(row_names), len(column_names))))
         metrics_df.index = row_names
         metrics_df.columns = column_names
-    
+
         for symbol in all_classes:
-            
+
             if symbol in error_metrics[i].keys():
                 metrics = error_metrics[i][symbol]
                 for overlap, ap in metrics.items():
@@ -146,9 +152,22 @@ def get_np_arrays(evaluations_folder):
     return metrics_df
 
 
+def include_WBF_metrics(metrics_df, fp):
+    f = open(fp, 'rb')
+    data = pickle.load(f)
+    f.close()
+    wbf_results = {k: v[0.5]['ap'] for k, v in data.items()}
+    for idx, val in wbf_results.items():
+        metrics_df.loc[idx, 'WBF'] = val
+
+    return metrics_df
+
+
 def main():
     input_folder = sorted([args.inp + x for x in os.listdir(args.inp) if "result_" in x])
     metrics_df = get_np_arrays(input_folder)
+    if args.wbf is not None:
+        metrics_df = include_WBF_metrics(metrics_df, args.wbf)
     metrics_df = round(metrics_df, 2)
     metrics_df.astype({'nr_occurrences': np.float})
     metrics_df = metrics_df.sort_values('nr_occurrences', ascending=False)
@@ -160,6 +179,8 @@ def main():
     print(f"The mean range between min and max class-wise AP is: {x}")
     path = os.path.join(args.out, "IOU_0-5_class_wise_APs.csv")
     metrics_df.to_csv(path)
+
+    print(metrics_df)
 
 
 if __name__ == '__main__':
