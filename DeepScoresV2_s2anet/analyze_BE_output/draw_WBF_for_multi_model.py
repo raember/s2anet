@@ -7,15 +7,13 @@ import pickle
 from itertools import compress, chain
 
 import matplotlib.cm as cm
+import mmcv
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import colors
 
 from mmdet.datasets import build_dataset
 from rotated_ensemble_boxes_wbf import *
-
-import mmcv
-
 
 # Functions _draw_bbox_BE and visualize_BE are based on code from obb_anns/obb_anns.py
 # https://github.com/raember/obb_anns, 26.1.2022
@@ -38,6 +36,7 @@ parser.add_argument(
     default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
     help="Pth to the output folder")
 args = parser.parse_args()
+
 
 def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
                   print_label=False, print_staff_pos=False, print_onset=False,
@@ -272,18 +271,17 @@ def visualize_BE(self,
 def main():
     cfg = mmcv.Config.fromfile(args.config)
 
-    dataset = build_dataset(cfg.data)
+    dataset = build_dataset(cfg.data.test)
 
     # Deduce m (number of BatchEnsemble members)
-    m = max(
-        [int(x.split('_')[-1]) for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x]) + 1
+    m = sorted([x.split('_', 1)[-1] for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x])
 
     # Load proposals from deepscores_results_i.json
     boxes_list = []
     scores_list = []
     labels_list = []
     img_idx_list = []
-    for i in range(m):
+    for i in m:
         json_result_fp = osp.join(args.inp, f"result_{i}/deepscores_results.json")
         dataset.obb.load_proposals(json_result_fp)
         boxes_list.append(dataset.obb.proposals['bbox'].to_list())
@@ -335,6 +333,26 @@ def main():
 
     out_file = os.path.join(args.out, 'proposals_WBF.pkl')
     pickle.dump(proposals_WBF, open(out_file, 'wb'))
+
+    #### Evaluate WBF Performance ####
+    #
+    proposals_WBF_per_img = []
+    for img_idx in sorted(set(list(proposals_WBF.img_idx))):
+        props = proposals_WBF[proposals_WBF.img_idx == img_idx]
+        result_prop = [np.empty((0, 9))] * 136
+
+        for cat_id in sorted(set(list(props.cat_id))):
+            props_cat = props[props.cat_id == cat_id]
+            result_prop[cat_id - 1] = np.concatenate((np.array(list(props_cat.bbox)),
+                                                      np.array(list(props_cat.score)).reshape(
+                                                          (np.array(list(props_cat.score)).shape[0], 1))), axis=1)
+
+        proposals_WBF_per_img.append(result_prop)
+
+    metrics = build_dataset(cfg.data.test).evaluate(proposals_WBF_per_img,
+                                                    result_json_filename=args.out + "/deepscores_ensemble_results.json",
+                                                    work_dir=args.out)
+    print("Mean AP for Threshold=0.5 is ", np.mean([v[0.5]['ap'] for v in metrics.values()]))
 
     ############## DRAW WBF PROPOSALS ###############
 

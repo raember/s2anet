@@ -205,20 +205,6 @@ def main():
             outputs_m.append(multi_gpu_test(model, data_loader, args.tmpdir))
         rank, _ = get_dist_info()
 
-        # if args.out and rank == 0:
-        #     # Reshape outputs: first needed to calculate the 30 ensemble-outputs per image
-        #     # and then end up with a nested_list of the wrong shape
-        #     # (outputs = {list: 10}) but need outputs_m = {list: 30})
-        #     # TODO: How to solve this in a better way? Just ugly not slow.
-        #     outputs_m = []
-        #     for j in range(len(outputs[0])):
-        #         outputs_reshaped_m = []
-        #         for i in range(len(outputs)):
-        #             outputs_reshaped_m.append(outputs[i][j])
-        #         outputs_m.append(outputs_reshaped_m)
-
-        # TODO: This loop is brutally slow -> need a better way to evaluate outputs.
-        # Reformat out-path to save ensemble member specific output seperately.
         fp_out = '/'.join(args.out.split('/')[0:2]) + '/' + \
                  args.out.split('/')[2][:-4] + \
                  '_' + str(i) + '.pkl'
