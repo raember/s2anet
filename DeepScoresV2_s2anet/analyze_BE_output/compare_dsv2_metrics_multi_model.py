@@ -1,3 +1,4 @@
+import argparse
 import os
 import pickle
 
@@ -6,6 +7,22 @@ import pandas as pa
 
 
 # Includes code snippets adapted from analyze_errors.py
+
+parser = argparse.ArgumentParser(description='Compare DSV2 Metrics')
+
+parser.add_argument(
+    '--inp',
+    type=str,
+    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/",
+    help="Path to the folder to evaluate")
+parser.add_argument(
+    '--out',
+    type=str,
+    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
+    help="Pth to the output folder")
+args = parser.parse_args()
+
+# TODO: Claculate performance with wbf
 
 def get_pickle(evaluations_folder):
     error_metrics = dict()
@@ -130,9 +147,7 @@ def get_np_arrays(evaluations_folder):
 
 
 def main():
-    input_folder_p = 'work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/'
-    input_folder = sorted([input_folder_p + x for x in os.listdir(input_folder_p) if "result_" in x])
-    output_folder = 'work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/'
+    input_folder = sorted([args.inp + x for x in os.listdir(args.inp) if "result_" in x])
     metrics_df = get_np_arrays(input_folder)
     metrics_df = round(metrics_df, 2)
     metrics_df.astype({'nr_occurrences': np.float})
@@ -143,7 +158,7 @@ def main():
     x = spread['max'] - spread['min']
     x = np.mean(x)
     print(f"The mean range between min and max class-wise AP is: {x}")
-    path = os.path.join(output_folder, "IOU_0-5_class_wise_APs.csv")
+    path = os.path.join(args.out, "IOU_0-5_class_wise_APs.csv")
     metrics_df.to_csv(path)
 
 
