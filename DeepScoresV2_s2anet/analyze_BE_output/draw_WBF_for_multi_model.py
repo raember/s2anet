@@ -1,7 +1,6 @@
 # Code implemented based on obb_anns.py and:
 # https://github.com/ZFTurbo/Weighted-Boxes-Fusion/ensemble_boxes/ensemble_boxes_wbf.py, 4.1.2022
-
-
+import argparse
 import os
 import os.path as osp
 import pickle
@@ -23,6 +22,20 @@ from rotated_ensemble_boxes_wbf import *
 # and:
 # ensemble-boxes module, https://github.com/ZFTurbo/Weighted-Boxes-Fusion, 26.1.2022
 
+
+parser = argparse.ArgumentParser(description='Weighted Box Fusion')
+
+parser.add_argument(
+    '--inp',
+    type=str,
+    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop",
+    help="Path to the folder to evaluate")
+parser.add_argument(
+    '--out',
+    type=str,
+    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
+    help="Pth to the output folder")
+args = parser.parse_args()
 
 def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
                   print_label=False, print_staff_pos=False, print_onset=False,
@@ -285,14 +298,11 @@ def main():
         pipeline=test_pipeline,
         use_oriented_bboxes=True)
 
-    # TODO: Fix paths
-    json_results_dir = "work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop"
-    work_dir = "work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/"
     dataset = build_dataset(data_dict)
 
     # Deduce m (number of BatchEnsemble members)
     m = max(
-        [int(x.split('_')[-1]) for x in os.listdir(json_results_dir) if "result_" in x and not "metrics.csv" in x]) + 1
+        [int(x.split('_')[-1]) for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x]) + 1
 
     # Load proposals from deepscores_results_i.json
     boxes_list = []
@@ -300,7 +310,7 @@ def main():
     labels_list = []
     img_idx_list = []
     for i in range(m):
-        json_result_fp = osp.join(json_results_dir, f"result_{i}/deepscores_results.json")
+        json_result_fp = osp.join(args.inp, f"result_{i}/deepscores_results.json")
         dataset.obb.load_proposals(json_result_fp)
         boxes_list.append(dataset.obb.proposals['bbox'].to_list())
         scores_list.append(list(map(float, dataset.obb.proposals['score'].to_list())))
@@ -349,13 +359,13 @@ def main():
         proposals_WBF.append(proposals_WBF_i)
     proposals_WBF = pd.concat(proposals_WBF)
 
-    out_file = os.path.join(work_dir, 'proposals_WBF.pkl')
+    out_file = os.path.join(args.out, 'proposals_WBF.pkl')
     pickle.dump(proposals_WBF, open(out_file, 'wb'))
 
     ############## DRAW WBF PROPOSALS ###############
 
     # Create output directory
-    out_dir = osp.join(work_dir, "visualized_proposals/")
+    out_dir = osp.join(args.out, "visualized_proposals/")
     if not osp.exists(out_dir):
         os.makedirs(out_dir)
 
