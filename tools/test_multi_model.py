@@ -208,9 +208,8 @@ def main():
             outputs_m.append(multi_gpu_test(model, data_loader, args.tmpdir))
         rank, _ = get_dist_info()
 
-        fp_out = '/'.join(args.out.split('/')[0:2]) + '/' + \
-                 args.out.split('/')[2][:-4] + \
-                 '_' + str(i) + '.pkl'
+        out_fp = Path(args.out)
+        fp_out = out_fp.parent / (out_fp.stem + "_" + checkpoint_file.stem + ".pkl")
 
         print('\nwriting results to {}'.format(fp_out))
 
@@ -247,9 +246,9 @@ def main():
                 page.insert(0, np.array([]))
 
             outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
-            work_dir = Path(args.out).parent / 'result_' / model_name
-
             model_name = checkpoint_file.stem
+
+            work_dir = out_fp.parent / ('result_' + model_name)
 
             work_dir.mkdir(parents=True, exist_ok=True)
 
