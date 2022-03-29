@@ -1,0 +1,105 @@
+import argparse
+import copy
+from argparse import Namespace
+from pathlib import Path
+
+from DeepScoresV2_s2anet import analyze_errors
+from DeepScoresV2_s2anet.analyze_BE_output import snapshot_overlap, draw_WBF_for_multi_model, \
+    compare_dsv2_metrics_multi_model
+from tools import test_multi_model
+
+parser = argparse.ArgumentParser(description='Evaluate Snapshot Ensemble')
+parser.add_argument('config', help='test config file path')
+parser.add_argument('--checkpoints', nargs='+',
+                    help='checkpoint files (use like --checkpoints file1 file2 file3 ...', required=True)
+
+parser.add_argument(
+    '--out',
+    type=str,
+    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop",
+    help="Pth to the output folder")
+parser.add_argument(
+    '--data',
+    choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024', 'dsv2'],
+    default='dsv2',
+    type=str,
+    help='eval dataset type')
+args = parser.parse_args()
+
+args.out = Path(args.out)
+
+def run_test_multi_model():
+    def get_args():
+        args_ = copy.deepcopy(args)
+        args_.data = 'dsv2'
+        args_.out = str(args.out / 'multi_model_test.pkl')
+        args_.json_out = None
+        args_.launcher = 'none'
+        args_.show = False
+        args_.eval = []
+        return args_
+
+    test_multi_model.parse_args = get_args
+    test_multi_model.main()
+
+
+def run_snapshot_overlap():
+    result_jsons = [str(x) for x in list(args.out.glob("**/deepscores_results.json"))]
+    print(result_jsons)
+
+    def get_args():
+        args_dict = {
+            'config': args.config,
+            'jsons_gt': result_jsons,
+            'jsons_pr': result_jsons,
+            'out': str(args.out / "overlap")
+        }
+        return Namespace(**args_dict)
+
+    snapshot_overlap.parse_args = get_args
+    snapshot_overlap.main()
+
+
+def run_WBF():
+    def get_args():
+        args_ = copy.deepcopy(args)
+        args_.inp = str(args.out)
+        args_.out = str(args.out / "wbf")
+        return args_
+
+    draw_WBF_for_multi_model.parse_args = get_args
+    draw_WBF_for_multi_model.main()
+
+
+def run_compare_metrics():
+    def get_args():
+        args_ = copy.deepcopy(args)
+        args_.inp = str(args.out)
+        args_.out = str(args.out / "compare_metrics")
+        args_.wbf = str(args.out / "wbf" / "deepscores_ensemble_metrics.pkl")
+        return args_
+
+    compare_dsv2_metrics_multi_model.parse_args = get_args
+    compare_dsv2_metrics_multi_model.main()
+
+
+def run_analyze_errors():
+    def get_args():
+        args_ = copy.deepcopy(args)
+        args_.ev_folder = str(args.out)
+        args_.filename = ".pkl"
+        return args_
+
+    analyze_errors.parse_args = get_args
+    analyze_errors.main()
+
+
+if __name__ == '__main__':
+    if not args.out.exists():
+        args.out.mkdir()
+
+    run_test_multi_model()
+    run_snapshot_overlap()
+    run_WBF()
+    run_compare_metrics()
+    run_analyze_errors()

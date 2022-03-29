@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import pickle
+from pathlib import Path
 
 import mmcv
 import numpy as np
@@ -9,12 +10,12 @@ import pandas as pd
 from obb_anns import OBBAnns
 
 
-def _read_args():
+def parse_args():
     parser = argparse.ArgumentParser(description='Compare Overlap between Models')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('jsons_gt', nargs='+', default=[], help='Path to JSON file(s) with proposals which is used as ground truth')
     parser.add_argument('--jsons_pr', nargs='+', default=[], help='Path to JSON file(s) with proposals')
-    parser.add_argument('--out_dir', default=None, help='Path where to save metrics')
+    parser.add_argument('--out', default=None, help='Path where to save metrics')
     args = parser.parse_args()
     return args
 
@@ -101,13 +102,8 @@ def _store_results_classwise(work_dir, filename, metric_results, categories, occ
     print(metric_results)
 
 
-def _store_results(work_dir, filename, metric_results, categories, occurences_by_class):
-    if work_dir is not None and work_dir != "":
-        if not os.path.isdir(work_dir):
-            os.mkdir(work_dir)
-        out_file = os.path.join(work_dir, filename)
-        pickle.dump(metric_results, open(out_file, 'wb'))
-
+def _store_results(filename, metric_results):
+    pickle.dump(metric_results, open(filename, 'wb'))
     print(metric_results)
 
 
@@ -121,9 +117,15 @@ def _setup_obb_anns(cfg):
 
 
 def main():
-    args = _read_args()
+    args = parse_args()
     cfg = mmcv.Config.fromfile(args.config)
+
+    out_fp = Path(args.out)
+    if not out_fp.exists():
+        out_fp.mkdir()
+
     obb = _setup_obb_anns(cfg)
+
     for json_gt in args.jsons_gt:
         df = _proposal_to_df(obb, json_gt)
         get_anns_f = _get_anns_custom(df)
@@ -135,13 +137,13 @@ def main():
             f1 = json_gt.split("/")[-2] if "/" in json_gt else json_gt
             f2 = json_pr.split("/")[-2] if "/" in json_pr else json_pr
 
-            out_path = os.path.join(args.out_dir, f"{f1}_{f2}/")
-            if not os.path.exists(out_path):
-                os.mkdir(out_path)
+            out_path = out_fp / f"{f1}_{f2}/"
+            if not out_path.exists():
+                out_path.mkdir()
 
             filename = "overlap.pkl"
 
-            _store_results(out_path, filename, metric_results, categories, occurences_by_class)
+            _store_results(out_path / filename, metric_results)
 
 
 if __name__ == '__main__':

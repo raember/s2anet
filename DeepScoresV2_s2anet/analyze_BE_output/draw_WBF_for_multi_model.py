@@ -23,19 +23,21 @@ from rotated_ensemble_boxes_wbf import *
 # ensemble-boxes module, https://github.com/ZFTurbo/Weighted-Boxes-Fusion, 26.1.2022
 
 
-parser = argparse.ArgumentParser(description='Weighted Box Fusion')
-parser.add_argument('config', help='test config file path')
-parser.add_argument(
-    '--inp',
-    type=str,
-    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop",
-    help="Path to the folder to evaluate")
-parser.add_argument(
-    '--out',
-    type=str,
-    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
-    help="Pth to the output folder")
-args = parser.parse_args()
+def parse_args():
+    parser = argparse.ArgumentParser(description='Weighted Box Fusion')
+    parser.add_argument('config', help='test config file path')
+    parser.add_argument(
+        '--inp',
+        type=str,
+        default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop",
+        help="Path to the folder to evaluate")
+    parser.add_argument(
+        '--out',
+        type=str,
+        default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
+        help="Pth to the output folder")
+    args = parser.parse_args()
+    return args
 
 
 def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
@@ -269,6 +271,7 @@ def visualize_BE(self,
 
 
 def main():
+    args = parse_args()
     cfg = mmcv.Config.fromfile(args.config)
 
     dataset = build_dataset(cfg.data.test)
@@ -329,6 +332,10 @@ def main():
                                                         'score'])
         proposals_WBF.append(proposals_WBF_i)
     proposals_WBF = pd.concat(proposals_WBF)
+
+
+    if not os.path.exists(args.out):
+        os.mkdir(args.out)
 
     out_file = os.path.join(args.out, 'proposals_WBF.pkl')
     pickle.dump(proposals_WBF, open(out_file, 'wb'))

@@ -1,31 +1,31 @@
 import argparse
-import json
 import os
 import pickle
-
+from pathlib import Path
 import numpy as np
 import pandas as pa
 
+
 # Includes code snippets adapted from analyze_errors.py
 
-parser = argparse.ArgumentParser(description='Compare DSV2 Metrics')
-
-parser.add_argument(
-    '--inp',
-    type=str,
-    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/",
-    help="Path to the folder to evaluate")
-parser.add_argument(
-    '--out',
-    type=str,
-    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
-    help="Path to the output folder")
-parser.add_argument(
-    '--wbf',
-    type=str,
-    default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/deepscores_ensemble_metrics.pkl",
-    help="Path to the result JSON of the WBF algorithm")
-args = parser.parse_args()
+def parse_args():
+    parser = argparse.ArgumentParser(description='Compare DSV2 Metrics')
+    parser.add_argument(
+        '--inp',
+        type=str,
+        default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/",
+        help="Path to the folder to evaluate")
+    parser.add_argument(
+        '--out',
+        type=str,
+        default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
+        help="Path to the output folder")
+    parser.add_argument(
+        '--wbf',
+        type=str,
+        default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/deepscores_ensemble_metrics.pkl",
+        help="Path to the result JSON of the WBF algorithm")
+    return parser.parse_args()
 
 
 # TODO: Claculate performance with wbf
@@ -164,20 +164,30 @@ def include_WBF_metrics(metrics_df, fp):
 
 
 def main():
-    input_folder = sorted([args.inp + x for x in os.listdir(args.inp) if "result_" in x])
+    args = parse_args()
+    input_folder = sorted([Path(args.inp) / x for x in os.listdir(args.inp) if "result_" in x])
     metrics_df = get_np_arrays(input_folder)
+
     if args.wbf is not None:
         metrics_df = include_WBF_metrics(metrics_df, args.wbf)
+
     metrics_df = round(metrics_df, 2)
     metrics_df.astype({'nr_occurrences': np.float})
     metrics_df = metrics_df.sort_values('nr_occurrences', ascending=False)
     metrics_df.rename(columns={'nr_occurrences': 'nr_occur'}, inplace=True)
+
     spread = metrics_df.drop(
         metrics_df[(metrics_df['min'] == 0) & (metrics_df['max'] == 0)].index)
     x = spread['max'] - spread['min']
     x = np.mean(x)
+
     print(f"The mean range between min and max class-wise AP is: {x}")
-    path = os.path.join(args.out, "IOU_0-5_class_wise_APs.csv")
+
+    out_fp = Path(args.out)
+    if not out_fp.exists():
+        out_fp.mkdir()
+
+    path = out_fp / "IOU_0-5_class_wise_APs.csv"
     metrics_df.to_csv(path)
 
     print(metrics_df)
