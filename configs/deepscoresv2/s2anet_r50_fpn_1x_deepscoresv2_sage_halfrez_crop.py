@@ -139,7 +139,7 @@ data = dict(
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test_small.json', # TODO: remove _small! (only for debugging)
+        ann_file=data_root + 'deepscores_test.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
@@ -151,9 +151,9 @@ optimizer = dict(type='SGD', lr=0.0075, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 
 # learning policy
-n_warmup_epochs = 150
-n_snapshots = 5
-snapshot_epoch_interval = 20
+n_warmup_epochs = 500
+n_snapshots = 17
+snapshot_epoch_interval = 30
 
 n_steps = -(-1362 // data['imgs_per_gpu']) # -(-numerator // denominator) is a way to round up an integer without importing a module like math
 lr_config = dict(

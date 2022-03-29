@@ -41,9 +41,9 @@ def parse_args():
     return args
 
 
-def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
-                  print_label=False, print_staff_pos=False, print_onset=False,
-                  instances=False, print_score=True, m=1):
+def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
+                        print_label=False, print_staff_pos=False, print_onset=False,
+                        instances=False, print_score=True, m=1):
     """Draws the bounding box onto an image with a given color.
 
     :param ImageDraw.ImageDraw draw: ImageDraw object to draw with.
@@ -146,16 +146,16 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
     return draw
 
 
-def visualize_BE(self,
-                 img_idx=None,
-                 img_id=None,
-                 data_root=None,
-                 out_dir=None,
-                 annotation_set=None,
-                 oriented=True,
-                 instances=False,
-                 m=1,
-                 show=True):
+def visualize_ensemble(self,
+                       img_idx=None,
+                       img_id=None,
+                       data_root=None,
+                       out_dir=None,
+                       annotation_set=None,
+                       oriented=True,
+                       instances=False,
+                       m=1,
+                       show=True):
     """Uses PIL to visualize the ground truth labels of a given image.
 
     img_idx and img_id are mutually exclusive. Only one can be used at a
@@ -265,7 +265,7 @@ def visualize_BE(self,
         for prop in prop_info.to_dict('records'):
             prop_oriented = len(prop['bbox']) == 8
             # Use alpha = 1/m; m = size of ensemble. If all props overlap alpha = 1.
-            draw = _draw_bbox_BE(self, draw, prop, '#ff436408', prop_oriented, m)
+            draw = _draw_bbox_ensemble(self, draw, prop, '#ff436408', prop_oriented, m)
 
     if show:
         img.show()
@@ -386,13 +386,13 @@ def main():
 
     for img_info in dataset.obb.img_info:
         # TODO: If implementation works visualize_BE could be added as an OBBAnns method
-        visualize_BE(self=dataset.obb,
-                     img_id=img_info['id'],
-                     data_root=dataset.data_root,
-                     out_dir=out_dir,
-                     m=m)
+        visualize_ensemble(self=dataset.obb,
+                           img_id=img_info['id'],
+                           data_root=dataset.data_root,
+                           out_dir=out_dir,
+                           m=m)
 
-    # visualize_BE(self=dataset.obb,
+    # visualize_ensemble(self=dataset.obb,
     #              img_id=dataset.obb.img_info[0]['id'],
     #              data_root=dataset.data_root,
     #              out_dir=out_dir,
