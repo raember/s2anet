@@ -15,6 +15,7 @@ from matplotlib import colors
 from mmdet.datasets import build_dataset
 from rotated_ensemble_boxes_wbf import *
 
+
 # Functions _draw_bbox_BE and visualize_BE are based on code from obb_anns/obb_anns.py
 # https://github.com/raember/obb_anns, 26.1.2022
 # Module rotated_ensemble_boxes_wbf is based on code from:
@@ -42,7 +43,7 @@ def parse_args():
 
 def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
                   print_label=False, print_staff_pos=False, print_onset=False,
-                  instances=False, print_score=True):
+                  instances=False, print_score=True, m=1):
     """Draws the bounding box onto an image with a given color.
 
     :param ImageDraw.ImageDraw draw: ImageDraw object to draw with.
@@ -62,6 +63,7 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
     are printed on the visualization
     :param Optional[bool] print_onset:  Determines if the onsets are
     printed on the visualization
+    :param int m: Number of ensemble members
 
     :return: The drawn object.
     :rtype: ImageDraw.ImageDraw
@@ -81,7 +83,7 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         color = cm.RdYlGn(ann['score'])
         color = colors.rgb2hex(color)
         if ann['score'] < score_thr:
-            # color2 = colors.to_rgba(color, alpha=round(1/30, 2))  # TODO add 1/m; with parameter m
+            # color2 = colors.to_rgba(color, alpha=round(1/m, 2))
             # color2 = colors.to_hex(color2, keep_alpha=True)
             draw.polygon(bbox + bbox[:2], outline=None, fill='#ff000040')
         else:
@@ -91,7 +93,7 @@ def _draw_bbox_BE(self, draw, ann, color, oriented, annotation_set=None,
         color = cm.RdYlGn(ann['score'])
         color = colors.rgb2hex(color)
         if ann['score'] < score_thr:
-            color2 = colors.to_rgba(color, alpha=round(1 / 30, 2))  # TODO add 1/m; with parameter m
+            color2 = colors.to_rgba(color, alpha=round(1 / m, 2))
             color2 = colors.to_hex(color2, keep_alpha=True)
             draw.rectangle(bbox, outline=None, width=2, fill='#ff000040')
         else:
@@ -152,6 +154,7 @@ def visualize_BE(self,
                  annotation_set=None,
                  oriented=True,
                  instances=False,
+                 m=1,
                  show=True):
     """Uses PIL to visualize the ground truth labels of a given image.
 
@@ -159,6 +162,7 @@ def visualize_BE(self,
     time. If proposals are currently loaded, then also visualizes the
     proposals.
 
+    :param int m: Number of ensemble members
     :param int img_idx: The index of the desired image.
     :param int img_id: The id of the desired image.
     :param Optional[str] data_root: Path to the root data directory. If
@@ -261,13 +265,12 @@ def visualize_BE(self,
         for prop in prop_info.to_dict('records'):
             prop_oriented = len(prop['bbox']) == 8
             # Use alpha = 1/m; m = size of ensemble. If all props overlap alpha = 1.
-            draw = _draw_bbox_BE(self, draw, prop, '#ff436408', prop_oriented)
+            draw = _draw_bbox_BE(self, draw, prop, '#ff436408', prop_oriented, m)
 
     if show:
         img.show()
     if out_dir is not None:
-        img.save(osp.join(out_dir, 'props_' + img_info['filename'])
-                 )
+        img.save(osp.join(out_dir, 'props_' + img_info['filename']))
 
 
 def main():
@@ -277,14 +280,15 @@ def main():
     dataset = build_dataset(cfg.data.test)
 
     # Deduce m (number of BatchEnsemble members)
-    m = sorted([x.split('_', 1)[-1] for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x])
+    models = sorted([x.split('_', 1)[-1] for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x])
+    m = len(models)
 
     # Load proposals from deepscores_results_i.json
     boxes_list = []
     scores_list = []
     labels_list = []
     img_idx_list = []
-    for i in m:
+    for i in models:
         json_result_fp = osp.join(args.inp, f"result_{i}/deepscores_results.json")
         dataset.obb.load_proposals(json_result_fp)
         boxes_list.append(dataset.obb.proposals['bbox'].to_list())
@@ -332,7 +336,6 @@ def main():
                                                         'score'])
         proposals_WBF.append(proposals_WBF_i)
     proposals_WBF = pd.concat(proposals_WBF)
-
 
     if not os.path.exists(args.out):
         os.mkdir(args.out)
@@ -386,12 +389,14 @@ def main():
         visualize_BE(self=dataset.obb,
                      img_id=img_info['id'],
                      data_root=dataset.data_root,
-                     out_dir=out_dir)
+                     out_dir=out_dir,
+                     m=m)
 
     # visualize_BE(self=dataset.obb,
     #              img_id=dataset.obb.img_info[0]['id'],
     #              data_root=dataset.data_root,
-    #              out_dir=out_dir)
+    #              out_dir=out_dir,
+    #              m=m)
 
 
 if __name__ == '__main__':
