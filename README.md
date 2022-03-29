@@ -81,19 +81,6 @@ Please see [getting_started.md](docs/GETTING_STARTED.md) for the basic usage of 
 ## Snapshot Ensemble
 Please see [getting_started SE.md](docs/snapshot_ensemble/GETTING_STARTED_SE.md) on how to run snapshot ensembles.
 
-## BatchEnsemble Prototype
-
-### Training
-python s2anet\tools\train_BE.py configs/deepscoresv2/{config}
-
-### Testing
-python  s2anet\tools\test_BE.py configs/deepscoresv2/{config} work_dirs/{config}/{checkpoint.pth} --data dsv2 --out work_dirs/{config}/pred.pkl
-
-### Visualization
-python s2anet\DeepScoresV2_s2anet\analyze_BE_output\draw_WBF_for_BE.py
-
-### Class-wise AP
-python s2anet\DeepScoresV2_s2anet\analyze_BE_output\compare_dsv2_metrics.py
 
 ## Citation
 
