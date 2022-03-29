@@ -44,7 +44,7 @@ python tools/train.py config_1 --work_dir <working dir> && python tools/train.py
 ## Evaluate Snapshot Ensembles
 Run the script `DeepScoresV2/analyze_ensembles/evaluate_all_snapshot_ensemble.py` to run a complete evaluation of the snapshots
 ````bash
-python DeepScoresV2/analyze_ensembles/evaluate_all_snapshot_ensemble.py <path to config file> --checkpoints <path to checkpoints> -out <out filepath>
+python DeepScoresV2_s2anet/analyze_ensembles/evaluate_all_snapshot_ensemble.py <path to config file> --checkpoints <path to checkpoints> -out <out filepath>
 ````
 
 For a quick overview, the following files are the most important ones:
