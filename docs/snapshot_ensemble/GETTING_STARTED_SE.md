@@ -42,33 +42,12 @@ python tools/train.py config_1 --work_dir <working dir> && python tools/train.py
 ````
 
 ## Evaluate Snapshot Ensembles
-Run the script `test_BE_multi_model.py` to create predictions
+Run the script `DeepScoresV2/analyze_ensembles/evaluate_all_snapshot_ensemble.py` to run a complete evaluation of the snapshots
 ````bash
-python tools/test_BE_multi_model.py config_2 --checkpoints <path to checkpoints> --data dsv2 --out <out filepath>
+python DeepScoresV2/analyze_ensembles/evaluate_all_snapshot_ensemble.py <path to config file> --checkpoints <path to checkpoints> -out <out filepath>
 ````
 
-(Optional): Calculate the overlap between multiple snapshots. The predictions (json file) created with the previous command are used as ground truth
-or as prediction. 
-````bash
-python DeepScoresV2_s2anet/analyze_BE_output/snapshot_overlap.py config_2 <path to json used as gt> --jsons <path to jsons used as proposal> ----out_dir <out filepath 2>
-````
-
-Finally, run the script `analyze_errors.py` to create a .csv file with the predictions.
-````bash
-python DeepScoresV2_s2anet/analyze_errors.py --ev_folder <out filepath> --filename dsv2_metrics.pkl
-````
-
-(Optional if the overlaps were calculated):
-````bash
-python DeepScoresV2_s2anet/analyze_errors.py --ev_folder <out filepath 2> --filename .pkl
-````
-
-Calculate the AP of the ensemble (based on multiple models)
-````bash
-python DeepScoresV2_s2anet/analyze_BE_output/compare_dsv2_metrics_multi_model.py
-````
-
-## Visualize Predictions
-````bash
-python DeepScoresV2_s2anet/analyze_BE_output/draw_WBF_for_multi_model.py
-````
+For a quick overview, the following files are the most important ones:
+- `<out filepath>/compare metrics/IOU_0-5_class_wise_APs.csv`: Provides an overview about all the models. It shows the average/min/max ap per class as well as the performance of weighted box fusion (wbf)
+- `<out filepath>/overlap/overlap_matrix.csv`: The overlap between ensembles - the models per columns were used as ground truth, the models per row as prediction
+- `<out filepath>/overview_metrics.csv`: Shows the ap per class for all models as well as for wbf

@@ -87,7 +87,8 @@ def run_analyze_errors():
     def get_args():
         args_ = copy.deepcopy(args)
         args_.ev_folder = str(args.out)
-        args_.filename = ".pkl"
+        args_.filename = "dsv2_metrics.pkl"
+        args_.create_overview = True
         return args_
 
     analyze_errors.parse_args = get_args
