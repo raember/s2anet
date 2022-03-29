@@ -126,6 +126,9 @@ def main():
 
     obb = _setup_obb_anns(cfg)
 
+    rows = {}
+    columns = []
+
     for json_gt in args.jsons_gt:
         df = _proposal_to_df(obb, json_gt)
         get_anns_f = _get_anns_custom(df)
@@ -144,6 +147,15 @@ def main():
             filename = "overlap.pkl"
 
             _store_results(out_path / filename, metric_results)
+
+            if json_pr in rows:
+                rows[json_pr].append(metric_results['average'][0.5]['ap'])
+            else:
+                rows[json_pr] = [metric_results['average'][0.5]['ap']]
+
+        columns.append(json_gt)
+
+    pd.DataFrame.from_dict(rows, orient='index', columns=columns).to_csv(out_fp / "overlap_matrix.csv")
 
 
 if __name__ == '__main__':
