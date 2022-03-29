@@ -1,6 +1,7 @@
 import argparse
 import os
 import pickle
+from collections import OrderedDict
 
 import numpy as np
 import pandas as pa
@@ -18,6 +19,8 @@ def parse_args():
         type=str,
         default="dsv2_metrics.pkl",
         help="Name of the file(s) to evaluate (must be inside the folder defined by --ev_folder)")
+    parser.add_argument('--create_overview', action='store_true',
+                        help='Create one csv containing the results from all files')
     return parser.parse_args()
 
 
@@ -81,6 +84,19 @@ def store_csv(dframes, evaluations_folder):
     return None
 
 
+def merge_dataframes(dframes):
+    threshold = 0.5
+    columns = []
+
+    for name, df in OrderedDict(sorted(dframes.items())).items():
+        col = df.loc[:, [threshold]]
+        col.rename(columns={threshold: name + f" (th={threshold})"}, inplace=True)
+        columns.append(col)
+
+    overview_df = pa.concat(columns, axis=1, join='outer')
+    return overview_df
+
+
 def main():
     args = parse_args()
     evaluations_folder = args.ev_folder
@@ -92,6 +108,11 @@ def main():
 
     # store as csv
     store_csv(dframes, evaluations_folder)
+
+    # create overview: store all dataframes in single file
+    if args.create_overview:
+        overview = merge_dataframes(dframes)
+        store_csv({'overview': overview}, evaluations_folder)
 
 
 if __name__ == '__main__':
