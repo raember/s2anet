@@ -4,7 +4,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from DeepScoresV2_s2anet import analyze_errors
-from DeepScoresV2_s2anet.analyze_BE_output import snapshot_overlap, draw_WBF_for_multi_model, \
+from DeepScoresV2_s2anet.analyze_ensembles import snapshot_overlap, draw_WBF_for_multi_model, \
     compare_dsv2_metrics_multi_model
 from tools import test_multi_model
 
