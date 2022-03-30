@@ -4,6 +4,7 @@ from .coco import CocoDataset
 from .custom import CustomDataset
 from .dataset_wrappers import ConcatDataset, RepeatDataset
 from .deepscoresv2 import DeepScoresV2Dataset
+from .deepscoresv2_BE import DeepScoresV2Dataset_BE
 from .loader import DistributedGroupSampler, GroupSampler, build_dataloader
 from .registry import DATASETS
 from .voc import VOCDataset
@@ -18,5 +19,6 @@ __all__ = [
     'CityscapesDataset', 'GroupSampler', 'DistributedGroupSampler',
     'build_dataloader', 'ConcatDataset', 'RepeatDataset',
     'WIDERFaceDataset', 'DATASETS', 'build_dataset',
-    'HRSC2016Dataset','DotaDataset','DeepScoresV2Dataset'
+    'HRSC2016Dataset','DotaDataset','DeepScoresV2Dataset',
+    'DeepScoresV2Dataset_BE'
 ]

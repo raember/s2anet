@@ -115,9 +115,12 @@ data
 *.pkl
 *.pkl.json
 *.log.json
+*.csv
 work_dirs/
 data/
 wandb/
+DeepScoresV2_s2anet/analyze_ensembles/visualized_proposals
+DeepScoresV2_s2anet/analyze_ensembles/visualization_final
 
 # Pytorch
 *.pth

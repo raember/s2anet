@@ -77,11 +77,12 @@ train_cfg = dict(
         pos_weight=-1,
         debug=False))
 test_cfg = dict(
-    nms_pre=2000,
+    nms_pre=8000, #2000
     min_bbox_size=0,
-    score_thr=0.05,
+    score_thr=0.3,
     nms=dict(type='nms_rotated', iou_thr=0.1),
-    max_per_img=2000)
+    max_per_img=5000) # 2000
+
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
 data_root = 'data/deep_scores_dense/'
@@ -127,7 +128,7 @@ data = dict(
         use_oriented_bboxes=True),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_val.json',
+        ann_file=data_root + 'deepscores_test.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True),
@@ -141,7 +142,7 @@ data = dict(
 #     gt_dir='data/dota/test/labelTxt/', # change it to valset for offline validation
 #     imagesetfile='data/dota/test/test.txt')
 # optimizer
-optimizer = dict(type='SGD', lr=0.0001, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -149,25 +150,28 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[8, 11])
-checkpoint_config = dict(interval=1)
+    step=[50, 100],
+    gamma=0.5)
+checkpoint_config = dict(interval=5)
 log_config = dict(
     interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
+        #dict(type='WandbLoggerHook')
     ])
 # wandb settings
 wandb_cfg = dict(
-    entity='raember',
-    project='s2anet_augment',
-    dryrun=True,
-    name_prefix = "raember_"
+    entity='rs-confidence',
+    project='urs',
+    dryrun=False,
+    online=True,
+    name_prefix='urs_'
 )
 
 
 # runtime settings
-total_epochs = 12
+total_epochs = 500
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None

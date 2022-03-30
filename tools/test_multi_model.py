@@ -3,9 +3,10 @@ import os
 import os.path as osp
 import shutil
 import tempfile
-import numpy as np
+from pathlib import Path
 
 import mmcv
+import numpy as np
 import torch
 import torch.distributed as dist
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
@@ -13,11 +14,14 @@ from mmcv.runner import get_dist_info, load_checkpoint
 
 from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model
+from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
-from mmdet.core import rotated_box_to_poly_np
 
-def single_gpu_test(model, data_loader, show=False, cfg = None):
+
+# Code based on test_BE.py
+
+def single_gpu_test(model, data_loader, show=False, cfg=None):
     model.eval()
     results = []
     dataset = data_loader.dataset
@@ -27,27 +31,13 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
             result, bbox_list = model(return_loss=False, rescale=not show, **data)
         results.append(result)
         if show:
-            #print("asdf")
-            #for nr, sub_list in enumerate(bbox_list):
+            print("asdf")
+            # for nr, sub_list in enumerate(bbox_list):
             #    bbox_list[nr] = [rotated_box_to_poly_np(sub_list[0].cpu().numpy()), sub_list[1].cpu().numpy()]
 
-            # TODO: Quick and Dirty Test to fix
-            new_result = []
-            for bbox in result:
-                new_bbox = rotated_box_to_poly_np(bbox)
-                if bbox.shape[0] != 0:
-                    new_bbox = np.append(new_bbox[:, np.array([0, 1, 4, 5])],
-                                         bbox[:, -1:], axis=1)
-                else:
-                    new_bbox = np.empty((0, 5), dtype="float32")
-                new_result.append(
-                    new_bbox)  # shoud be a list of 135 entries, each entry is a np array with shape n,5
-            
-            
-            model.module.show_result(data, new_result, show=show, dataset=dataset.CLASSES,
-                                     #bbox_transform=rotated_box_to_poly_np,
-                                     score_thr=cfg.test_cfg['score_thr'])
-                                    # typo in bbox_transorm -> bbox_transform?
+            model.module.show_result(data, result, show=show, dataset=dataset.CLASSES,
+                                     bbox_transform=rotated_box_to_poly_np, score_thr=cfg.test_cfg['score_thr'])
+            # typo in bbox_transorm -> bbox_transform?
 
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
@@ -123,7 +113,8 @@ def collect_results(result_part, size, tmpdir=None):
 def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
     parser.add_argument('config', help='test config file path')
-    parser.add_argument('checkpoint', help='checkpoint file')
+    parser.add_argument('--checkpoints', nargs='+',
+                        help='checkpoint files (use like --checkpoints file1 file2 file3 ...', required=True)
     parser.add_argument('--out', help='output result file')
     parser.add_argument(
         '--json_out',
@@ -146,7 +137,7 @@ def parse_args():
     # add dataset type for more dataset eval other than coco
     parser.add_argument(
         '--data',
-        choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024','dsv2'],
+        choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024', 'dsv2'],
         default='dota',
         type=str,
         help='eval dataset type')
@@ -185,37 +176,44 @@ def main():
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
-    # build the dataloader
-    # TODO: support multiple images per gpu (only minor changes are needed)
-    dataset = build_dataset(cfg.data.test)
-    data_loader = build_dataloader(
-        dataset,
-        imgs_per_gpu=1,
-        workers_per_gpu=cfg.data.workers_per_gpu,
-        dist=distributed,
-        shuffle=False)
-    # build the model and load checkpoint
-    model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
-    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
-    # old versions did not save class info in checkpoints, this walkaround is
-    # for backward compatibility
-    if 'CLASSES' in checkpoint['meta']:
-        model.CLASSES = checkpoint['meta']['CLASSES']
-    else:
-        model.CLASSES = dataset.CLASSES
-    if not distributed:
-        model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader, args.show, cfg)
-    else:
-        model = MMDistributedDataParallel(model.cuda())
-        outputs = multi_gpu_test(model, data_loader, args.tmpdir)
-    rank, _ = get_dist_info()
-    if args.out and rank == 0:
-        print('\nwriting results to {}'.format(args.out))
-        mmcv.dump(outputs, args.out)
+    outputs_m = []
+    for i, checkpoint_file in enumerate(args.checkpoints):
+        checkpoint_file = Path(checkpoint_file)
+        # build the dataloader
+        dataset = build_dataset(cfg.data.test)
+        data_loader = build_dataloader(
+            dataset,
+            imgs_per_gpu=1,
+            workers_per_gpu=cfg.data.workers_per_gpu,
+            dist=distributed,
+            shuffle=False)
+        # build the model and load checkpoint
+        model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+        fp16_cfg = cfg.get('fp16', None)
+        if fp16_cfg is not None:
+            wrap_fp16_model(model)
+
+        checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
+        # old versions did not save class info in checkpoints, this walkaround is
+        # for backward compatibility
+        if 'CLASSES' in checkpoint['meta']:
+            model.CLASSES = checkpoint['meta']['CLASSES']
+        else:
+            model.CLASSES = dataset.CLASSES
+        if not distributed:
+            model = MMDataParallel(model, device_ids=[0])
+            outputs_m.append(single_gpu_test(model, data_loader, args.show, cfg))
+        else:
+            model = MMDistributedDataParallel(model.cuda())
+            outputs_m.append(multi_gpu_test(model, data_loader, args.tmpdir))
+        rank, _ = get_dist_info()
+
+        out_fp = Path(args.out)
+        fp_out = out_fp.parent / (out_fp.stem + "_" + checkpoint_file.stem + ".pkl")
+
+        print('\nwriting results to {}'.format(fp_out))
+
+        mmcv.dump(outputs_m[i], fp_out)
         eval_types = args.eval
         data_name = args.data
         if data_name == 'coco':
@@ -225,55 +223,47 @@ def main():
                     result_file = args.out
                     coco_eval(result_file, eval_types, dataset.coco)
                 else:
-                    if not isinstance(outputs[0], dict):
-                        result_files = results2json(dataset, outputs, args.out)
+                    if not isinstance(outputs_m[i][0], dict):
+                        result_files = results2json(dataset, outputs_m[i], args.out)
                         coco_eval(result_files, eval_types, dataset.coco)
                     else:
-                        for name in outputs[0]:
+                        for name in outputs_m[i][0]:
                             print('\nEvaluating {}'.format(name))
-                            outputs_ = [out[name] for out in outputs]
+                            outputs_m[i] = [out[name] for out in outputs_m[i]]
                             result_file = args.out + '.{}'.format(name)
-                            result_files = results2json(dataset, outputs_,
+                            result_files = results2json(dataset, outputs_m[i],
                                                         result_file)
                             coco_eval(result_files, eval_types, dataset.coco)
 
         elif data_name in ['dota', 'hrsc2016']:
             eval_kwargs = cfg.get('evaluation', {}).copy()
             work_dir = osp.dirname(args.out)
-            dataset.evaluate(outputs, work_dir, **eval_kwargs)
+            dataset.evaluate(outputs_m[i], work_dir=work_dir, **eval_kwargs)
         elif data_name in ['dsv2']:
             from mmdet.core import outputs_rotated_box_to_poly_np
-            # for page in outputs:
-            #     for cla in page:
-            #         for detec in cla:
-            #             if min(detec[:4]) < 0:
-            #                 detec[:4][detec[:4] < 0] = 0
-            #TODO: fix ugly hack to make the labels match
-            import numpy as np
-            for page in outputs:
+
+            for page in outputs_m[i]:
                 page.insert(0, np.array([]))
 
-            outputs = outputs_rotated_box_to_poly_np(outputs)
-            work_dir = osp.dirname(args.out)
-            dataset.evaluate(outputs, work_dir = work_dir)
-            # print("asdfsdf")
-            # for page in outputs:
-            #     for cla in page:
-            #         for detec in cla:
-            #             if min(detec[:4]) < 0:
-            #                 print(detec)
+            outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
+            model_name = checkpoint_file.stem
 
+            work_dir = out_fp.parent / ('result_' + model_name)
 
+            work_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save predictions in the COCO json format
-    if args.json_out and rank == 0:
-        if not isinstance(outputs[0], dict):
-            results2json(dataset, outputs, args.json_out)
-        else:
-            for name in outputs[0]:
-                outputs_ = [out[name] for out in outputs]
-                result_file = args.json_out + '.{}'.format(name)
-                results2json(dataset, outputs_, result_file)
+            dataset.evaluate(outputs_m[i], result_json_filename=str(work_dir / "deepscores_results.json"),
+                             work_dir=str(work_dir))
+
+        # Save predictions in the COCO json format
+        if args.json_out and rank == 0:
+            if not isinstance(outputs_m[i][0], dict):
+                results2json(dataset, outputs_m[i], args.json_out)
+            else:
+                for name in outputs_m[i][0]:
+                    outputs_ = [out[name] for out in outputs_m[i]]
+                    result_file = args.json_out + '.{}'.format(name)
+                    results2json(dataset, outputs_, result_file)
 
 
 if __name__ == '__main__':

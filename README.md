@@ -78,6 +78,9 @@ Please refer to [install.md](docs/INSTALL.md) for installation and dataset prepa
 Please see [getting_started.md](docs/GETTING_STARTED.md) for the basic usage of MMDetection.
 
 
+## Snapshot Ensemble
+Please see [getting_started SE.md](docs/snapshot_ensemble/GETTING_STARTED_SE.md) on how to run snapshot ensembles.
+
 
 ## Citation
 
@@ -112,4 +115,6 @@ Please see [getting_started.md](docs/GETTING_STARTED.md) for the basic usage of 
   journal={arXiv preprint arXiv:1906.07155},
   year={2019}
 }
+
+
 ```

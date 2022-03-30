@@ -17,15 +17,21 @@ model = dict(
         add_extra_convs=True,
         num_outs=5),
     bbox_head=dict(
-        type='S2ANetHeadBE',
+        type='S2ANetHead',
         num_classes=136,
         in_channels=256,
         feat_channels=256,
         stacked_convs=2,
         with_orconv=True,
+        # Original config from s2anet
         anchor_ratios=[1.0],
         anchor_strides=[8, 16, 32, 64, 128],
         anchor_scales=[4],
+        # Working config form RCNN
+        # anchor_ratios=[0.05, 0.3, 0.73, 2.5],
+        # anchor_strides=[8, 16, 32, 64, 128],
+        # anchor_scales=[1.0, 2.0, 12.0],
+
         target_means=[.0, .0, .0, .0, .0],
         target_stds=[1.0, 1.0, 1.0, 1.0, 1.0],
         loss_fam_cls=dict(
@@ -77,11 +83,11 @@ train_cfg = dict(
         pos_weight=-1,
         debug=False))
 test_cfg = dict(
-    nms_pre=2000,
+    nms_pre=5000,
     min_bbox_size=0,
-    score_thr=0.05,
+    score_thr=0.3,
     nms=dict(type='nms_rotated', iou_thr=0.1),
-    max_per_img=2000)
+    max_per_img=1000)
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
 data_root = 'data/deep_scores_dense/'
@@ -92,8 +98,9 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RandomCrop', crop_size=(1400, 1400), threshold_rel=0.6, threshold_abs=20.0),
-    dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
+    dict(type='RandomCrop', crop_size=(2000, 2000), threshold_rel=0.6, threshold_abs=200.0),
+    dict(type='RotatedResize', img_scale=(1000, 1000), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -104,10 +111,10 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(1024, 1024),
+        img_scale=0.5,
         flip=False,
         transforms=[
-            dict(type='RotatedResize', img_scale=(1024, 1024), keep_ratio=True),
+            dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
             dict(type='RotatedRandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
@@ -116,8 +123,8 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=1,
-    workers_per_gpu=0,
+    imgs_per_gpu=4,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'deepscores_train.json',
@@ -126,13 +133,13 @@ data = dict(
         use_oriented_bboxes=True),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_val.json',
+        ann_file=data_root + 'deepscores_test.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'deepscores_test_small.json',
+        ann_file=data_root + 'deepscores_test.json',
         img_prefix=data_root + 'images/',
         pipeline=test_pipeline,
         use_oriented_bboxes=True))
@@ -140,33 +147,46 @@ data = dict(
 #     gt_dir='data/dota/test/labelTxt/', # change it to valset for offline validation
 #     imagesetfile='data/dota/test/test.txt')
 # optimizer
-optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0075, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
+
 # learning policy
+n_warmup_epochs = 500
+n_snapshots = 17
+snapshot_epoch_interval = 30
+
+n_steps = -(-1362 // data['imgs_per_gpu']) # -(-numerator // denominator) is a way to round up an integer without importing a module like math
 lr_config = dict(
-    policy='step',
-    warmup='linear',
-    warmup_iters=500,
-    warmup_ratio=1.0 / 3,
-    step=[8, 11])
+    policy='CosineRestart',
+    warmup='constant',
+    warmup_iters=n_warmup_epochs * n_steps,  # 1 epoch = 1362 steps
+    warmup_ratio=1. / 3,
+    periods=[n_warmup_epochs * n_steps] + ([snapshot_epoch_interval * n_steps] * n_snapshots),
+    by_epoch=False,  # cannot use epochs, lr is only updated after epoch -> cosine annealing needs update per step
+    warmup_by_epoch=False,
+    restart_weights=[1] * (n_snapshots + 1),
+    min_lr_ratio=1e-5,
+)
 checkpoint_config = dict(interval=1)
 log_config = dict(
-    interval=1,
+    interval=10,
     hooks=[
         dict(type='TextLoggerHook'),
-        # dict(type='WandbVisualLoggerHook'),
-        dict(type='WandbLoggerHook')
+        dict(type='WandbVisualLoggerHook'),
     ])
 # wandb settings
 wandb_cfg = dict(
     entity='rs-confidence',
-    project='urs',
-    dryrun=False
+    project='sage',
+    dryrun=False,
+    online=True,
+    name_prefix='halfrez_'
 )
 
 
+
 # runtime settings
-total_epochs = 12
+total_epochs = n_warmup_epochs + n_snapshots * snapshot_epoch_interval + 1
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
