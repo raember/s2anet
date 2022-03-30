@@ -114,7 +114,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('--checkpoints', nargs='+',
-                        help='checkpoint files (use like --checkpoints file1 file2 file3 ...', required=True)
+                        help='checkpoint files', required=True)
+    parser.add_argument('--test-sets', nargs='+',
+                        help='test set paths')
     parser.add_argument('--out', help='output result file')
     parser.add_argument(
         '--json_out',
@@ -176,6 +178,16 @@ def main():
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
+    test_set_paths = []
+    if args.test_sets is not None:
+        for path in map(Path, args.test_sets):
+            assert path.exists(), f"Test set does not exist at {str(path)}"
+            test_set_paths.append(path)
+    else:
+        test_set_paths.append(Path(cfg.data.test.ann_file))
+
+    out_fp = Path(args.out)
+
     outputs_m = []
     for i, checkpoint_file in enumerate(args.checkpoints):
         checkpoint_file = Path(checkpoint_file)
@@ -200,70 +212,72 @@ def main():
             model.CLASSES = checkpoint['meta']['CLASSES']
         else:
             model.CLASSES = dataset.CLASSES
-        if not distributed:
-            model = MMDataParallel(model, device_ids=[0])
-            outputs_m.append(single_gpu_test(model, data_loader, args.show, cfg))
-        else:
-            model = MMDistributedDataParallel(model.cuda())
-            outputs_m.append(multi_gpu_test(model, data_loader, args.tmpdir))
-        rank, _ = get_dist_info()
 
-        out_fp = Path(args.out)
-        fp_out = out_fp.parent / (out_fp.stem + "_" + checkpoint_file.stem + ".pkl")
-
-        print('\nwriting results to {}'.format(fp_out))
-
-        mmcv.dump(outputs_m[i], fp_out)
-        eval_types = args.eval
-        data_name = args.data
-        if data_name == 'coco':
-            if eval_types:
-                print('Starting evaluate {}'.format(' and '.join(eval_types)))
-                if eval_types == ['proposal_fast']:
-                    result_file = args.out
-                    coco_eval(result_file, eval_types, dataset.coco)
-                else:
-                    if not isinstance(outputs_m[i][0], dict):
-                        result_files = results2json(dataset, outputs_m[i], args.out)
-                        coco_eval(result_files, eval_types, dataset.coco)
-                    else:
-                        for name in outputs_m[i][0]:
-                            print('\nEvaluating {}'.format(name))
-                            outputs_m[i] = [out[name] for out in outputs_m[i]]
-                            result_file = args.out + '.{}'.format(name)
-                            result_files = results2json(dataset, outputs_m[i],
-                                                        result_file)
-                            coco_eval(result_files, eval_types, dataset.coco)
-
-        elif data_name in ['dota', 'hrsc2016']:
-            eval_kwargs = cfg.get('evaluation', {}).copy()
-            work_dir = osp.dirname(args.out)
-            dataset.evaluate(outputs_m[i], work_dir=work_dir, **eval_kwargs)
-        elif data_name in ['dsv2']:
-            from mmdet.core import outputs_rotated_box_to_poly_np
-
-            for page in outputs_m[i]:
-                page.insert(0, np.array([]))
-
-            outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
-            model_name = checkpoint_file.stem
-
-            work_dir = out_fp.parent / ('result_' + model_name)
-
-            work_dir.mkdir(parents=True, exist_ok=True)
-
-            dataset.evaluate(outputs_m[i], result_json_filename=str(work_dir / "deepscores_results.json"),
-                             work_dir=str(work_dir))
-
-        # Save predictions in the COCO json format
-        if args.json_out and rank == 0:
-            if not isinstance(outputs_m[i][0], dict):
-                results2json(dataset, outputs_m[i], args.json_out)
+        print(f"Testing model on {len(test_set_paths)} test sets")
+        for test_path in test_set_paths:
+            cfg.data.test.ann_file = str(test_path)
+            suffix = test_path.stem
+            if not distributed:
+                model = MMDataParallel(model, device_ids=[0])
+                outputs_m.append(single_gpu_test(model, data_loader, args.show, cfg))
             else:
-                for name in outputs_m[i][0]:
-                    outputs_ = [out[name] for out in outputs_m[i]]
-                    result_file = args.json_out + '.{}'.format(name)
-                    results2json(dataset, outputs_, result_file)
+                model = MMDistributedDataParallel(model.cuda())
+                outputs_m.append(multi_gpu_test(model, data_loader, args.tmpdir))
+            rank, _ = get_dist_info()
+
+            fp_out = out_fp.with_name(f"{out_fp.stem}_{checkpoint_file.stem}_{suffix}.pkl")
+
+            print('\nwriting results to {}'.format(fp_out))
+
+            mmcv.dump(outputs_m[i], fp_out)
+            eval_types = args.eval
+            data_name = args.data
+            if data_name == 'coco':
+                if eval_types:
+                    print('Starting evaluate {}'.format(' and '.join(eval_types)))
+                    if eval_types == ['proposal_fast']:
+                        result_file = args.out
+                        coco_eval(result_file, eval_types, dataset.coco)
+                    else:
+                        if not isinstance(outputs_m[i][0], dict):
+                            result_files = results2json(dataset, outputs_m[i], args.out)
+                            coco_eval(result_files, eval_types, dataset.coco)
+                        else:
+                            for name in outputs_m[i][0]:
+                                print('\nEvaluating {}'.format(name))
+                                outputs_m[i] = [out[name] for out in outputs_m[i]]
+                                result_file = args.out + '.{}'.format(name)
+                                result_files = results2json(dataset, outputs_m[i],
+                                                            result_file)
+                                coco_eval(result_files, eval_types, dataset.coco)
+            elif data_name in ['dota', 'hrsc2016']:
+                eval_kwargs = cfg.get('evaluation', {}).copy()
+                work_dir = osp.dirname(args.out)
+                dataset.evaluate(outputs_m[i], work_dir=work_dir, **eval_kwargs)
+            elif data_name in ['dsv2']:
+                from mmdet.core import outputs_rotated_box_to_poly_np
+
+                for page in outputs_m[i]:
+                    page.insert(0, np.array([]))
+
+                outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
+                model_name = checkpoint_file.stem
+
+                work_dir = out_fp.parent / f"result_{model_name}"
+                work_dir.mkdir(parents=True, exist_ok=True)
+
+                dataset.evaluate(outputs_m[i], result_json_filename=str(work_dir / f"deepscores_results_{suffix}.json"),
+                                 work_dir=str(work_dir))
+
+            # Save predictions in the COCO json format
+            if args.json_out and rank == 0:
+                if not isinstance(outputs_m[i][0], dict):
+                    results2json(dataset, outputs_m[i], args.json_out)
+                else:
+                    for name in outputs_m[i][0]:
+                        outputs_ = [out[name] for out in outputs_m[i]]
+                        result_file = args.json_out + '.{}'.format(name)
+                        results2json(dataset, outputs_, result_file)
 
 
 if __name__ == '__main__':
