@@ -12,6 +12,7 @@ import torch.distributed as dist
 from dateutil.parser import parse
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import get_dist_info, load_checkpoint
+from pandas import DataFrame
 
 from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model
@@ -216,6 +217,9 @@ def main():
     if fp16_cfg is not None:
         wrap_fp16_model(model)
 
+    index = []
+    stats = {key: [] for key in data_loaders[0].dataset.CLASSES}
+
     outputs_m = []
     for i, checkpoint_file in enumerate(map(Path, args.checkpoints)):
         outputs_m.append([])
@@ -240,6 +244,7 @@ def main():
         for j, data_loader in enumerate(data_loaders):
             ann_file = Path(data_loader.dataset.ann_file)
             print(f"==> Selecting dataset: {ann_file.stem}")
+            index.append(f"{config_file.stem}_epoch_{epoch} - {ann_file.stem}")
             result_folder = chkp_folder / ann_file.stem
             result_folder.mkdir(exist_ok=True)
 
@@ -308,11 +313,15 @@ def main():
                     )  # Extremely slow...
                 eval_data = mmcv.load(eval_fp)
 
+            overlap = 0.5
+            for cls in data_loader.dataset.CLASSES:
+                stats[cls].append(eval_data.get(cls, {}).get(overlap, {}).get('ap', np.NaN))
+
             # Save predictions in the COCO json format
             rank, _ = get_dist_info()
             if args.json_out and rank == 0:
                 result_file = result_folder / args.json_out
-                if not result_file.exists() or not args.cache:
+                if not result_file.with_suffix('.bbox.json').exists() or not args.cache:
                     print(f"===> Saving predictions to {str(result_file.with_suffix('.*'))}")
                     if not isinstance(outputs_m[i][j][0], dict):
                         results2json(data_loader.dataset, outputs_m[i][j], result_file.with_suffix(''))
@@ -320,6 +329,10 @@ def main():
                         for name in outputs_m[i][j][0]:
                             outputs_ = [out[name] for out in outputs_m[i][j]]
                             results2json(data_loader.dataset, outputs_, result_file.with_suffix(f'.{name}{result_file.suffix}'))
+    eval_fp = out_folder / 'eval.csv'
+    print(f"=> Saving stats to {eval_fp}")
+    stat_df = DataFrame(stats, index=index)
+    stat_df.to_csv(eval_fp)
 
 
 if __name__ == '__main__':
