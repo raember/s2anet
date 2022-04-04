@@ -5,15 +5,17 @@ import os
 import os.path as osp
 import pickle
 from itertools import compress, chain
+from pathlib import Path
 
 import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import mmcv
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import colors
 
+from DeepScoresV2_s2anet.analyze_ensembles.rotated_ensemble_boxes_wbf import *
 from mmdet.datasets import build_dataset
-from rotated_ensemble_boxes_wbf import *
 
 
 # Functions _draw_bbox_BE and visualize_BE are based on code from obb_anns/obb_anns.py
@@ -42,8 +44,8 @@ def parse_args():
 
 
 def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
-                        print_label=False, print_staff_pos=False, print_onset=False,
-                        instances=False, print_score=True, m=1):
+                        print_label=True, print_staff_pos=False, print_onset=False,
+                        instances=False, print_score=True, print_score_threshold=0.5, m=1):
     """Draws the bounding box onto an image with a given color.
 
     :param ImageDraw.ImageDraw draw: ImageDraw object to draw with.
@@ -63,7 +65,8 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
     are printed on the visualization
     :param Optional[bool] print_onset:  Determines if the onsets are
     printed on the visualization
-    :param int m: Number of ensemble members
+    :param Optional[float] print_score_threshold: Only print text, score, etc. if score is below this threshold
+    :param Optional[int] m: Number of ensemble members
 
     :return: The drawn object.
     :rtype: ImageDraw.ImageDraw
@@ -85,7 +88,7 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
         if ann['score'] < score_thr:
             # color2 = colors.to_rgba(color, alpha=round(1/m, 2))
             # color2 = colors.to_hex(color2, keep_alpha=True)
-            draw.polygon(bbox + bbox[:2], outline=None, fill='#ff000040')
+            draw.polygon(bbox + bbox[:2], outline=color, fill='#ff000040')
         else:
             draw.line(bbox + bbox[:2], fill=color, width=3)
     else:
@@ -95,7 +98,7 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
         if ann['score'] < score_thr:
             color2 = colors.to_rgba(color, alpha=round(1 / m, 2))
             color2 = colors.to_hex(color2, keep_alpha=True)
-            draw.rectangle(bbox, outline=None, width=2, fill='#ff000040')
+            draw.rectangle(bbox, outline=color, width=2, fill='#ff000040')
         else:
             draw.rectangle(bbox, outline=color, width=2)
 
@@ -112,16 +115,18 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
         draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
 
-    def print_scores(position, text, color_text, score_thr):
+    def print_scores(position, text, color_text, score_thr, color_box):
         if float(text) < score_thr:
             x1, y1 = ImageFont.load_default().getsize(text)
             x1 += position[0] + 4
             y1 += position[1] + 4
+            draw.rectangle((position[0], position[1], x1, y1), fill=color_box)
             draw.text((position[0] + 2, position[1] + 2), text, color_text)
         else:
             x1, y1 = ImageFont.load_default().getsize(text)
             x1 += position[0] + 4
             y1 += position[1] + 4
+            draw.rectangle((position[0], position[1], x1, y1), fill=color_box)
             draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
 
@@ -132,16 +137,17 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
     else:
         label = self.cat_info[cat_id]['name']
         score = str(round(ann['score'], 2))
-        if print_label:
-            pos = print_text_label(pos, label, '#ffffff', '#303030')
-        if print_score:
-            pos = print_scores(pos, score, color, score_thr)
-        if print_onset and 'onset' in parsed_comments.keys():
-            pos = print_text_label(pos, parsed_comments['onset'], '#ffffff',
-                                   '#091e94')
-        if print_staff_pos and 'rel_position' in parsed_comments.keys():
-            print_text_label(pos, parsed_comments['rel_position'],
-                             '#ffffff', '#0a7313')
+        if label != "stem" and ann['score'] < print_score_threshold or label == "stem" and ann['score'] < 0.3:
+            if print_label:
+                pos = print_text_label(pos, label, '#ffffff', color)
+            if print_score:
+                pos = print_scores(pos, score, '#ffffff', score_thr, color)
+            if print_onset and 'onset' in parsed_comments.keys():
+                pos = print_text_label(pos, parsed_comments['onset'], '#ffffff',
+                                       '#091e94')
+            if print_staff_pos and 'rel_position' in parsed_comments.keys():
+                print_text_label(pos, parsed_comments['rel_position'],
+                                 '#ffffff', '#0a7313')
 
     return draw
 
@@ -213,50 +219,7 @@ def visualize_ensemble(self,
 
     # Remember: PIL Images are in form (h, w, 3)
     img = Image.open(img_fp)
-
-    # if instances:
-    #     # Do stuff
-    #     inst_fp = osp.join(
-    #         inst_dir,
-    #         osp.splitext(img_info['filename'])[0] + '_inst.png'
-    #     )
-    #     overlay = Image.open(inst_fp)
-    #     img.putalpha(255)
-    #     img = Image.alpha_composite(img, overlay)
-    #     img = img.convert('RGB')
-    #
-    # else:
-    #     seg_fp = osp.join(
-    #         seg_dir,
-    #         osp.splitext(img_info['filename'])[0] + '_seg.png'
-    #     )
-    #     overlay = Image.open(seg_fp)
-    #
-    #     # Here we overlay the segmentation on the original image using the
-    #     # colorcet colors
-    #     # First we need to get the new color values from colorcet
-    #     colors = [ImageColor.getrgb(i) for i in cc.glasbey]
-    #     colors = np.array(colors).reshape(768, ).tolist()
-    #     colors[0:3] = [0, 0, 0]  # Set background to black
-    #
-    #     # Then put the palette
-    #     overlay.putpalette(colors)
-    #     overlay_array = np.array(overlay)
-    #
-    #     # Now the img and the segmentation can be composed together. Black
-    #     # areas in the segmentation (i.e. background) are ignored
-    #
-    #     mask = np.zeros_like(overlay_array)
-    #     mask[np.where(overlay_array == 0)] = 255
-    #     mask = Image.fromarray(mask, mode='L')
-    #
-    #     img = Image.composite(img, overlay.convert('RGB'), mask)
     draw = ImageDraw.Draw(img, 'RGBA')
-
-    # Now draw the gt bounding boxes onto the image
-    # for ann in ann_info.to_dict('records'):
-    #     draw = self._draw_bbox(draw, ann, '#43ff64d9', oriented,  # Get rgba hexcode from: https://rgbacolorpicker.com/rgba-to-hex, 22.12.21
-    #                            annotation_set, instances)
 
     # Draw the proposals
     if self.proposals is not None:
@@ -268,26 +231,24 @@ def visualize_ensemble(self,
             draw = _draw_bbox_ensemble(self, draw, prop, '#ff436408', prop_oriented, m)
 
     if show:
-        img.show()
+        plt.figure(figsize=(25, 36))
+        plt.imshow(img)
+        plt.tight_layout()
+        plt.show()
+        # img.show()
     if out_dir is not None:
         img.save(osp.join(out_dir, 'props_' + img_info['filename']))
 
+def get_model_names(args):
+    return sorted(
+        [x.split('_', 1)[-1] for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x])
 
-def main():
-    args = parse_args()
-    cfg = mmcv.Config.fromfile(args.config)
-
-    dataset = build_dataset(cfg.data.test)
-
-    # Deduce m (number of BatchEnsemble members)
-    models = sorted([x.split('_', 1)[-1] for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x])
-    m = len(models)
-
-    # Load proposals from deepscores_results_i.json
+def load_proposals(args, dataset, models):
     boxes_list = []
     scores_list = []
     labels_list = []
     img_idx_list = []
+
     for i in models:
         json_result_fp = osp.join(args.inp, f"result_{i}/deepscores_results.json")
         dataset.obb.load_proposals(json_result_fp)
@@ -296,7 +257,6 @@ def main():
         labels_list.append(dataset.obb.proposals['cat_id'].to_list())
         img_idx_list.append(dataset.obb.proposals['img_idx'])
         print(f"Adding proposals from ensemble member {i}.")
-
     # Calculate proposals_WBF
     max_img_idx = max([max(i) for i in img_idx_list])
     iou_thr = 0.1  # This is the most important hyper parameter; IOU of proposal with fused box.
@@ -304,7 +264,6 @@ def main():
     # score_thr: value is set below; skips visualization if fused score is below score_thr
     weights = None  # Could weight proposals from a specific ensemble member
     proposals_WBF = []
-
     # rotated_weighted_boxes mixes boxes from different images during calculation.
     # Thus, execute it on proposals of each image seperately, then concatenate results.
     for i in range(max_img_idx + 1):
@@ -335,16 +294,19 @@ def main():
         proposals_WBF_i = pd.DataFrame(zipped, columns=['bbox', 'cat_id', 'img_idx',
                                                         'score'])
         proposals_WBF.append(proposals_WBF_i)
-    proposals_WBF = pd.concat(proposals_WBF)
 
+    proposals_WBF = pd.concat(proposals_WBF)
+    return proposals_WBF
+
+
+def store_proposals(args, proposals_WBF):
     if not os.path.exists(args.out):
         os.mkdir(args.out)
-
     out_file = os.path.join(args.out, 'proposals_WBF.pkl')
     pickle.dump(proposals_WBF, open(out_file, 'wb'))
 
-    #### Evaluate WBF Performance ####
-    #
+
+def evaluate_wbf_performance(args, cfg, proposals_WBF):
     proposals_WBF_per_img = []
     for img_idx in sorted(set(list(proposals_WBF.img_idx))):
         props = proposals_WBF[proposals_WBF.img_idx == img_idx]
@@ -357,46 +319,81 @@ def main():
                                                           (np.array(list(props_cat.score)).shape[0], 1))), axis=1)
 
         proposals_WBF_per_img.append(result_prop)
-
     dataset = build_dataset(cfg.data.test)
     metrics = dataset.evaluate(proposals_WBF_per_img,
-                               result_json_filename=args.out + "/deepscores_ensemble_results.json",
+                               result_json_filename=str(Path(args.out) / "deepscores_ensemble_results.json"),
                                work_dir=args.out)
-
     print("Mean AP for Threshold=0.5 is ", np.mean([v[0.5]['ap'] for v in metrics.values()]))
-
     out_file = open(os.path.join(args.out, "deepscores_ensemble_metrics.pkl"), 'wb')
     pickle.dump(metrics, out_file)
     out_file.close()
+    return dataset
 
-    ############## DRAW WBF PROPOSALS ###############
 
+def visualize_proposals(args, dataset, m, proposals_WBF):
     # Create output directory
     out_dir = osp.join(args.out, "visualized_proposals/")
     if not osp.exists(out_dir):
         os.makedirs(out_dir)
-
     # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and all others make no proposal; the fused score is: 0.3/30=0.01)
     score_thr = 0.00001
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
-
     # Drop 'staff'-class (looks ugly on plot)
-    proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
+    # proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
     dataset.obb.proposals = proposals_WBF
-
     for img_info in dataset.obb.img_info:
-        # TODO: If implementation works visualize_BE could be added as an OBBAnns method
         visualize_ensemble(self=dataset.obb,
                            img_id=img_info['id'],
                            data_root=dataset.data_root,
                            out_dir=out_dir,
                            m=m)
 
-    # visualize_ensemble(self=dataset.obb,
-    #              img_id=dataset.obb.img_info[0]['id'],
-    #              data_root=dataset.data_root,
-    #              out_dir=out_dir,
-    #              m=m)
+
+def main():
+    args = parse_args()
+    cfg = mmcv.Config.fromfile(args.config)
+
+    # TODO: UNCOMMENT
+    # dataset = build_dataset(cfg.data.test)
+    # models = get_model_names(args)
+    # m = len(models)
+#
+    # proposals_WBF = load_proposals(args, dataset, models)
+    # store_proposals(args, proposals_WBF)
+    # dataset = evaluate_wbf_performance(args, cfg, proposals_WBF)
+    # visualize_proposals(args, dataset, m, proposals_WBF)
+
+
+    ###### TODO DELETE EVERYTHING FROM HERE!!!
+    if not Path('delme_data.pickle').exists():
+        dataset = build_dataset(cfg.data.test)
+
+        # Deduce m (number of BatchEnsemble members)
+        models = get_model_names(args)
+        m = len(models)
+
+        proposals_WBF = load_proposals(args, dataset, models)
+        store_proposals(args, proposals_WBF)
+        dataset = evaluate_wbf_performance(args, cfg, proposals_WBF)
+
+        # TODO Delme:
+        data = {
+            'proposals_WBF': proposals_WBF,
+            'dataset': dataset,
+            'm': m,
+        }
+        with open('delme_data.pickle', 'wb') as handle:
+            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    else:
+        with open('delme_data.pickle', 'rb') as handle:
+            data = pickle.load(handle)
+            proposals_WBF = data['proposals_WBF']
+            dataset = data['dataset']
+            m = data['m']
+
+        visualize_proposals(args, dataset, m, proposals_WBF)
+
 
 
 if __name__ == '__main__':
