@@ -2,11 +2,12 @@ import argparse
 import copy
 from argparse import Namespace
 from pathlib import Path
-
+import re
 from DeepScoresV2_s2anet import analyze_errors
 from DeepScoresV2_s2anet.analyze_ensembles import snapshot_overlap, draw_WBF_for_multi_model, \
     compare_dsv2_metrics_multi_model
 from tools import test_multi_model
+
 
 parser = argparse.ArgumentParser(description='Evaluate Snapshot Ensemble')
 parser.add_argument('config', help='test config file path')
@@ -43,9 +44,17 @@ def run_test_multi_model():
     test_multi_model.main()
 
 
+def _get_result_jsons():
+    def sort_str_with_int(l):
+        convert = lambda text: float(text) if text.isdigit() else text
+        alphanum = lambda key: [convert(c) for c in re.split('([-+]?[0-9]*\.?[0-9]*)', key)]
+        l.sort(key=alphanum)
+        return l
+
+    return sort_str_with_int([str(x) for x in list(args.out.glob("**/deepscores_results.json"))])
+
 def run_snapshot_overlap():
-    result_jsons = [str(x) for x in list(args.out.glob("**/deepscores_results.json"))]
-    print(result_jsons)
+    result_jsons = _get_result_jsons()
 
     def get_args():
         args_dict = {
@@ -58,6 +67,24 @@ def run_snapshot_overlap():
 
     snapshot_overlap.parse_args = get_args
     snapshot_overlap.main()
+
+
+def run_snapshot_overlap_reduced():
+    # only compare every 5th model (method not feasible for too many snapshots)
+    result_jsons = _get_result_jsons()[0::5]
+
+    def get_args():
+        args_dict = {
+            'config': args.config,
+            'jsons_gt': result_jsons,
+            'jsons_pr': result_jsons,
+            'out': str(args.out / "overlap")
+        }
+        return Namespace(**args_dict)
+
+    snapshot_overlap.parse_args = get_args
+    snapshot_overlap.main()
+
 
 
 def run_WBF():
@@ -99,8 +126,12 @@ if __name__ == '__main__':
     if not args.out.exists():
         args.out.mkdir()
 
-    run_test_multi_model()
-    run_snapshot_overlap()
+    # run_test_multi_model()
+    if len(_get_result_jsons()) <= 20:
+        run_snapshot_overlap()
+    else:
+        run_snapshot_overlap_reduced()
     run_WBF()
     run_compare_metrics()
     run_analyze_errors()
+
