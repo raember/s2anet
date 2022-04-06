@@ -1,17 +1,20 @@
 import argparse
+import itertools
 import os
 import os.path as osp
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Tuple
 
 import mmcv
 import numpy as np
 import torch
 import torch.distributed as dist
 from dateutil.parser import parse
+from matplotlib import pyplot as plt
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import get_dist_info, load_checkpoint
+from mmcv.runner import get_dist_info, load_checkpoint, _load_checkpoint
 from pandas import DataFrame
 
 from mmdet.apis import init_dist
@@ -218,7 +221,8 @@ def main():
         wrap_fp16_model(model)
 
     index = []
-    stats = {key: [] for key in data_loaders[0].dataset.CLASSES}
+    stats = {'samples': []}
+    stats.update({key: [] for key in data_loaders[0].dataset.CLASSES})
 
     outputs_m = []
     for i, checkpoint_file in enumerate(map(Path, args.checkpoints)):
@@ -242,6 +246,7 @@ def main():
             new_chkpnt.unlink()
         new_chkpnt.symlink_to(os.path.relpath(checkpoint_file, new_chkpnt.parent))
         for j, data_loader in enumerate(data_loaders):
+            stats['samples'].append(len(data_loader.dataset.img_ids))
             ann_file = Path(data_loader.dataset.ann_file)
             print(f"==> Selecting dataset: {ann_file.stem}")
             index.append(f"{config_file.stem}_epoch_{epoch} - {ann_file.stem}")
@@ -333,6 +338,46 @@ def main():
     print(f"=> Saving stats to {eval_fp}")
     stat_df = DataFrame(stats, index=index)
     stat_df.to_csv(eval_fp)
+
+    print('=' * 30)
+    CLASSES = {
+        'clefs': {'clefG', 'clefCAlto', 'clefCTenor', 'clefF', 'clef8', 'clef15'},
+        'noteheads': {'noteheadBlackOnLine', 'noteheadBlackInSpace', 'noteheadHalfOnLine', 'noteheadHalfInSpace', 'noteheadWholeOnLine', 'noteheadWholeInSpace', 'noteheadDoubleWholeOnLine','noteheadDoubleWholeInSpace'},
+        'accidentals': {'accidentalFlat', 'accidentalNatural', 'accidentalSharp', 'accidentalDoubleSharp', 'accidentalDoubleFlat'},
+        'keys': {'keyFlat', 'keyNatural', 'keySharp'},
+        'rests': {'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th', 'rest32nd', 'rest64th', 'rest128th'},
+        'beams': {'beam'},
+        'all classes': set(data_loaders[0].dataset.CLASSES)
+    }
+    dataset_names = list(map(lambda dsl: dsl.dataset.obb.dataset_info['description'], data_loaders))
+    n_datasets = len(dataset_names)
+    chkpnt_names = [s.split(' - ')[0] for s in stat_df.index[::n_datasets]]
+    for name, classes in CLASSES.items():
+        print(f"==> Plotting {name}")
+        substats = stat_df[classes]
+        arr = substats.to_numpy()
+        # Only use columns where there is no NaN values
+        arr = arr.T[~np.isnan(arr.sum(axis=0))].T
+        if arr.shape[1] == 0:
+            print("    - No values to compare")
+            continue
+        arr = arr.mean(axis=1).reshape((len(chkpnt_names), n_datasets))
+        fig, ax = plt.subplots(figsize=(15, 9))
+        X = np.arange(len(chkpnt_names))
+        incr = 1.0/(len(chkpnt_names)+1)
+        center_offset = (incr * (len(dataset_names) - 1))/2
+        for i, (ds_name, col) in enumerate(zip(dataset_names, itertools.cycle(['b', 'r', 'g', 'y', 'c', 'm']))):
+            r = ax.bar(X + incr * i - center_offset, arr[i], color=col, width=incr, label=f'{ds_name} ({stat_df["samples"][i]} samples)')
+            ax.bar_label(r, padding=3)
+        ax.set_ylabel('AP')
+        ax.set_title(f'AP of {name} by model and training set')
+        plt.xticks(X, chkpnt_names, rotation=10, horizontalalignment='right', fontsize='small')
+        ax.legend()
+        fig.tight_layout()
+        im_fp = out_folder / f'AP_{name.replace(" ", "_")}.png'
+        plt.savefig(im_fp)
+        print(f'===> Saved plot to {str(im_fp)}')
+        plt.show()
 
 
 if __name__ == '__main__':
