@@ -157,9 +157,9 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     gamma = 0.5,
     step=[300, 700])
-checkpoint_config = dict(interval=10)
+checkpoint_config = dict(interval=50)
 log_config = dict(
-    interval=1,
+    interval=500,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
@@ -173,9 +173,8 @@ wandb_cfg = dict(
 )
 
 
-
 # runtime settings
-total_epochs = 500 
+total_epochs = 2000
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
