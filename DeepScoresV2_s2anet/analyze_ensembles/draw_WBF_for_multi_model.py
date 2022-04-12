@@ -55,7 +55,7 @@ def parse_args():
     return args
 
 
-def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
+def _draw_bbox_ensemble(obb, draw, ann, color, oriented, annotation_set=None,
                         print_label=True, print_staff_pos=False, print_onset=False,
                         instances=False, print_score=True, print_score_threshold=0.5, m=1):
     """Draws the bounding box onto an image with a given color.
@@ -90,7 +90,7 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
         cat_id = int(cat_id[annotation_set])
 
     if 'comments' in ann.keys():
-        parsed_comments = self.parse_comments(ann['comments'])
+        parsed_comments = obb.parse_comments(ann['comments'])
 
     score_thr = 0.5  # fused score thr: below this value, transparent polygons are plotted.
     if oriented:
@@ -147,7 +147,7 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
         print_text_label(pos, label, '#ffffff', '#303030')
 
     else:
-        label = self.cat_info[cat_id]['name']
+        label = obb.cat_info[cat_id]['name']
         score = str(round(ann['score'], 2))
         if label != "stem" and label != "ledgerLine" and ann['score'] < print_score_threshold or (
                 label == "stem" or label == "ledgerLine") and ann['score'] < 0.4:
@@ -165,7 +165,7 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
     return draw
 
 
-def visualize_ensemble(self,
+def visualize_ensemble(obb,
                        img_idx=None,
                        img_id=None,
                        data_root=None,
@@ -209,18 +209,18 @@ def visualize_ensemble(self,
 
     if annotation_set is None:
         annotation_set = 0
-        self.chosen_ann_set = self.annotation_sets[0]
+        obb.chosen_ann_set = obb.annotation_sets[0]
     else:
-        annotation_set = self.annotation_sets.index(annotation_set)
-        self.chosen_ann_set = self.chosen_ann_set[annotation_set]
+        annotation_set = obb.annotation_sets.index(annotation_set)
+        obb.chosen_ann_set = obb.chosen_ann_set[annotation_set]
 
     img_info, ann_info = [i[0] for i in
-                          self.get_img_ann_pair(
+                          obb.get_img_ann_pair(
                               idxs=img_idx, ids=img_id)]
 
     # Get the data_root from the ann_file path if it doesn't exist
     if data_root is None:
-        data_root = osp.split(self.ann_file)[0]
+        data_root = osp.split(obb.ann_file)[0]
 
     img_dir = osp.join(data_root, 'images')
     seg_dir = osp.join(data_root, 'segmentation')
@@ -235,13 +235,13 @@ def visualize_ensemble(self,
     draw = ImageDraw.Draw(img, 'RGBA')
 
     # Draw the proposals
-    if self.proposals is not None:
-        prop_info = self.get_img_props(idxs=img_idx, ids=img_id)
+    if obb.proposals is not None:
+        prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
 
         for prop in prop_info.to_dict('records'):
             prop_oriented = len(prop['bbox']) == 8
             # Use alpha = 1/m; m = size of ensemble. If all props overlap alpha = 1.
-            draw = _draw_bbox_ensemble(self, draw, prop, '#ff436408', prop_oriented, m)
+            draw = _draw_bbox_ensemble(obb, draw, prop, '#ff436408', prop_oriented, m)
 
     if show:
         plt.figure(figsize=(25, 36))
@@ -463,7 +463,7 @@ def visualize_proposals(args, dataset, m, proposals_WBF):
     # proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
     dataset.obb.proposals = proposals_WBF
     for img_info in dataset.obb.img_info:
-        visualize_ensemble(self=dataset.obb,
+        visualize_ensemble(obb=dataset.obb,
                            img_id=img_info['id'],
                            data_root=dataset.data_root,
                            out_dir=out_dir,
