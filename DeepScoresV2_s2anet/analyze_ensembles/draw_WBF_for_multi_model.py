@@ -48,6 +48,10 @@ def parse_args():
         default=0.1,
         help="WBF Threshold: Min. IoU to fuse two predictions")
     parser.add_argument(
+        '--plot_proposals',
+        action='store_true',
+        help='Plot the proposals from all ensembles members (otherwise, only fused boxes)')
+    parser.add_argument(
         '--s_cache',
         type=str,
         default=None,
@@ -337,21 +341,21 @@ class BboxHelper:
         y1 -= add_y / 2
         y2 += add_y / 2
 
-        fig, ax = plt.subplots()
-        label = ['p1', 'p2', 'p3', 'p4']
-        x = [self.bbox_sorted[i * 2] for i in range(4)]
-        y = [self.bbox_sorted[i * 2 + 1] for i in range(4)]
-        plt.scatter(x=x, y=y)
-        for i, txt in enumerate(label):
-            ax.annotate(txt, (x[i], y[i]))
-
-        x = [x1, x2, x2, x1]
-        y = [y1, y1, y2, y2]
-        plt.scatter(x=x, y=y)
-        for i, txt in enumerate(label):
-            ax.annotate(txt, (x[i], y[i]))
-
-        plt.show()
+        # fig, ax = plt.subplots()
+        # label = ['p1', 'p2', 'p3', 'p4']
+        # x = [self.bbox_sorted[i * 2] for i in range(4)]
+        # y = [self.bbox_sorted[i * 2 + 1] for i in range(4)]
+        # plt.scatter(x=x, y=y)
+        # for i, txt in enumerate(label):
+        #     ax.annotate(txt, (x[i], y[i]))
+#
+        # x = [x1, x2, x2, x1]
+        # y = [y1, y1, y2, y2]
+        # plt.scatter(x=x, y=y)
+        # for i, txt in enumerate(label):
+        #     ax.annotate(txt, (x[i], y[i]))
+#
+        # plt.show()
 
         return np.array([x1, y1, x2, y1, x2, y2, x1, y2])
 
@@ -526,7 +530,7 @@ def main():
             dataset = data['dataset']
             m = data['m']
 
-        visualize_proposals(args, dataset, m, proposals_WBF)
+        visualize_proposals(args, dataset, m, proposals_WBF, debug=args.plot_proposals)
 
 
 if __name__ == '__main__':
