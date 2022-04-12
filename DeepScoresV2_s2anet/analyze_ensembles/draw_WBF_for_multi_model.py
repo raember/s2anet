@@ -455,7 +455,7 @@ def evaluate_wbf_performance(args, cfg, proposals_WBF):
     dataset = build_dataset(cfg.data.test)
     metrics = dataset.evaluate(proposals_WBF_per_img,
                                result_json_filename=str(Path(args.out) / "deepscores_ensemble_results.json"),
-                               work_dir=args.out)
+                               work_dir=args.out, visualize=False)
     print("Mean AP for Threshold=0.5 is ", np.mean([v[0.5]['ap'] for v in metrics.values()]))
     out_file = open(os.path.join(args.out, "deepscores_ensemble_metrics.pkl"), 'wb')
     pickle.dump(metrics, out_file)
@@ -510,7 +510,6 @@ def main():
         # Deduce m (number of BatchEnsemble members)
         models = get_model_names(args)
         models = models[21::3]  # TODO: delme (less models for debugging)
-        m = len(models)
 
         proposals_WBF = load_proposals(args, dataset, models, iou_thr=args.iou_thr)
         proposals_WBF = postprocess_proposals(proposals_WBF)
@@ -522,7 +521,6 @@ def main():
             data = {
                 'proposals_WBF': proposals_WBF,
                 'dataset': dataset,
-                'm': m,
             }
             with open(args.s_cache, 'wb') as handle:
                 pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -532,7 +530,6 @@ def main():
             data = pickle.load(handle)
             proposals_WBF = data['proposals_WBF']
             dataset = data['dataset']
-            m = data['m']
 
         visualize_proposals(args, dataset, proposals_WBF, debug=args.plot_proposals)
 
