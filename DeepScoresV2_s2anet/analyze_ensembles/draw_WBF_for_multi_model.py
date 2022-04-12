@@ -43,6 +43,11 @@ def parse_args():
         default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
         help="Path to the output folder")
     parser.add_argument(
+        '--thr',
+        type=float,
+        default=0.1,
+        help="WBF Threshold: Min. IoU to fuse two predictions")
+    parser.add_argument(
         '--s_cache',
         type=str,
         default=None,
@@ -351,7 +356,9 @@ class BboxHelper:
         return np.array([x1, y1, x2, y1, x2, y2, x1, y2])
 
 
-def load_proposals(args, dataset, models):
+def load_proposals(args, dataset, models, iou_thr=0.1):
+    # iou_thr = 0.1 is the most important hyper parameter; IOU of proposal with fused box.
+
     boxes_list = []
     scores_list = []
     labels_list = []
@@ -365,16 +372,8 @@ def load_proposals(args, dataset, models):
         props = dataset.obb.proposals
         for i, row in props.iterrows():
             if row.cat_id == 42 or row.cat_id == 2:
-                if row.cat_id == 2:
-                    # make ledger line
-                    # y1 -= 0.2
-                    # y2 += 0.2
-                    props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(add_y=15)
-                if row.cat_id == 42:
-                    # make stem bigger
-                    # x1 -= 0.2
-                    # x2 += 0.2
-                    props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(add_x=15)
+                # 2 is stem, 42 is ledgerLine
+                props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
 
         boxes_list.append(props['bbox'].to_list())
         scores_list.append(list(map(float, props['score'].to_list())))
@@ -384,7 +383,6 @@ def load_proposals(args, dataset, models):
     # Calculate proposals_WBF
     max_img_idx = max([max(i) for i in img_idx_list])
     # TODO: use different threshold for ledger line and stem (e.g. 0.01)
-    iou_thr = 0.1  # This is the most important hyper parameter; IOU of proposal with fused box.
     skip_box_thr = 0.00001  # Skips proposals if score < thr; However, nms is applied when using routine in test_BE.py and score_thr from config applies already.
     # score_thr: value is set below; skips visualization if fused score is below score_thr
     weights = None  # Could weight proposals from a specific ensemble member
@@ -460,12 +458,8 @@ def postprocess_proposals(proposals_WBF):
     proposals_WBF = proposals_WBF.reset_index(drop=True)
     for i, row in proposals_WBF.iterrows():
         if row.cat_id == 42 or row.cat_id == 2:
-            if row.cat_id == 2:
-                # make ledger line
-                proposals_WBF.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(height=3)
-            if row.cat_id == 42:
-                # make stem bigger
-                proposals_WBF.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(width=2)
+            # 2 is stem, 42 is ledgerLine
+            proposals_WBF.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
     return proposals_WBF
 
 
@@ -510,7 +504,7 @@ def main():
         models = models[21::3]  # TODO: delme (less models for debugging)
         m = len(models)
 
-        proposals_WBF = load_proposals(args, dataset, models)
+        proposals_WBF = load_proposals(args, dataset, models, iou_thr=args.thr)
         proposals_WBF = postprocess_proposals(proposals_WBF)
         store_proposals(args, proposals_WBF)
 
