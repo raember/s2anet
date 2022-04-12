@@ -43,10 +43,15 @@ def parse_args():
         default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
         help="Path to the output folder")
     parser.add_argument(
-        '--thr',
+        '--iou_thr',
         type=float,
         default=0.1,
         help="WBF Threshold: Min. IoU to fuse two predictions")
+    parser.add_argument(
+        '--vis_thr',
+        type=float,
+        default=0.0001,
+        help="Score Threshold for visualization: Only proposals with higher score are visualized")
     parser.add_argument(
         '--plot_proposals',
         action='store_true',
@@ -67,7 +72,7 @@ def parse_args():
 
 def _draw_bbox_ensemble(obb, draw, ann, oriented, color=None, annotation_set=None,
                         print_label=True, print_staff_pos=False, print_onset=False,
-                        instances=False, print_score=True, print_score_threshold=0.5, m=1):
+                        instances=False, print_score=True, print_score_threshold=0.5):
     """Draws the bounding box onto an image with a given color.
 
     :param ImageDraw.ImageDraw draw: ImageDraw object to draw with.
@@ -88,7 +93,6 @@ def _draw_bbox_ensemble(obb, draw, ann, oriented, color=None, annotation_set=Non
     :param Optional[bool] print_onset:  Determines if the onsets are
     printed on the visualization
     :param Optional[float] print_score_threshold: Only print text, score, etc. if score is below this threshold
-    :param Optional[int] m: Number of ensemble members
 
     :return: The drawn object.
     :rtype: ImageDraw.ImageDraw
@@ -182,7 +186,6 @@ def visualize_ensemble(obb,
                        annotation_set=None,
                        oriented=True,
                        instances=False,
-                       m=1,
                        show=True,
                        debug_proposals=None,
                        ):
@@ -250,12 +253,15 @@ def visualize_ensemble(obb,
         for props in debug_proposals:
             obb.load_proposals(props)
             if obb.proposals is not None:
+                obb.proposals = postprocess_proposals(obb.proposals)
+
                 prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
 
                 for prop in prop_info.to_dict('records'):
-                    prop_oriented = len(prop['bbox']) == 8
-                    draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented, color='#d0d0d0', print_label=False,
-                                               print_score=False, print_score_threshold=0., m=m)
+                    if prop['cat_id'] == 42 or prop['cat_id'] == 2:
+                        prop_oriented = len(prop['bbox']) == 8
+                        draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented, color='#d0d0d0', print_label=False,
+                                                   print_score=False, print_score_threshold=0.)
 
         obb.proposals = wbf_proposals
 
@@ -264,9 +270,9 @@ def visualize_ensemble(obb,
         prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
 
         for prop in prop_info.to_dict('records'):
-            prop_oriented = len(prop['bbox']) == 8
-            # Use alpha = 1/m; m = size of ensemble. If all props overlap alpha = 1.
-            draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented, m=m)
+            if prop['cat_id'] == 42 or prop['cat_id'] == 2:
+                prop_oriented = len(prop['bbox']) == 8
+                draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented)
 
     if show:
         plt.figure(figsize=(25, 36))
@@ -457,26 +463,25 @@ def evaluate_wbf_performance(args, cfg, proposals_WBF):
     return dataset
 
 
-def postprocess_proposals(proposals_WBF):
+def postprocess_proposals(proposals):
     # make all stem vertical and ledger line horizontal
-    proposals_WBF = proposals_WBF.reset_index(drop=True)
-    for i, row in proposals_WBF.iterrows():
+    proposals = proposals.reset_index(drop=True)
+    for i, row in proposals.iterrows():
         if row.cat_id == 42 or row.cat_id == 2:
             # 2 is stem, 42 is ledgerLine
-            proposals_WBF.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
-    return proposals_WBF
+            proposals.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
+    return proposals
 
 
-def visualize_proposals(args, dataset, m, proposals_WBF, debug=False):
+def visualize_proposals(args, dataset, proposals_WBF, debug=False):
     # Create output directory
     out_dir = osp.join(args.out, "visualized_proposals/")
     if not osp.exists(out_dir):
         os.makedirs(out_dir)
-    # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and all others make no proposal; the fused score is: 0.3/30=0.01)
-    score_thr = 0.3  # TODO: DELME (IMPLEMENTED AGAIN LATER ON)
-    proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
-    # Drop 'staff'-class (looks ugly on plot)
-    # proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
+
+    # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and
+    # 29 other members make no proposal; the fused score is: 0.3/30=0.01)
+    proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < args.vis_thr].index)
 
     if debug:
         debug_props = []
@@ -491,7 +496,6 @@ def visualize_proposals(args, dataset, m, proposals_WBF, debug=False):
                            img_id=img_info['id'],
                            data_root=dataset.data_root,
                            out_dir=out_dir,
-                           m=m,
                            debug_proposals=debug_props,
                            )
 
@@ -508,7 +512,7 @@ def main():
         models = models[21::3]  # TODO: delme (less models for debugging)
         m = len(models)
 
-        proposals_WBF = load_proposals(args, dataset, models, iou_thr=args.thr)
+        proposals_WBF = load_proposals(args, dataset, models, iou_thr=args.iou_thr)
         proposals_WBF = postprocess_proposals(proposals_WBF)
         store_proposals(args, proposals_WBF)
 
@@ -530,7 +534,7 @@ def main():
             dataset = data['dataset']
             m = data['m']
 
-        visualize_proposals(args, dataset, m, proposals_WBF, debug=args.plot_proposals)
+        visualize_proposals(args, dataset, proposals_WBF, debug=args.plot_proposals)
 
 
 if __name__ == '__main__':

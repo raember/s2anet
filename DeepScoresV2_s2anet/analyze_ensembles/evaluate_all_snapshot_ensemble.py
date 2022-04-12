@@ -92,6 +92,11 @@ def run_WBF():
         args_ = copy.deepcopy(args)
         args_.inp = str(args.out)
         args_.out = str(args.out / "wbf")
+        args.iou_thr = 0.1
+        args.vis_thr = 0.0001
+        args.plot_proposals = False
+        args.s_cache = None
+        args.l_cache = None
         return args_
 
     draw_WBF_for_multi_model.parse_args = get_args
