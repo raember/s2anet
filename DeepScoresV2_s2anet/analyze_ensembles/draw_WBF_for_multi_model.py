@@ -1,12 +1,13 @@
 # Code implemented based on obb_anns.py and:
 # https://github.com/ZFTurbo/Weighted-Boxes-Fusion/ensemble_boxes/ensemble_boxes_wbf.py, 4.1.2022
 import argparse
+import math
 import os
 import os.path as osp
 import pickle
 from itertools import compress, chain
 from pathlib import Path
-import math
+
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import mmcv
@@ -55,7 +56,7 @@ def parse_args():
     return args
 
 
-def _draw_bbox_ensemble(obb, draw, ann, color, oriented, annotation_set=None,
+def _draw_bbox_ensemble(obb, draw, ann, oriented, color=None, annotation_set=None,
                         print_label=True, print_staff_pos=False, print_onset=False,
                         instances=False, print_score=True, print_score_threshold=0.5, m=1):
     """Draws the bounding box onto an image with a given color.
@@ -92,24 +93,23 @@ def _draw_bbox_ensemble(obb, draw, ann, color, oriented, annotation_set=None,
     if 'comments' in ann.keys():
         parsed_comments = obb.parse_comments(ann['comments'])
 
-    score_thr = 0.5  # fused score thr: below this value, transparent polygons are plotted.
+    ann['score'] = float(ann['score'])
+
     if oriented:
         bbox = ann.get('o_bbox', list(ann.get('bbox', [])))
-        color = cm.RdYlGn(ann['score'])
-        color = colors.rgb2hex(color)
-        if ann['score'] < score_thr:
-            # color2 = colors.to_rgba(color, alpha=round(1/m, 2))
-            # color2 = colors.to_hex(color2, keep_alpha=True)
+        if color is None:
+            color = cm.RdYlGn(ann['score'])
+            color = colors.rgb2hex(color)
+        if ann['score'] < print_score_threshold:
             draw.polygon(bbox + bbox[:2], outline=color, fill='#ff000040')
         else:
             draw.line(bbox + bbox[:2], fill=color, width=3)
     else:
         bbox = ann.get('a_bbox', list(ann.get('bbox', [])))
-        color = cm.RdYlGn(ann['score'])
-        color = colors.rgb2hex(color)
-        if ann['score'] < score_thr:
-            color2 = colors.to_rgba(color, alpha=round(1 / m, 2))
-            color2 = colors.to_hex(color2, keep_alpha=True)
+        if color is None:
+            color = cm.RdYlGn(ann['score'])
+            color = colors.rgb2hex(color)
+        if ann['score'] < print_score_threshold:
             draw.rectangle(bbox, outline=color, width=2, fill='#ff000040')
         else:
             draw.rectangle(bbox, outline=color, width=2)
@@ -154,7 +154,7 @@ def _draw_bbox_ensemble(obb, draw, ann, color, oriented, annotation_set=None,
             if print_label:
                 pos = print_text_label(pos, label, '#ffffff', color)
             if print_score:
-                pos = print_scores(pos, score, '#ffffff', score_thr, color)
+                pos = print_scores(pos, score, '#ffffff', print_score_threshold, color)
             if print_onset and 'onset' in parsed_comments.keys():
                 pos = print_text_label(pos, parsed_comments['onset'], '#ffffff',
                                        '#091e94')
@@ -174,7 +174,9 @@ def visualize_ensemble(obb,
                        oriented=True,
                        instances=False,
                        m=1,
-                       show=True):
+                       show=True,
+                       debug_proposals=None,
+                       ):
     """Uses PIL to visualize the ground truth labels of a given image.
 
     img_idx and img_id are mutually exclusive. Only one can be used at a
@@ -197,9 +199,7 @@ def visualize_ensemble(obb,
         bounding boxes. A value of True means it will show oriented boxes.
     :param bool show: Whether or not to use pillow's show() method to
         visualize the image.
-    :param bool instances: Choose whether to show classes or instances. If
-        False, then shows classes. Else, shows instances as the labels on
-        bounding boxes.
+    :param list debug_proposals: List of other proposals (show them for debugging)
     """
     # Since we can only visualize a single image at a time, we do i[0] so
     # that we don't have to deal with lists. get_img_ann_pair() returns a
@@ -234,6 +234,22 @@ def visualize_ensemble(obb,
     img = Image.open(img_fp)
     draw = ImageDraw.Draw(img, 'RGBA')
 
+    if debug_proposals is not None:
+        # draw the debug proposals in gray
+        wbf_proposals = obb.proposals
+
+        for props in debug_proposals:
+            obb.load_proposals(props)
+            if obb.proposals is not None:
+                prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
+
+                for prop in prop_info.to_dict('records'):
+                    prop_oriented = len(prop['bbox']) == 8
+                    draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented, color='#d0d0d0', print_label=False,
+                                               print_score=False, print_score_threshold=0., m=m)
+
+        obb.proposals = wbf_proposals
+
     # Draw the proposals
     if obb.proposals is not None:
         prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
@@ -241,7 +257,7 @@ def visualize_ensemble(obb,
         for prop in prop_info.to_dict('records'):
             prop_oriented = len(prop['bbox']) == 8
             # Use alpha = 1/m; m = size of ensemble. If all props overlap alpha = 1.
-            draw = _draw_bbox_ensemble(obb, draw, prop, '#ff436408', prop_oriented, m)
+            draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented, m=m)
 
     if show:
         plt.figure(figsize=(25, 36))
@@ -274,11 +290,12 @@ class BboxHelper:
         x_coords = [self.bbox[0], self.bbox[2], self.bbox[4], self.bbox[6]]
 
         # Sort points ccw
-        sorted_points = [(self.bbox[0], self.bbox[1]), (self.bbox[2], self.bbox[3]), (self.bbox[4], self.bbox[5]), (self.bbox[6], self.bbox[7])]
+        sorted_points = [(self.bbox[0], self.bbox[1]), (self.bbox[2], self.bbox[3]), (self.bbox[4], self.bbox[5]),
+                         (self.bbox[6], self.bbox[7])]
         sorted_points.sort(key=algo)
 
         # define P1 as lower left -> assume, it is closest to coord 0,0
-        dist_to_0 = [np.sqrt(sorted_points[i][0]**2 + sorted_points[i][1]**2) for i in range(4)]
+        dist_to_0 = [np.sqrt(sorted_points[i][0] ** 2 + sorted_points[i][1] ** 2) for i in range(4)]
         p1_pos = np.argmin(dist_to_0)
         new_ordering = [0, 3, 2, 1]
         new_ordering = new_ordering[-p1_pos:] + new_ordering[:-p1_pos]
@@ -304,7 +321,7 @@ class BboxHelper:
 
         if width is not None:
             x = np.mean([x1, x2])
-            x1, x2 = x-width/2, x+width/2
+            x1, x2 = x - width / 2, x + width / 2
 
         if height is not None:
             y = np.mean([y1, y2])
@@ -317,8 +334,8 @@ class BboxHelper:
 
         fig, ax = plt.subplots()
         label = ['p1', 'p2', 'p3', 'p4']
-        x = [self.bbox_sorted[i*2] for i in range(4)]
-        y = [self.bbox_sorted[i*2+1] for i in range(4)]
+        x = [self.bbox_sorted[i * 2] for i in range(4)]
+        y = [self.bbox_sorted[i * 2 + 1] for i in range(4)]
         plt.scatter(x=x, y=y)
         for i, txt in enumerate(label):
             ax.annotate(txt, (x[i], y[i]))
@@ -451,7 +468,8 @@ def postprocess_proposals(proposals_WBF):
                 proposals_WBF.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(width=2)
     return proposals_WBF
 
-def visualize_proposals(args, dataset, m, proposals_WBF):
+
+def visualize_proposals(args, dataset, m, proposals_WBF, debug=False):
     # Create output directory
     out_dir = osp.join(args.out, "visualized_proposals/")
     if not osp.exists(out_dir):
@@ -461,20 +479,30 @@ def visualize_proposals(args, dataset, m, proposals_WBF):
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
     # Drop 'staff'-class (looks ugly on plot)
     # proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
+
+    if debug:
+        debug_props = []
+        for i in get_model_names(args):
+            debug_props.append(osp.join(args.inp, f"result_{i}/deepscores_results.json"))
+    else:
+        debug_props = None
+
     dataset.obb.proposals = proposals_WBF
     for img_info in dataset.obb.img_info:
         visualize_ensemble(obb=dataset.obb,
                            img_id=img_info['id'],
                            data_root=dataset.data_root,
                            out_dir=out_dir,
-                           m=m)
+                           m=m,
+                           debug_proposals=debug_props,
+                           )
 
 
 def main():
     args = parse_args()
     cfg = mmcv.Config.fromfile(args.config)
 
-    if not Path(args.l_cache).exists():
+    if args.l_cache is None:
         dataset = build_dataset(cfg.data.test)
 
         # Deduce m (number of BatchEnsemble members)
@@ -505,9 +533,6 @@ def main():
             m = data['m']
 
         visualize_proposals(args, dataset, m, proposals_WBF)
-
-
-
 
 
 if __name__ == '__main__':
