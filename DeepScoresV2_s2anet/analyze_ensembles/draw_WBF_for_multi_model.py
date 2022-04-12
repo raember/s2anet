@@ -6,7 +6,7 @@ import os.path as osp
 import pickle
 from itertools import compress, chain
 from pathlib import Path
-
+import math
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import mmcv
@@ -26,6 +26,8 @@ from mmdet.datasets import build_dataset
 # ensemble-boxes module, https://github.com/ZFTurbo/Weighted-Boxes-Fusion, 26.1.2022
 
 
+# TODO: Ledger Line and Stem: Make bboxes bigger before wbf and afterwards smaller
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Weighted Box Fusion')
     parser.add_argument('config', help='test config file path')
@@ -38,7 +40,17 @@ def parse_args():
         '--out',
         type=str,
         default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
-        help="Pth to the output folder")
+        help="Path to the output folder")
+    parser.add_argument(
+        '--s_cache',
+        type=str,
+        default=None,
+        help="Store results in a pickle file (for debugging only)")
+    parser.add_argument(
+        '--l_cache',
+        type=str,
+        default=None,
+        help="Load the results from a pickle file and only visualize them")
     args = parser.parse_args()
     return args
 
@@ -137,7 +149,8 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
     else:
         label = self.cat_info[cat_id]['name']
         score = str(round(ann['score'], 2))
-        if label != "stem" and ann['score'] < print_score_threshold or label == "stem" and ann['score'] < 0.3:
+        if label != "stem" and label != "ledgerLine" and ann['score'] < print_score_threshold or (
+                label == "stem" or label == "ledgerLine") and ann['score'] < 0.4:
             if print_label:
                 pos = print_text_label(pos, label, '#ffffff', color)
             if print_score:
@@ -239,9 +252,87 @@ def visualize_ensemble(self,
     if out_dir is not None:
         img.save(osp.join(out_dir, 'props_' + img_info['filename']))
 
+
 def get_model_names(args):
     return sorted(
         [x.split('_', 1)[-1] for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x])
+
+
+class BboxHelper:
+
+    def __init__(self, bbox):
+        self.bbox = bbox
+        self.bbox_sorted = self.sort_bboxes()
+
+    def sort_bboxes(self):
+
+        def algo(x):
+            """ Sort points in CCW order """
+            return (math.atan2(x[0] - np.mean(x_coords), x[1] - np.mean(y_coords)) + 2 * np.pi) % (2 * np.pi)
+
+        y_coords = [self.bbox[1], self.bbox[3], self.bbox[5], self.bbox[7]]
+        x_coords = [self.bbox[0], self.bbox[2], self.bbox[4], self.bbox[6]]
+
+        # Sort points ccw
+        sorted_points = [(self.bbox[0], self.bbox[1]), (self.bbox[2], self.bbox[3]), (self.bbox[4], self.bbox[5]), (self.bbox[6], self.bbox[7])]
+        sorted_points.sort(key=algo)
+
+        # define P1 as lower left -> assume, it is closest to coord 0,0
+        dist_to_0 = [np.sqrt(sorted_points[i][0]**2 + sorted_points[i][1]**2) for i in range(4)]
+        p1_pos = np.argmin(dist_to_0)
+        new_ordering = [0, 3, 2, 1]
+        new_ordering = new_ordering[-p1_pos:] + new_ordering[:-p1_pos]
+
+        result = [sorted_points[i] for i in new_ordering]
+
+        # fig, ax = plt.subplots()
+        # label = ['p1', 'p2', 'p3', 'p4']
+        # x = [result[i][0] for i in range(4)]
+        # y = [result[i][1] for i in range(4)]
+        # plt.scatter(x=x, y=y)
+        # for i, txt in enumerate(label):
+        #     ax.annotate(txt, (x[i], y[i]))
+        # plt.show()
+
+        return np.array(list(chain.from_iterable(result)))
+
+    def get_sorted_angle_zero(self, add_x=0., add_y=0., width=None, height=None):
+        x1, x2 = np.mean([self.bbox_sorted[0], self.bbox_sorted[6]]), np.mean(
+            [self.bbox_sorted[2], self.bbox_sorted[4]])
+        y1, y2 = np.mean([self.bbox_sorted[1], self.bbox_sorted[3]]), np.mean(
+            [self.bbox_sorted[5], self.bbox_sorted[7]])
+
+        if width is not None:
+            x = np.mean([x1, x2])
+            x1, x2 = x-width/2, x+width/2
+
+        if height is not None:
+            y = np.mean([y1, y2])
+            y1, y2 = y - height / 2, y + height / 2
+
+        x1 -= add_x / 2
+        x2 += add_x / 2
+        y1 -= add_y / 2
+        y2 += add_y / 2
+
+        fig, ax = plt.subplots()
+        label = ['p1', 'p2', 'p3', 'p4']
+        x = [self.bbox_sorted[i*2] for i in range(4)]
+        y = [self.bbox_sorted[i*2+1] for i in range(4)]
+        plt.scatter(x=x, y=y)
+        for i, txt in enumerate(label):
+            ax.annotate(txt, (x[i], y[i]))
+
+        x = [x1, x2, x2, x1]
+        y = [y1, y1, y2, y2]
+        plt.scatter(x=x, y=y)
+        for i, txt in enumerate(label):
+            ax.annotate(txt, (x[i], y[i]))
+
+        plt.show()
+
+        return np.array([x1, y1, x2, y1, x2, y2, x1, y2])
+
 
 def load_proposals(args, dataset, models):
     boxes_list = []
@@ -252,13 +343,30 @@ def load_proposals(args, dataset, models):
     for i in models:
         json_result_fp = osp.join(args.inp, f"result_{i}/deepscores_results.json")
         dataset.obb.load_proposals(json_result_fp)
-        boxes_list.append(dataset.obb.proposals['bbox'].to_list())
-        scores_list.append(list(map(float, dataset.obb.proposals['score'].to_list())))
-        labels_list.append(dataset.obb.proposals['cat_id'].to_list())
-        img_idx_list.append(dataset.obb.proposals['img_idx'])
+
+        #### WBF Preprocessing
+        props = dataset.obb.proposals
+        for i, row in props.iterrows():
+            if row.cat_id == 42 or row.cat_id == 2:
+                if row.cat_id == 2:
+                    # make ledger line
+                    # y1 -= 0.2
+                    # y2 += 0.2
+                    props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(add_y=15)
+                if row.cat_id == 42:
+                    # make stem bigger
+                    # x1 -= 0.2
+                    # x2 += 0.2
+                    props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(add_x=15)
+
+        boxes_list.append(props['bbox'].to_list())
+        scores_list.append(list(map(float, props['score'].to_list())))
+        labels_list.append(props['cat_id'].to_list())
+        img_idx_list.append(props['img_idx'])
         print(f"Adding proposals from ensemble member {i}.")
     # Calculate proposals_WBF
     max_img_idx = max([max(i) for i in img_idx_list])
+    # TODO: use different threshold for ledger line and stem (e.g. 0.01)
     iou_thr = 0.1  # This is the most important hyper parameter; IOU of proposal with fused box.
     skip_box_thr = 0.00001  # Skips proposals if score < thr; However, nms is applied when using routine in test_BE.py and score_thr from config applies already.
     # score_thr: value is set below; skips visualization if fused score is below score_thr
@@ -330,13 +438,26 @@ def evaluate_wbf_performance(args, cfg, proposals_WBF):
     return dataset
 
 
+def postprocess_proposals(proposals_WBF):
+    # make all stem vertical and ledger line horizontal
+    proposals_WBF = proposals_WBF.reset_index(drop=True)
+    for i, row in proposals_WBF.iterrows():
+        if row.cat_id == 42 or row.cat_id == 2:
+            if row.cat_id == 2:
+                # make ledger line
+                proposals_WBF.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(height=3)
+            if row.cat_id == 42:
+                # make stem bigger
+                proposals_WBF.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero(width=2)
+    return proposals_WBF
+
 def visualize_proposals(args, dataset, m, proposals_WBF):
     # Create output directory
     out_dir = osp.join(args.out, "visualized_proposals/")
     if not osp.exists(out_dir):
         os.makedirs(out_dir)
     # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and all others make no proposal; the fused score is: 0.3/30=0.01)
-    score_thr = 0.00001
+    score_thr = 0.3  # TODO: DELME (IMPLEMENTED AGAIN LATER ON)
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
     # Drop 'staff'-class (looks ugly on plot)
     # proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
@@ -353,46 +474,39 @@ def main():
     args = parse_args()
     cfg = mmcv.Config.fromfile(args.config)
 
-    # TODO: UNCOMMENT
-    # dataset = build_dataset(cfg.data.test)
-    # models = get_model_names(args)
-    # m = len(models)
-#
-    # proposals_WBF = load_proposals(args, dataset, models)
-    # store_proposals(args, proposals_WBF)
-    # dataset = evaluate_wbf_performance(args, cfg, proposals_WBF)
-    # visualize_proposals(args, dataset, m, proposals_WBF)
-
-
-    ###### TODO DELETE EVERYTHING FROM HERE!!!
-    if not Path('delme_data.pickle').exists():
+    if not Path(args.l_cache).exists():
         dataset = build_dataset(cfg.data.test)
 
         # Deduce m (number of BatchEnsemble members)
         models = get_model_names(args)
+        models = models[21::3]  # TODO: delme (less models for debugging)
         m = len(models)
 
         proposals_WBF = load_proposals(args, dataset, models)
+        proposals_WBF = postprocess_proposals(proposals_WBF)
         store_proposals(args, proposals_WBF)
+
         dataset = evaluate_wbf_performance(args, cfg, proposals_WBF)
 
-        # TODO Delme:
-        data = {
-            'proposals_WBF': proposals_WBF,
-            'dataset': dataset,
-            'm': m,
-        }
-        with open('delme_data.pickle', 'wb') as handle:
-            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        if args.s_cache is not None:
+            data = {
+                'proposals_WBF': proposals_WBF,
+                'dataset': dataset,
+                'm': m,
+            }
+            with open(args.s_cache, 'wb') as handle:
+                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     else:
-        with open('delme_data.pickle', 'rb') as handle:
+        with open(args.l_cache, 'rb') as handle:
             data = pickle.load(handle)
             proposals_WBF = data['proposals_WBF']
             dataset = data['dataset']
             m = data['m']
 
         visualize_proposals(args, dataset, m, proposals_WBF)
+
+
 
 
 
