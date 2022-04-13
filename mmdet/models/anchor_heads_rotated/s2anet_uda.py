@@ -80,13 +80,15 @@ class S2ANetUDAHead(S2ANetHead):
            sum(loss_stat_bbox) > 1E10:
             print("bad loss")
         result.update(
-            loss_stat=loss_stat_cls,
+            loss_stat_cls=loss_stat_cls,
             loss_stat_bbox=loss_stat_bbox,
         )
         return result
 
     def loss_stat_single(self, proposals):
         bboxes, classes = proposals
+        valid = classes > 0
+        bboxes, classes = bboxes[valid], classes[valid]
         if bboxes.shape[0] == 0:
             zero = torch.zeros((1,), device=bboxes.device)
             return zero, zero
@@ -95,4 +97,5 @@ class S2ANetUDAHead(S2ANetHead):
         l1 = bboxes[:,2:4].min(dim=1).values
         l2 = bboxes[:,2:4].max(dim=1).values
         ratio = torch.addcdiv(torch.zeros_like(l1), 1, l2, l1)
-        return self.loss_stat(area, angle, l1, l2, ratio, classes)
+        confid = bboxes[:,5]
+        return self.loss_stat(area, angle, l1, l2, ratio, classes, confid)
