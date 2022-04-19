@@ -117,6 +117,8 @@ class StatisticalLoss(nn.Module):
         # Update the candidates where the proposals match so only those remain
         label_candidates[match_cand_idx] = cls_.repeat(thr_shape)[match_cand_idx]
         chosen_label = label_candidates.max(dim=1).values
+        # TODO: Select the loss from the cls-corresponding index from bbox_losses to get the bbox loss
+        # Because calculate_bbox_loss is more than twice as expensive to run that calculate_class_loss
         return (chosen_label != cls + 1).type(torch.float).sum() / n_preds if n_preds > 0 else 1.0
 
     def get_thresholds_by_classes(self, cls: Tensor) -> Tuple[
