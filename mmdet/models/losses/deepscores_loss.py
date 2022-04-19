@@ -45,7 +45,7 @@ class StatisticalLoss(nn.Module):
         Calculate the loss per category and return the mean loss, divided by the amount of proposals and weighted by
         the confidence.
         That way the loss does not scale with the amount of proposals we get. If we do not get any proposals, we return
-        a default loss of 10.0.
+        a default loss of 1.0.
 
         Weaknesses/things to improve:
         - Just a mean over every proposal (including the ones which are not outliers) might be a problem if we get a
