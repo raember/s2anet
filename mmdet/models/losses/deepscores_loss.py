@@ -54,7 +54,8 @@ class StatisticalLoss(nn.Module):
           proposal for a long time, which would mean a loss of 0, until we get out first proposals that make it through
           nms.
         """
-        losses = torch.zeros((cls.shape[0], 0), device=cls.device)
+        n_preds = cls.shape[0]
+        losses = torch.zeros((n_preds, 0), device=cls.device)
         for val, (val_min, val_max, val_std) in zip((area, angle, l1, l2, ratio), self.get_thresholds_by_classes(cls + 1)):
             # Overlay the regions above and below the thresholds and align them as a line beginning from (0, 0)
             mean = torch.mean(
@@ -64,7 +65,7 @@ class StatisticalLoss(nn.Module):
             # Anything above 0 is outside a threshold and already scaled for loss
             losses = torch.cat((losses, value.where(value > 0.0, zeros).reshape((val.shape[0], 1))), dim=1)
         losses = losses.mean(dim=1) * confid
-        return losses.mean() / cls.shape[0] if cls.shape[0] > 0 else 10.0
+        return losses.mean() / n_preds if n_preds > 0 else 10.0
 
     def calculate_class_loss(self, area: Tensor, angle: Tensor, l1: Tensor, l2: Tensor, ratio: Tensor, cls: Tensor, confid: Tensor) -> Tensor:
         """
@@ -81,7 +82,8 @@ class StatisticalLoss(nn.Module):
         - We use a very hard approach on this loss calculation, which produces a rather unstable loss. Maybe something
           softer would be better.
         """
-        cls_shape = (cls.shape[0], 1)
+        n_preds = cls.shape[0]
+        cls_shape = (n_preds, 1)
         cls_ = cls.reshape(cls_shape).type(torch.long) + 1
         losses = torch.zeros(cls_shape, device=cls.device)
         bbox_losses = torch.zeros(cls_shape, device=cls.device)
@@ -103,7 +105,7 @@ class StatisticalLoss(nn.Module):
                 # We did not know how many classes (=rows) we were going to have, so we have to fix that for the buffer
                 bbox_losses = bbox_losses.repeat(thr_shape)
             bbox_losses += value.where(value > 0.0, zeros)
-        bbox_losses = bbox_losses * confid.reshape((cls.shape[0], 1))
+        bbox_losses = bbox_losses * confid.reshape(cls_shape)
         # The loss depends on the predicted class
         # The best class is the one where the column in the row has the lowest loss
         lowest_loss_class_indices = torch.eq(bbox_losses, bbox_losses.min(dim=1, keepdims=True).values)
@@ -115,7 +117,7 @@ class StatisticalLoss(nn.Module):
         # Update the candidates where the proposals match so only those remain
         label_candidates[match_cand_idx] = cls_.repeat(thr_shape)[match_cand_idx]
         chosen_label = label_candidates.max(dim=1).values
-        return (chosen_label != cls + 1).type(torch.float).sum() / cls.shape[0] if cls.shape[0] > 0 else 1.0
+        return (chosen_label != cls + 1).type(torch.float).sum() / n_preds if n_preds > 0 else 1.0
 
     def get_thresholds_by_classes(self, cls: Tensor) -> Tuple[
         Tuple[Tensor, Tensor, Tensor],
