@@ -60,6 +60,7 @@ def maybe_init_wandb(cfg):
         name = "{}_{}".format(osp.split(cfg.work_dir)[1],
                               time.strftime('%Y.%m.%d--%H.%M.%S'))
         entity = None
+        mode = 'online'
 
         try:
             name_prefix = cfg.wandb_cfg['name_prefix']
@@ -84,7 +85,13 @@ def maybe_init_wandb(cfg):
         except AttributeError or KeyError:
             pass
 
-        wandb.init(name=name, project=project, entity=entity)
+        try:
+            if cfg.wandb_cfg['mode']:
+                mode = cfg.wandb_cfg['mode']
+        except AttributeError or KeyError:
+            pass
+
+        wandb.init(name=name, project=project, entity=entity, mode=mode)
         wandb.config.update(cfg._cfg_dict)
         wandb.config.update({"filename": cfg.filename})
 

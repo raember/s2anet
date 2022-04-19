@@ -179,7 +179,8 @@ wandb_cfg = dict(
     entity="raember",
     project='s2anet_scoreaug',
     dryrun=False,
-    name_prefix = "tugg_halfrez_crop_"
+    name_prefix = "tugg_halfrez_crop_",
+    mode='online'
 )
 
 
