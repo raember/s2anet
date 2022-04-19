@@ -65,7 +65,7 @@ class StatisticalLoss(nn.Module):
             # Anything above 0 is outside a threshold and already scaled for loss
             losses = torch.cat((losses, value.where(value > 0.0, zeros).reshape((val.shape[0], 1))), dim=1)
         losses = losses.mean(dim=1) * confid
-        return losses.mean() / n_preds if n_preds > 0 else 10.0
+        return losses.mean() / n_preds if n_preds > 0 else 1.0
 
     def calculate_class_loss(self, area: Tensor, angle: Tensor, l1: Tensor, l2: Tensor, ratio: Tensor, cls: Tensor, confid: Tensor) -> Tensor:
         """
