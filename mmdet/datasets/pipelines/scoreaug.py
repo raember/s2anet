@@ -109,6 +109,7 @@ class ScoreAug(object):
 
         # maybe add small rotation to score
         small_rotate = choice([True, False], p=[0.6, 0.4])
+        results['angle'] = 0.0
         if small_rotate:
             # negate angle to get teh right direction
             angle = -np.random.uniform(-2, 2)

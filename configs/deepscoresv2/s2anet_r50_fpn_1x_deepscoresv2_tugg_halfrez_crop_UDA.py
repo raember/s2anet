@@ -52,8 +52,7 @@ model = dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
         loss_stat=dict(
             type='StatisticalLoss',
-            stats_file='stats.json',
-            angle_tol_incr=2.0),
+            stats_file='stats.json'),
         nms=dict(
             nms_pre=5000,
             min_bbox_size=0,
@@ -116,7 +115,8 @@ train_pipeline = [
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'], meta_keys=(
+        'filename', 'ori_shape', 'img_shape', 'pad_shape', 'scale_factor', 'flip', 'img_norm_cfg', 'angle')),
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile'),

@@ -27,14 +27,13 @@ class StatisticalLoss(nn.Module):
     """
 
     def __init__(self, stats_file: str, cls_out_channels: int, use_sigmoid_cls: bool,
-                 target_means: List[int], target_stds: List[int], angle_tol_incr: float):
+                 target_means: List[int], target_stds: List[int]):
         super().__init__()
         self.stats = json.load(open(stats_file, mode='r'))
         self.cls_out_channels = cls_out_channels
         self.use_sigmoid_cls = use_sigmoid_cls
         self.target_means = target_means
         self.target_stds = target_stds
-        self.angle_tol_incr = angle_tol_incr
 
     def forward(self, area: Tensor, angle: Tensor, l1: Tensor, l2: Tensor, ratio: Tensor, cls: Tensor, confid: Tensor):
         loss_bbox = self.calculate_bbox_loss(area, angle, l1, l2, ratio, cls, confid)
@@ -88,7 +87,7 @@ class StatisticalLoss(nn.Module):
         cls_ = cls.reshape(cls_shape).type(torch.long) + 1
         losses = torch.zeros(cls_shape, device=cls.device)
         bbox_losses = torch.zeros(cls_shape, device=cls.device)
-        ALL_CLASSES = torch.tensor(list(map(int, self.stats.keys())), device=cls.device)
+        ALL_CLASSES = torch.tensor(list(map(float, self.stats.keys())), device=cls.device)
         # For each category values and its corresponding thresholds (over all classes)
         for val, (val_min, val_max, val_std) in zip((area, angle, l1, l2, ratio), self.get_thresholds_by_classes(ALL_CLASSES)):
             # Replicate the category value for each class
@@ -110,7 +109,7 @@ class StatisticalLoss(nn.Module):
         # The loss depends on the predicted class
         # The best class is the one where the column in the row has the lowest loss
         lowest_loss_class_indices = torch.eq(bbox_losses, bbox_losses.min(dim=1, keepdims=True).values)
-        label_candidates = lowest_loss_class_indices * ALL_CLASSES
+        label_candidates = lowest_loss_class_indices * ALL_CLASSES.type(torch.float)
         # If label candidates and predicted classes intersect, chose the intersecting ones
         # (because later we use .max() to get the first candidate, which might not be the same)
         matching_candidates = (cls_.repeat(thr_shape) == label_candidates)
@@ -149,8 +148,4 @@ class StatisticalLoss(nn.Module):
                 val_min[i] = low
                 val_max[i] = high
                 val_std[i] = max(1.0, cls_stat[key]['std'])
-        # If the augmented gt is rotated, the angle thresholds have to be adjusted
-        # TODO: Find a way to accommodate the individual angle of scoreaug for each sample
-        angle_min -= self.angle_tol_incr
-        angle_max += self.angle_tol_incr
         return all_threshold_tensors

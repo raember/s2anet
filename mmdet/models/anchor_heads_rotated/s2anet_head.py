@@ -549,9 +549,10 @@ class S2ANetHead(nn.Module):
             ]
             img_shape = img_metas[img_id]['img_shape']
             scale_factor = img_metas[img_id]['scale_factor']
+            angle = img_metas[img_id].get('angle', 0.0)
             proposals = self.get_bboxes_single(cls_score_list, bbox_pred_list,
                                                refine_anchors[0][0], img_shape,
-                                               scale_factor, cfg, rescale)
+                                               scale_factor, cfg, angle, rescale)
 
             result_list.append(proposals)
         return result_list
@@ -563,6 +564,7 @@ class S2ANetHead(nn.Module):
                           img_shape,
                           scale_factor,
                           cfg,
+                          angle,
                           rescale=False):
         """
         Transform outputs for a single batch item into labeled boxes.
@@ -610,6 +612,9 @@ class S2ANetHead(nn.Module):
                                                         mlvl_scores,
                                                         cfg.score_thr, cfg.nms,
                                                         cfg.max_per_img)
+        # Neutralize the rotation introduced by scoreaug
+        if angle != 0.0:
+            det_bboxes[:,4] -= angle / 180
         return det_bboxes, det_labels
 
     def get_visualization(self, input_img, classes, test_cfg):
