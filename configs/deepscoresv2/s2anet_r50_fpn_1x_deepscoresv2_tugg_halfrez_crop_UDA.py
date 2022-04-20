@@ -52,7 +52,8 @@ model = dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
         loss_stat=dict(
             type='StatisticalLoss',
-            stats_file='stats.json'),
+            stats_file='stats.json',
+            angle_tol_incr=2.0),
         nms=dict(
             nms_pre=5000,
             min_bbox_size=0,

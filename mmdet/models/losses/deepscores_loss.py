@@ -27,13 +27,14 @@ class StatisticalLoss(nn.Module):
     """
 
     def __init__(self, stats_file: str, cls_out_channels: int, use_sigmoid_cls: bool,
-                 target_means: List[int], target_stds: List[int]):
+                 target_means: List[int], target_stds: List[int], angle_tol_incr: float):
         super().__init__()
         self.stats = json.load(open(stats_file, mode='r'))
         self.cls_out_channels = cls_out_channels
         self.use_sigmoid_cls = use_sigmoid_cls
         self.target_means = target_means
         self.target_stds = target_stds
+        self.angle_tol_incr = angle_tol_incr
 
     def forward(self, area: Tensor, angle: Tensor, l1: Tensor, l2: Tensor, ratio: Tensor, cls: Tensor, confid: Tensor):
         loss_bbox = self.calculate_bbox_loss(area, angle, l1, l2, ratio, cls, confid)
@@ -148,4 +149,8 @@ class StatisticalLoss(nn.Module):
                 val_min[i] = low
                 val_max[i] = high
                 val_std[i] = max(1.0, cls_stat[key]['std'])
+        # If the augmented gt is rotated, the angle thresholds have to be adjusted
+        # TODO: Find a way to accommodate the individual angle of scoreaug for each sample
+        angle_min -= self.angle_tol_incr
+        angle_max += self.angle_tol_incr
         return all_threshold_tensors

@@ -134,6 +134,7 @@ class ScoreAug(object):
 
             results['ann_info']['bboxes'] = rotate(results['ann_info']['bboxes'], angle)
             results['gt_bboxes'] = rotate(results['gt_bboxes'], angle)
+            results['angle'] = angle
 
         fg_brightness = choice([True, False], p=[0.4, 0.6])
         if fg_brightness or True:
