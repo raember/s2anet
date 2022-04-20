@@ -109,7 +109,7 @@ class StatisticalLoss(nn.Module):
         # The loss depends on the predicted class
         # The best class is the one where the column in the row has the lowest loss
         lowest_loss_class_indices = torch.eq(bbox_losses, bbox_losses.min(dim=1, keepdims=True).values)
-        label_candidates = lowest_loss_class_indices * ALL_CLASSES.type(torch.float)
+        label_candidates = lowest_loss_class_indices * ALL_CLASSES.type(torch.long)
         # If label candidates and predicted classes intersect, chose the intersecting ones
         # (because later we use .max() to get the first candidate, which might not be the same)
         matching_candidates = (cls_.repeat(thr_shape) == label_candidates)
