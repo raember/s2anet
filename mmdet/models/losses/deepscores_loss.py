@@ -1,6 +1,4 @@
 import json
-from abc import ABC
-from pathlib import Path
 from typing import Union, List, Tuple
 
 import torch
@@ -16,6 +14,7 @@ class StatisticalLoss(nn.Module):
     """
     Loss calculation for proposals based on statistical thresholds
 
+    Basic concept:
     Each category (area, angle, short edge, long edge, ratio between long and short edge) can have manually set
     thresholds based on compiled statistics. In every of those categories we may have a lower and a higher threshold as
     well as the standard deviation of that category from the statistics. To calculate a loss based on the threshold, we
@@ -36,90 +35,71 @@ class StatisticalLoss(nn.Module):
         self.target_stds = target_stds
 
     def forward(self, area: Tensor, angle: Tensor, l1: Tensor, l2: Tensor, ratio: Tensor, cls: Tensor, confid: Tensor):
-        loss_bbox = self.calculate_bbox_loss(area, angle, l1, l2, ratio, cls, confid)
-        loss_cls = self.calculate_class_loss(area, angle, l1, l2, ratio, cls, confid)
-        return loss_bbox, loss_cls
-
-    def calculate_bbox_loss(self, area: Tensor, angle: Tensor, l1: Tensor, l2: Tensor, ratio: Tensor, cls: Tensor, confid: Tensor) -> Tensor:
-        """
-        Calculate the loss per category and return the mean loss, divided by the amount of proposals and weighted by
-        the confidence.
-        That way the loss does not scale with the amount of proposals we get. If we do not get any proposals, we return
-        a default loss of 1.0.
-
-        Weaknesses/things to improve:
-        - Just a mean over every proposal (including the ones which are not outliers) might be a problem if we get a
-          lot of good proposals but a few very bad ones.
-        - The default loss has been chosen arbitrarily. When we train a model from scratch, we tend not to get any
-          proposal for a long time, which would mean a loss of 0, until we get out first proposals that make it through
-          nms.
-        """
-        n_preds = cls.shape[0]
-        losses = torch.zeros((n_preds, 0), device=cls.device)
-        for val, (val_min, val_max, val_std) in zip((area, angle, l1, l2, ratio), self.get_thresholds_by_classes(cls + 1)):
-            # Overlay the regions above and below the thresholds and align them as a line beginning from (0, 0)
-            mean = torch.mean(
-                torch.cat((val_min.reshape((val.shape[0], 1)), val_max.reshape((val.shape[0], 1))), dim=1), dim=1)
-            zeros = torch.zeros_like(val, device=val.device)
-            value = zeros.addcdiv(torch.abs(val - mean) - (val_max - mean), val_std)
-            # Anything above 0 is outside a threshold and already scaled for loss
-            losses = torch.cat((losses, value.where(value > 0.0, zeros).reshape((val.shape[0], 1))), dim=1)
-        losses = losses.mean(dim=1) * confid
-        return losses.mean() / n_preds if n_preds > 0 else 1.0
-
-    def calculate_class_loss(self, area: Tensor, angle: Tensor, l1: Tensor, l2: Tensor, ratio: Tensor, cls: Tensor, confid: Tensor) -> Tensor:
         """
         Calculate the loss of each proposed bbox according to the thresholds (including weighted with the confidence)
-        and compare the proposed class with the one chosen to have the lowest bbox loss, assuming it is the correct
-        class. This could mean we get a more than one candidate per bbox, because some thresholds are the same or the
-        values get "accepted" by multiple class thresholds. In that case, we check if the proposed class is
-        intersecting with any of the candidates we calculated and if it does, we select that one for the final loss
-        calculation.
-        The final loss calculation just returns the ratio of the proposed classes matching the classes inferred
+        for every available class.
+
+        For the class loss, we compare the proposed class with the one chosen to have the lowest threshold loss,
+        assuming it is the correct class. This could mean we get a more than one candidate per bbox, because some
+        thresholds are the same or the values get "accepted" by multiple class thresholds. In that case, we check if the
+        proposed class is intersecting with any of the candidates we calculated and if it does, we select that one for
+        the final class loss calculation.
+        The final class loss calculation just returns the ratio of the proposed classes matching the classes inferred
         by the threshold calculation. If there is no proposed class, we return 1.0, signalling a 100% mismatch.
+
+        For the bbox loss, we get a boolean array indicating which entry matches the proposed class. With that we can
+        just pick out the loss value from the threshold loss array.
+        The final bbox loss calculation is now a mean of all the category losses' sums. If there is no proposed bboxes,
+        we return 100.0 as a default loss.
 
         Weaknesses/things to improve:
         - We use a very hard approach on this loss calculation, which produces a rather unstable loss. Maybe something
           softer would be better.
         """
         n_preds = cls.shape[0]
-        cls_shape = (n_preds, 1)
-        cls_ = cls.reshape(cls_shape).type(torch.long) + 1
-        losses = torch.zeros(cls_shape, device=cls.device)
-        bbox_losses = torch.zeros(cls_shape, device=cls.device)
+        column_shape = (n_preds, 1)
+        cls_ = cls.reshape(column_shape).type(torch.long) + 1
+        losses = torch.zeros(column_shape, device=cls.device)
+        thr_losses = torch.zeros(column_shape, device=cls.device)
         ALL_CLASSES = torch.tensor(list(map(float, self.stats.keys())), device=cls.device)
+        n_classes = ALL_CLASSES.shape[0]
+        row_shape = (1, n_classes)
         # For each category values and its corresponding thresholds (over all classes)
         for val, (val_min, val_max, val_std) in zip((area, angle, l1, l2, ratio), self.get_thresholds_by_classes(ALL_CLASSES)):
             # Replicate the category value for each class
-            thr_shape = (1, val_min.shape[0])
-            nval = val.reshape(cls_shape).repeat(thr_shape)
-            val_min = val_min.reshape(thr_shape).type(torch.float32)
-            val_max = val_max.reshape(thr_shape).type(torch.float32)
-            val_std = val_std.reshape(thr_shape).type(torch.float32)
+            nval = val.reshape(column_shape).repeat(row_shape)
+            val_min = val_min.reshape(row_shape).type(torch.float32)
+            val_max = val_max.reshape(row_shape).type(torch.float32)
+            val_std = val_std.reshape(row_shape).type(torch.float32)
             # Take the mean of the thresholds to be a row, aligning with the row of the replicated category values
-            mean = torch.mean(torch.cat((val_min, val_max), dim=0), dim=0).reshape(thr_shape)
+            mean = torch.mean(torch.cat((val_min, val_max), dim=0), dim=0).reshape(row_shape)
             # Calculate the loss
             zeros = torch.zeros_like(nval, device=val.device)
             value = zeros.addcdiv(torch.abs(nval - mean) - (val_max - mean), val_std)
-            if bbox_losses.shape != value.shape:
+            if thr_losses.shape != value.shape:
                 # We did not know how many classes (=rows) we were going to have, so we have to fix that for the buffer
-                bbox_losses = bbox_losses.repeat(thr_shape)
-            bbox_losses += value.where(value > 0.0, zeros)
-        bbox_losses = bbox_losses * confid.reshape(cls_shape)
+                thr_losses = thr_losses.repeat(row_shape)
+            thr_losses += value.where(value > 0.0, zeros)
+        thr_losses = thr_losses * confid.reshape(column_shape)
         # The loss depends on the predicted class
         # The best class is the one where the column in the row has the lowest loss
-        lowest_loss_class_indices = torch.eq(bbox_losses, bbox_losses.min(dim=1, keepdims=True).values)
+        lowest_loss_class_indices = torch.eq(thr_losses, thr_losses.min(dim=1, keepdims=True).values)
         label_candidates = lowest_loss_class_indices * ALL_CLASSES.type(torch.long)
         # If label candidates and predicted classes intersect, chose the intersecting ones
         # (because later we use .max() to get the first candidate, which might not be the same)
-        matching_candidates = (cls_.repeat(thr_shape) == label_candidates)
+        matching_candidates = (cls_.repeat(row_shape) == label_candidates)
         match_cand_idx = matching_candidates.max(dim=1).values
         # Update the candidates where the proposals match so only those remain
-        label_candidates[match_cand_idx] = cls_.repeat(thr_shape)[match_cand_idx]
+        label_candidates[match_cand_idx] = cls_.repeat(row_shape)[match_cand_idx]
         chosen_label = label_candidates.max(dim=1).values
-        # TODO: Select the loss from the cls-corresponding index from bbox_losses to get the bbox loss
-        # Because calculate_bbox_loss is more than twice as expensive to run than calculate_class_loss
-        return (chosen_label != cls + 1).type(torch.float).sum() / n_preds if n_preds > 0 else 1.0
+        class_loss = (chosen_label != cls + 1).type(torch.float).mean() if n_preds > 0 else 1.0
+
+        # Match all available classes with the predicted classes over all samples to get the index of the bbox losses
+        bbox_loss_indx = torch.eq(ALL_CLASSES.reshape((1, n_classes)).repeat(n_preds, 1), cls_.repeat(1, n_classes) + 1)
+        assert bbox_loss_indx.sum() == n_preds, "There must only be one matched class per prediction. Calculation is faulty"
+        # The loss is at the position indicated by the boolean index. Grab the bbox loss from there
+        bbox_loss = thr_losses[bbox_loss_indx].mean() if n_preds > 0 else 100.0
+        return bbox_loss, class_loss
 
     def get_thresholds_by_classes(self, cls: Tensor) -> Tuple[
         Tuple[Tensor, Tensor, Tensor],
