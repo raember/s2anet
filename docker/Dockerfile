@@ -45,7 +45,7 @@ RUN python setup.py develop
 # Install MMDetection/S2ANet deps
 FROM build-obb_anns AS build-mmdet
 RUN conda install cython -y && conda clean --all
-COPY /s2anet /s2anet_dummy
+COPY / /s2anet_dummy
 #RUN git clone -b dev-embe https://github.com/raember/s2anet.git s2anet_dummy
 WORKDIR /s2anet_dummy
 ENV FORCE_CUDA="1"
@@ -88,31 +88,3 @@ RUN echo | RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyz
 RUN sed 's/robbyrussell/crcandy/g' -i ~/.zshrc
 # Don't forget to
 # python -m wandb login <token>
-
-
-## Install ssh (for remote debugging)
-## Note: Put your public-key file (renamed to authorized_keys) in a folder called ssh_keys and zip it to tar.gz. archive
-##       Add this archive to the docker build context
-#RUN apt-get update && apt-get install -y openssh-server openssh-client
-#
-#RUN mkdir /var/run/sshd
-#RUN echo 'root:pw' | chpasswd
-#RUN sed -i 's/#*PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
-#
-## SSH login fix. Otherwise user is kicked off after login
-#RUN sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
-#
-#ENV NOTVISIBLE "in users profile"
-#RUN echo "export VISIBLE=now" >> /etc/profile
-#
-#EXPOSE 22
-#CMD ["/usr/sbin/sshd", "-D"]
-#
-## Copy authorized keys
-#ADD ssh_keys.tar.gz /tmp/
-#RUN mkdir -p /root/.ssh \
-#    && mv /tmp/ssh_keys/authorized_keys /root/.ssh/authorized_keys \
-#    && chown root:root /root/.ssh/authorized_keys \
-#    && chmod 600 /root/.ssh/authorized_keys \
-#    && stat /root/.ssh/authorized_keys \
-#&& rm -rf /tmp/ssh_keys ssh_keys.tar.gz
