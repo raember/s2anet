@@ -27,7 +27,7 @@ from mmdet.datasets import build_dataset
 # ensemble-boxes module, https://github.com/ZFTurbo/Weighted-Boxes-Fusion, 26.1.2022
 
 
-# TODO: Ledger Line and Stem: Make bboxes bigger before wbf and afterwards smaller
+# TODO: Comparison of different thresholds: See reports -> wbf_thresholds.xlsx
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Weighted Box Fusion')
@@ -45,13 +45,13 @@ def parse_args():
     parser.add_argument(
         '--iou_thr',
         type=float,
-        default=0.1,
+        default=0.3,
         help="WBF Threshold: Min. IoU to fuse two predictions")
     parser.add_argument(
         '--vis_thr',
         type=float,
-        default=0.0001,
-        help="Score Threshold for visualization: Only proposals with higher score are visualized")
+        default=0.1,
+        help="Score Threshold: Only proposals with higher score are kept")
     parser.add_argument(
         '--plot_proposals',
         action='store_true',
@@ -509,12 +509,13 @@ def main():
 
         # Deduce m (number of BatchEnsemble members)
         models = get_model_names(args)
-        models = models[21::3]  # TODO: delme (less models for debugging)
+        # models = models[21::3]  # TODO: delme (less models for debugging)
 
         proposals_WBF = load_proposals(args, dataset, models, iou_thr=args.iou_thr)
         proposals_WBF = postprocess_proposals(proposals_WBF)
         store_proposals(args, proposals_WBF)
 
+        proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < args.vis_thr].index)
         dataset = evaluate_wbf_performance(args, cfg, proposals_WBF)
 
         if args.s_cache is not None:
