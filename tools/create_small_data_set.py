@@ -49,12 +49,14 @@ def select_classes(ann: OBBAnns) -> OBBAnns:
     ann.ann_info = ann.ann_info[keep_index]
 
     # remove image info
-    img_to_keep = keep_index[keep_index].index.values
-    for img in ann.img_info:
-        img['ann_ids'] = [ann_id for ann_id in img['ann_ids'] if int(ann_id) in img_to_keep]
-        if len(img['ann_ids']) <= 0:
-            ann.img_info.remove(img)
+    img_to_remove = []
+    ann_to_keep = ann.ann_info.index.values
+    for i in range(len(ann.img_info)):
+        ann.img_info[i]['ann_ids'] = [ann_id for ann_id in ann.img_info[i]['ann_ids'] if int(ann_id) in ann_to_keep]
+        if len(ann.img_info[i]['ann_ids']) <= 0:
+            img_to_remove.append(ann.img_info[i])
 
+    ann.img_info = [i for i in ann.img_info if i not in img_to_remove]
     return ann
 
 
@@ -63,6 +65,7 @@ def obb_anns_to_json(ann: OBBAnns) -> dict:
         data = json.load(ann_file)
     data['images'] = ann.img_info
     data['annotations'] = {str(key): value for key, value in ann.ann_info.to_dict('index').items()}
+    data['categories'] = ann.cat_info
     return data
 
 
