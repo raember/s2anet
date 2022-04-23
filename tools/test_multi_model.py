@@ -9,8 +9,10 @@ import mmcv
 import numpy as np
 import torch
 import torch.distributed as dist
+from dateutil.parser import parse
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import get_dist_info, load_checkpoint
+from pandas import DataFrame
 
 from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model
@@ -114,7 +116,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('--checkpoints', nargs='+',
-                        help='checkpoint files (use like --checkpoints file1 file2 file3 ...', required=True)
+                        help='checkpoint files', required=True)
+    parser.add_argument('--test-sets', nargs='+',
+                        help='test set paths')
     parser.add_argument('--out', help='output result file')
     parser.add_argument(
         '--json_out',
@@ -141,6 +145,12 @@ def parse_args():
         default='dota',
         type=str,
         help='eval dataset type')
+    parser.add_argument(
+        '--cache',
+        action='store_true',
+        default=False,
+        help='Use cached results/metrics/evaluations instead of recalculating'
+    )
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -157,8 +167,6 @@ def main():
     if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
         raise ValueError('The output file must be a pkl file.')
 
-    if args.json_out is not None and args.json_out.endswith('.json'):
-        args.json_out = args.json_out[:-5]
     cfg = mmcv.Config.fromfile(args.config)
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
@@ -176,94 +184,155 @@ def main():
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
-    outputs_m = []
-    for i, checkpoint_file in enumerate(args.checkpoints):
-        checkpoint_file = Path(checkpoint_file)
-        # build the dataloader
-        dataset = build_dataset(cfg.data.test)
-        data_loader = build_dataloader(
-            dataset,
+    data_loaders = []
+    if args.test_sets is not None:
+        for path in map(Path, args.test_sets):
+            assert path.exists(), f"Test set does not exist at {str(path)}"
+            tds =  cfg.data.test.deepcopy()
+            tds.ann_file = str(path)
+            data_loaders.append(build_dataloader(
+                build_dataset(tds),
+                imgs_per_gpu=1,
+                workers_per_gpu=cfg.data.workers_per_gpu,
+                dist=distributed,
+                shuffle=False
+            ))
+    else:
+        data_loaders.append(build_dataloader(
+            build_dataset(cfg.data.test),
             imgs_per_gpu=1,
             workers_per_gpu=cfg.data.workers_per_gpu,
             dist=distributed,
-            shuffle=False)
-        # build the model and load checkpoint
-        model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-        fp16_cfg = cfg.get('fp16', None)
-        if fp16_cfg is not None:
-            wrap_fp16_model(model)
+            shuffle=False
+        ))
 
+    out_folder = Path('eval')
+    proposals_fp = Path(args.out)
+    if args.json_out:
+        json_out_fp = Path(args.json_out)
+
+    # build the model and load checkpoint
+    model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+    fp16_cfg = cfg.get('fp16', None)
+    if fp16_cfg is not None:
+        wrap_fp16_model(model)
+
+    index = []
+    stats = {key: [] for key in data_loaders[0].dataset.CLASSES}
+
+    outputs_m = []
+    for i, checkpoint_file in enumerate(map(Path, args.checkpoints)):
+        outputs_m.append([])
         checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
-        # old versions did not save class info in checkpoints, this walkaround is
-        # for backward compatibility
-        if 'CLASSES' in checkpoint['meta']:
-            model.CLASSES = checkpoint['meta']['CLASSES']
-        else:
-            model.CLASSES = dataset.CLASSES
-        if not distributed:
-            model = MMDataParallel(model, device_ids=[0])
-            outputs_m.append(single_gpu_test(model, data_loader, args.show, cfg))
-        else:
-            model = MMDistributedDataParallel(model.cuda())
-            outputs_m.append(multi_gpu_test(model, data_loader, args.tmpdir))
-        rank, _ = get_dist_info()
+        cfg_str = checkpoint['meta']['config']
+        config_file = Path(cfg_str.splitlines()[0])
+        assert config_file.suffix == '.py'
+        epoch = checkpoint['meta']['epoch']
+        time = parse(checkpoint['meta']['time'])
+        print('#' * 30)
+        print(f"=> Loaded checkpoint {checkpoint_file.name} ({epoch} epochs, created: {str(time)})")
+        chkp_folder = out_folder / f"{config_file.stem}_epoch_{epoch}"
+        chkp_folder.mkdir(parents=True, exist_ok=True)
+        # Write checkpoint config to file
+        with open(chkp_folder / config_file.name, 'w') as fp:
+            fp.write(f"# {cfg_str}")
+        print(f"==> Extracted original configuration to {config_file.name}")
+        new_chkpnt = chkp_folder / checkpoint_file.name
+        if new_chkpnt.is_symlink():
+            new_chkpnt.unlink()
+        new_chkpnt.symlink_to(os.path.relpath(checkpoint_file, new_chkpnt.parent))
+        for j, data_loader in enumerate(data_loaders):
+            ann_file = Path(data_loader.dataset.ann_file)
+            print(f"==> Selecting dataset: {ann_file.stem}")
+            index.append(f"{config_file.stem}_epoch_{epoch} - {ann_file.stem}")
+            result_folder = chkp_folder / ann_file.stem
+            result_folder.mkdir(exist_ok=True)
 
-        out_fp = Path(args.out)
-        fp_out = out_fp.parent / (out_fp.stem + "_" + checkpoint_file.stem + ".pkl")
-
-        print('\nwriting results to {}'.format(fp_out))
-
-        mmcv.dump(outputs_m[i], fp_out)
-        eval_types = args.eval
-        data_name = args.data
-        if data_name == 'coco':
-            if eval_types:
-                print('Starting evaluate {}'.format(' and '.join(eval_types)))
-                if eval_types == ['proposal_fast']:
-                    result_file = args.out
-                    coco_eval(result_file, eval_types, dataset.coco)
-                else:
-                    if not isinstance(outputs_m[i][0], dict):
-                        result_files = results2json(dataset, outputs_m[i], args.out)
-                        coco_eval(result_files, eval_types, dataset.coco)
-                    else:
-                        for name in outputs_m[i][0]:
-                            print('\nEvaluating {}'.format(name))
-                            outputs_m[i] = [out[name] for out in outputs_m[i]]
-                            result_file = args.out + '.{}'.format(name)
-                            result_files = results2json(dataset, outputs_m[i],
-                                                        result_file)
-                            coco_eval(result_files, eval_types, dataset.coco)
-
-        elif data_name in ['dota', 'hrsc2016']:
-            eval_kwargs = cfg.get('evaluation', {}).copy()
-            work_dir = osp.dirname(args.out)
-            dataset.evaluate(outputs_m[i], work_dir=work_dir, **eval_kwargs)
-        elif data_name in ['dsv2']:
-            from mmdet.core import outputs_rotated_box_to_poly_np
-
-            for page in outputs_m[i]:
-                page.insert(0, np.array([]))
-
-            outputs_m[i] = outputs_rotated_box_to_poly_np(outputs_m[i])  # Extremely slow...
-            model_name = checkpoint_file.stem
-
-            work_dir = out_fp.parent / ('result_' + model_name)
-
-            work_dir.mkdir(parents=True, exist_ok=True)
-
-            dataset.evaluate(outputs_m[i], result_json_filename=str(work_dir / "deepscores_results.json"),
-                             work_dir=str(work_dir))
-
-        # Save predictions in the COCO json format
-        if args.json_out and rank == 0:
-            if not isinstance(outputs_m[i][0], dict):
-                results2json(dataset, outputs_m[i], args.json_out)
+            # old versions did not save class info in checkpoints, this walkaround is
+            # for backward compatibility
+            if 'CLASSES' in checkpoint['meta']:
+                model.CLASSES = checkpoint['meta']['CLASSES']
             else:
-                for name in outputs_m[i][0]:
-                    outputs_ = [out[name] for out in outputs_m[i]]
-                    result_file = args.json_out + '.{}'.format(name)
-                    results2json(dataset, outputs_, result_file)
+                model.CLASSES = data_loader.dataset.CLASSES
+
+            pkl_fp = result_folder / proposals_fp
+            if not pkl_fp.exists() or not args.cache:
+                print(f"===> Testing model on {ann_file.stem}")
+                if not distributed:
+                    model = MMDataParallel(model, device_ids=[0])
+                    outputs_m[i].append(single_gpu_test(model, data_loader, args.show, cfg))
+                else:
+                    model = MMDistributedDataParallel(model.cuda())
+                    outputs_m[i].append(multi_gpu_test(model, data_loader, args.tmpdir))
+                print()  # The tests use ncurses and don't append a new line at the end
+
+                print(f'===> Writing proposals to {str(pkl_fp)}')
+                mmcv.dump(outputs_m[i][j], pkl_fp)
+            else:
+                print(f'===> Reading proposals from {str(pkl_fp)}')
+                outputs_m[i].append(mmcv.load(pkl_fp))
+            eval_types = args.eval
+            data_name = args.data
+            eval_data = {}
+            if data_name == 'coco':
+                if eval_types:
+                    print('Starting evaluate {}'.format(' and '.join(eval_types)))
+                    if eval_types == ['proposal_fast']:
+                        result_file = args.out
+                        coco_eval(result_file, eval_types, data_loader.dataset.coco)
+                    else:
+                        if not isinstance(outputs_m[i][j][0], dict):
+                            result_files = results2json(data_loader.dataset, outputs_m[i][j], args.out)
+                            coco_eval(result_files, eval_types, data_loader.dataset.coco)
+                        else:
+                            for name in outputs_m[i][j][0]:
+                                print('\nEvaluating {}'.format(name))
+                                outputs_m[i][j] = [out[name] for out in outputs_m[i][j]]
+                                result_file = args.out + '.{}'.format(name)
+                                result_files = results2json(data_loader.dataset, outputs_m[i][j],
+                                                            result_file)
+                                coco_eval(result_files, eval_types, data_loader.dataset.coco)
+            elif data_name in ['dota', 'hrsc2016']:
+                eval_kwargs = cfg.get('evaluation', {}).copy()
+                work_dir = osp.dirname(args.out)
+                data_loader.dataset.evaluate(outputs_m[i][j], work_dir=work_dir, **eval_kwargs)
+            elif data_name in ['dsv2']:
+                from mmdet.core import outputs_rotated_box_to_poly_np
+
+                for page in outputs_m[i][j]:
+                    page.insert(0, np.array([]))
+
+                outputs_m[i][j] = outputs_rotated_box_to_poly_np(outputs_m[i][j])
+
+                eval_fp = result_folder / "dsv2_metrics.pkl"
+                if not eval_fp.exists() or not args.cache:
+                    data_loader.dataset.evaluate(
+                        outputs_m[i][j],
+                        result_json_filename=str(result_folder / "result.json"),
+                        work_dir=str(eval_fp.parent)
+                    )  # Extremely slow...
+                eval_data = mmcv.load(eval_fp)
+
+            overlap = 0.5
+            for cls in data_loader.dataset.CLASSES:
+                stats[cls].append(eval_data.get(cls, {}).get(overlap, {}).get('ap', np.NaN))
+
+            # Save predictions in the COCO json format
+            rank, _ = get_dist_info()
+            if args.json_out and rank == 0:
+                result_file = result_folder / args.json_out
+                if not result_file.with_suffix('.bbox.json').exists() or not args.cache:
+                    print(f"===> Saving predictions to {str(result_file.with_suffix('.*'))}")
+                    if not isinstance(outputs_m[i][j][0], dict):
+                        results2json(data_loader.dataset, outputs_m[i][j], result_file.with_suffix(''))
+                    else:
+                        for name in outputs_m[i][j][0]:
+                            outputs_ = [out[name] for out in outputs_m[i][j]]
+                            results2json(data_loader.dataset, outputs_, result_file.with_suffix(f'.{name}{result_file.suffix}'))
+    eval_fp = out_folder / 'eval.csv'
+    print(f"=> Saving stats to {eval_fp}")
+    stat_df = DataFrame(stats, index=index)
+    stat_df.to_csv(eval_fp)
 
 
 if __name__ == '__main__':

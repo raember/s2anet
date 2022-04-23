@@ -1,15 +1,24 @@
 import json
 from argparse import ArgumentParser
+from collections import defaultdict
 
 from PIL import Image, ImageDraw
 from PIL import ImageFont
+from typing import Tuple, List, Dict, Optional
+
+from matplotlib.axes import Axes
+from matplotlib.axis import Axis
+from matplotlib.figure import Figure
+from pandas import DataFrame, Series
 
 from mmdet.datasets import DeepScoresV2Dataset
 import numpy as np
 import os.path as osp
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, axes
 
+from mmdet.datasets.deepscoresv2 import threshold_classes, get_thresholds
 from mmdet.datasets.pipelines.transforms import OBBox
+from obb_anns import OBBAnns
 
 parser = ArgumentParser(description='Deepscores statistics')
 parser.add_argument('-c', '--compile', dest='compile', action='store_true', default=False,
@@ -20,158 +29,95 @@ parser.add_argument('-f', '--flag-outliers', dest='flag_outliers', action='store
                     help='Flags outliers using past statistics')
 parser.add_argument('-g', '--geogebra', dest='to_geogebra', action='store', default=None,
                     help='Converts json annotation to geogebra inputs')
+parser.add_argument('-a', '--fix-annotations', dest='fix_annotations', action='store_true', default=False,
+                    help='Fixes the annotations which have an area of 0')
 args = parser.parse_args()
 
-deviation = {
-    2: 10.0,  # ledgerLine
-    25: 5.1,  # noteheadBlackOnLine
-    27: 6.0,  # noteheadBlackInSpace
-    31: 10.0,  # noteheadHalfInSpace
-    33: 3.0,  # noteheadWholeOnLine
-    42: 20.0,  # stem
-    64: 3.0,  # accidentialSharp
-    70: 3.0,  # keySharp
-    88: 2.0,  # rest8th
-    90: 2.0,  # rest32nd
-    113: 10.0,  # tuplet3
-    122: 20.0,  # beam
-    135: 5.0,  # staff
-}
-ignore = {
-    1,  # brace
-    3,  # repeatDot
-    4,  # segno
-    5,  # coda
-    6,  # clefG
-    7,  # clefCAlto
-    8,  # clefCTenor
-    9,  # clefF
-    11,  # clef8
-    13,  # timeSig0
-    14,  # timeSig1
-    15,  # timeSig2
-    16,  # timeSig3
-    17,  # timeSig4
-    18,  # timeSig18
-    19,  # timeSig6
-    20,  # timeSig7
-    21,  # timeSig8
-    22,  # timeSig9
-    23,  # timeSigCommon
-    24,  # timeSigCutCommon
-    29,  # noteheadHalfOnLine
-    35,  # noteheadWholeInSpace
-    37,  # noteheadDoubleWholeOnLine
-    39,  # noteheadDoubleWholeInSpace
-    41,  # augmentationDot
-    43,  # tremolo1
-    44,  # tremolo2
-    45,  # tremolo3
-    46,  # tremolo4
-    48,  # flag8thUp
-    50,  # flag16thUp
-    51,  # flag32ndUp
-    52,  # flag64thUp
-    53,  # flag128thUp
-    54,  # flag8thDown
-    56,  # flag16thDown
-    57,  # flag32ndDown
-    58,  # flag64thDown
-    59,  # flag128thDown
-    60,  # accidentialFlat
-    62,  # accidentialNatural
-    66,  # accidentialDoubleSharp
-    67,  # accidentialDoubleFlat
-    68,  # keyFlat
-    69,  # keyNatural
-    71,  # articAccentAbove
-    72,  # articAccentBelow
-    73,  # articStaccatoAbove
-    74,  # articStaccatoBelow
-    75,  # articTenutoAbove
-    76,  # articTenutoBelow
-    77,  # articStaccatissimoAbove
-    78,  # articStaccatissimoBelow
-    79,  # articMarcatoAbove
-    80,  # articMarcatoBelow
-    81,  # fermataAbove
-    82,  # fermataBelow
-    83,  # caesura
-    84,  # restDoubleWhole
-    86,  # restHalf
-    87,  # restQuarter
-    89,  # rest16th
-    91,  # rest64th
-    92,  # rest124th
-    94,  # dynamicP
-    95,  # dynamicM
-    96,  # dynamicF
-    97,  # dynamicS
-    98,  # dynamicZ
-    99,  # dynamicR
-    104,  # ornamentTrill
-    105,  # ornamentTurn
-    106,  # ornamentTurnInverted
-    107,  # ornamentMordent
-    108,  # stringsDownBow
-    109,  # stringsDownBow
-    110,  # arpeggiato
-    111,  # keaboardPedalPed
-    112,  # keyboardPedalUp
-    114,  # tuplet6
-    115,  # fingering0
-    116,  # fingering1
-    117,  # fingering2
-    118,  # fingering3
-    119,  # fingering4
-    120,  # fingering5
-    121,  # slur
-    123,  # tie
-    125,  # dynamicCrescendoHairpin
-    126,  # dynamicDiminuendoHairpin
-    129,  # tuplet4
-    134,  # tupletBracket
-    136,  # ottavaBracket
-}
-default = 1.0
-def flag_area(stats: dict, area: float) -> bool:
-    if stats['id'] in ignore:
+cat_selection = {}
+if len(cat_selection) == 0:
+    cat_selection = set(map(str, range(1, 137)))
+crit_selection = {}
+if len(crit_selection) == 0:
+    crit_selection = {*threshold_classes}
+
+
+def is_attribute_an_outlier(cat_thresholds: Dict[str, Tuple[float, float]], cls: str, value: float) -> bool:
+    if len(crit_selection) != 0 and cls not in crit_selection:
         return False
-    mean = stats['mean']
-    median = stats['median']
-    std = stats['std']
-    return abs(area - median) > deviation.get(int(stats['id']), default) * std  # or area == 0.0
+    low_thr, high_thr = cat_thresholds.get(cls, (None, None))
+    if low_thr is None or high_thr is None:
+        return False
+    if low_thr > high_thr:  # Inverted threshold
+        return high_thr < value < low_thr
+    return not (low_thr <= value <= high_thr)
 
-def flag_outlier(bbox: np.ndarray, cat_id: int, stats: dict) -> bool:
-    if isinstance(bbox, list):
-        bbox = np.array(bbox)
-    return flag_area(stats[str(cat_id)], OBBox.get_area(bbox.reshape((4, 2))))
+def flag_outlier(obbox: np.ndarray, cat_id: int, stats: dict) -> Dict[str, float]:
+    if isinstance(obbox, list):
+        obbox = np.array(obbox)
+    obbox = np.array(obbox).reshape((4, 2))
+    cat_stats = stats[str(cat_id)]
+    cat_thrs = get_thresholds(cat_stats)
+    # check all attributes
+    reasons = {}
+    area = OBBox.get_area(obbox)
+    if is_attribute_an_outlier(cat_thrs, 'area', area):
+        reasons['area'] = area
+    angle = (OBBox.get_angle(obbox)) % 90
+    if is_attribute_an_outlier(cat_thrs, 'angle', angle):
+        reasons['angle'] = angle
+    l1 = np.linalg.norm(obbox[0] - obbox[1])
+    l2 = np.linalg.norm(obbox[1] - obbox[2])
+    l1, l2 = min(l1, l2), max(l1, l2)
+    if is_attribute_an_outlier(cat_thrs, 'l1', l1):
+        reasons['l1'] = l1
+    if is_attribute_an_outlier(cat_thrs, 'l2', l2):
+        reasons['l2'] = l2
+    if is_attribute_an_outlier(cat_thrs, 'edge-ratio', l2 / l1):
+        reasons['edge-ratio'] = l2 / l1
+    return reasons
 
-def plot(cat_id: int, stats: dict):
-    areas = stats['sorted_areas']
-    n = len(areas)
-    n_outliers = sum(map(lambda area: flag_area(stats, area), areas))
-    plt.title(f"{{{cat_id}}} {stats['name']}: {n_outliers} outliers (std factor: {deviation.get(int(cat_id), default)})")
-    plt.xlabel('Index of sorted Areas')
-    plt.ylabel('Areas, sorted')
-    # plt.yscale('log')
-    # plt.ylim(ymin=0, ymax=max(areas))
-    plt.ylim(ymin=min(areas), ymax=max(areas))
-    plt.grid(True)
-    plt.plot(range(n)[::-1], areas)
-    median = stats['median']
-    mean = stats['mean']
-    std = stats['std']
-    std_factor = deviation.get(int(cat_id), default)
-    indiv_std = std_factor * std
-    plt.plot([0, n], [median, median], color='#20dd50')
-    plt.plot([0, n], [mean, mean], color='#55ffaa')
-    plt.plot([0, n], [median + std, median + std], color='#ff9050')
-    plt.plot([0, n], [median - std, median - std], color='#ff9050')
-    plt.plot([0, n], [median + indiv_std, median + indiv_std], color='#dd4020')
-    plt.plot([0, n], [median - indiv_std, median - indiv_std], color='#dd4020')
-    plt.show()
+def plot_attribute(ax: Axes, cat_stats: dict, cat_thrs: dict, thr_cls: str):
+    cls_stats = cat_stats[thr_cls]
+    values = sorted(cls_stats['values'], reverse=True)
+    n = len(values)
+    n_outliers = sum(map(lambda value: is_attribute_an_outlier(cat_thrs, thr_cls, value), values))
+    median = cls_stats['median']
+    mean = cls_stats['mean']
+    std = cls_stats['std']
+    minimum = round(cls_stats['min'], 2)
+    maximum = round(cls_stats['max'], 2)
+    low_thr, high_thr = cat_thrs[thr_cls]
+    low_thr = round(low_thr, 2) if low_thr is not None else None
+    high_thr = round(high_thr, 2) if high_thr is not None else None
+    if low_thr is not None and high_thr is not None:
+        if low_thr > high_thr:
+            bounds = f"\n]{high_thr}, {low_thr}["
+        else:
+            bounds = f"\n[{low_thr}, {high_thr}]"
+    else:
+        bounds = ''
+    ax.set_title(f"{thr_cls}: {n_outliers} outliers [{minimum}, {maximum}]{bounds}")
+    ax.set_xlabel(f'Index of sorted {thr_cls}')
+    ax.set_ylabel(f'{thr_cls}, sorted')
+    ax.set_ylim(ymin=min(values), ymax=max(values))
+    ax.grid(True)
+    ax.plot(range(n)[::-1], values)
+    ax.plot([0, n], [median, median], color='#20dd50')
+    ax.plot([0, n], [mean, mean], color='#55ffaa')
+    ax.plot([0, n], [median + std, median + std], color='#ff9050')  # Upper std
+    ax.plot([0, n], [median - std, median - std], color='#ff9050')  # Lower std
+    ax.plot([0, n], [high_thr, high_thr], color='#dd4020')  # Upper bound
+    ax.plot([0, n], [low_thr, low_thr], color='#dd4020')  # Lower bound
 
+def plot(cat_id: int, cat_stats: dict):
+    fig: Figure
+    axs: List[Axes]
+    fig, axs = plt.subplots(2, 3, figsize=(16, 12))
+    cat_thrs = get_thresholds(cat_stats)
+    for ax, thr_cls in zip(axs.reshape((6,)), threshold_classes):
+        plot_attribute(ax, cat_stats, cat_thrs, thr_cls)
+    fig.suptitle(f"[{cat_id}] {cat_stats['name']}: {len(cat_stats[threshold_classes[0]]['values'])}")
+    fig.show()
 
 STAT_FILE = 'stats.json'
 if args.plot_stats:
@@ -180,16 +126,13 @@ if args.plot_stats:
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     for cat_id, sts in sorted(stats.items(), key=lambda kvp: int(kvp[0])):
-        if cat_id in {'25'}:
+        if len(cat_selection) > 0 and cat_id in cat_selection:
             plot(cat_id, sts)
 
 if args.to_geogebra:
     print("Converting to geogebra")
     print("\033[1m")
-    # data = json.loads(input("JSON: "))
     data = json.loads(args.to_geogebra)
-    # data = {"a_bbox":[1218,1047,1261,1125],"o_bbox":[1261,1125,1235.844482421875,1045.1585693359375,1215.930908203125,1051.4327392578125,1241.08642578125,1131.274169921875],"cat_id":["25","157"],"area":284,"img_id":"1550","comments":"instance:#00020d;duration:8*2/3;rel_position:0;"}
-    # a_bbox = OBBox.expand_corners(np.array(data['a_bbox'])).reshape((4, 2))
     a_bbox = np.array(data['a_bbox']).reshape((2, 2))
     o_bbox = np.array(data['o_bbox']).reshape((4, 2))
     i = 65
@@ -197,7 +140,7 @@ if args.to_geogebra:
     for p in a_bbox:
         char = chr(i)
         # print(f'ggbApplet.deleteObject("{char}")')
-        print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
+        print(f'\033[31mggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")\033[39m')
         chars.append(char)
         i += 2
     print('ggbApplet.evalCommand("a : Line(A, xAxis)")')
@@ -211,13 +154,13 @@ if args.to_geogebra:
     for p in o_bbox:
         char = chr(i)
         # print(f'ggbApplet.deleteObject("{char}")')
-        print(f'ggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")')
+        print(f'\033[31mggbApplet.evalCommand("{char}=({p[0]}, {-p[1]})")\033[39m')
         chars.append(char)
         i += 1
     print(f'ggbApplet.evalCommand("obbox = Polygon({", ".join(chars)})")')
     print("\033[m")
 
-if not args.flag_outliers and not args.compile:
+if not args.flag_outliers and not args.compile and not args.fix_annotations:
     exit(0)
 
 pipeline = [
@@ -232,39 +175,54 @@ pipeline = [
     {'type': 'Collect', 'keys': ['img', 'gt_bboxes', 'gt_labels']}
 ]
 dataset_train = DeepScoresV2Dataset(
-    ann_file='data/deep_scores_dense/deepscores_train.json',
+    ann_file='deepscores_train.json',
     img_prefix='data/deep_scores_dense/images/',
     pipeline=pipeline,
     use_oriented_bboxes=True,
 )
 dataset_test = DeepScoresV2Dataset(
-    ann_file='data/deep_scores_dense/deepscores_test.json',
+    ann_file='deepscores_test.json',
     img_prefix='data/deep_scores_dense/images/',
     pipeline=pipeline,
     use_oriented_bboxes=True,
 )
 cat_info = dataset_train.obb.cat_info
 
-def extract_areas(dataset: DeepScoresV2Dataset, areas_by_cat: dict):
+def gather_stats(dataset: DeepScoresV2Dataset, stats: dict):
     for cat_id, o_bbox in zip(dataset.obb.ann_info['cat_id'], dataset.obb.ann_info['o_bbox']):
-        cat = int(cat_id[0])
-        bbox = np.array(o_bbox).reshape((4, 2))
-        area = OBBox.get_area(bbox)
-        areas_by_cat[cat] = np.append(areas_by_cat.get(cat, np.array([])), area)
+        cat = str(cat_id[0])
+        obbox = np.array(o_bbox).reshape((4, 2))
+        attributes = stats.get(cat, defaultdict(lambda: []))
+        attributes['area'].append(OBBox.get_area(obbox))
+        attributes['angle'].append((OBBox.get_angle(obbox)) % 90)
+        l1 = np.linalg.norm(obbox[0] - obbox[1])
+        l2 = np.linalg.norm(obbox[1] - obbox[2])
+        l1, l2 = min(l1, l2), max(l1, l2)
+        attributes['l1'].append(l1)
+        attributes['l2'].append(l2)
+        attributes['edge-ratio'].append(l2 / l1)
+        stats[cat] = attributes
 
-def extract_stats(cat_to_area: dict, cat_info: dict, stats: dict):
-    for cat, area_lst in cat_to_area.items():
-        # cat = int(cat_id[0])
-        stats[int(cat)] = {
+def compile_stats(stats: dict, cat_info: dict):
+    def to_dict(values: List[float]) -> dict:
+        return {
+            'min': min(values),
+            'max': max(values),
+            'mean': np.mean(values),
+            'median': np.median(values),
+            'std': np.std(values),
+            'length': len(values),
+            'values': values
+        }
+    for cat, data in stats.items():
+        stats[cat] = {
             'id': int(cat),
-            'name': cat_info[cat]['name'],
-            'min': min(area_lst),
-            'max': max(area_lst),
-            'mean': np.mean(area_lst),
-            'median': np.median(area_lst),
-            'std': np.std(area_lst),
-            'length': area_lst.size,
-            'sorted_areas': sorted(area_lst, reverse=True)
+            'name': cat_info[int(cat)]['name'],
+            'area': to_dict(data['area']),
+            'angle': to_dict(data['angle']),
+            'l1': to_dict(data['l1']),
+            'l2': to_dict(data['l2']),
+            'edge-ratio': to_dict(data['edge-ratio']),
         }
 
 def filter_bboxes(dataset: DeepScoresV2Dataset, stats: dict) -> dict:
@@ -278,32 +236,42 @@ def filter_bboxes(dataset: DeepScoresV2Dataset, stats: dict) -> dict:
             dataset.obb.ann_info.index,
     ):
         cat = int(cat_id[0])
-        if flag_outlier(o_bbox, cat, stats):
-            # print(f"Found outlier '{cat_info[cat]['name']}'({cat})")
-            if img_id not in imgs.keys():
-                img_info, _ = dataset.obb.get_img_ann_pair(idxs=None, ids=[int(img_id)])
-                filename = img_info[0]['filename']
-                imgs[img_id] = (osp.join(img_dir, filename), [])
-            imgs[img_id][1].append((cat, a_bbox, o_bbox, idx))
+        if len(cat_selection) > 0 and str(cat) in cat_selection:
+            flags = flag_outlier(o_bbox, cat, stats)
+            if len(flags) > 0:
+                if img_id not in imgs.keys():
+                    img_info, _ = dataset.obb.get_img_ann_pair(idxs=None, ids=[int(img_id)])
+                    filename = img_info[0]['filename']
+                    imgs[img_id] = (osp.join(img_dir, filename), [])
+                imgs[img_id][1].append((cat, a_bbox, o_bbox, idx, flags))
     return imgs
 
 def draw_outliers(imgs: dict, cat_info: dict) -> dict:
     outlier_stats = {}
     for img_id, (img_fp, bboxes) in sorted(imgs.items(), reverse=True, key=lambda kvp: len(kvp[1])):
         img = Image.open(img_fp)
-        draw = ImageDraw.Draw(img)
+        draw = ImageDraw.Draw(img, 'RGBA')
         cats = set(map(lambda tpl: tpl[0], bboxes))
         print(f"Visualized {len(bboxes)} outliers in {osp.basename(img_fp)} from the categories: {cats}")
-        for cat, a_bbox, bbox, idx in bboxes:
-            draw.rectangle(a_bbox, outline='#223CF0', width=3)
-            draw.line(bbox + bbox[:2], fill='#F03C22', width=3)
-            text = f"[{idx}] {cat_info[cat]['name']}({cat}): {OBBox.get_area(np.array(bbox).reshape((4, 2)))}"
-            print(f"  * {text}")
-            position = np.array(bbox).reshape((4, 2)).max(axis=0)
-            x1, y1 = ImageFont.load_default().getsize(text)
-            x1 += position[0] + 4
-            y1 += position[1] + 4
-            draw.rectangle((position[0], position[1], x1, y1), fill='#DCDCDC')
+        for cat, a_bbox, bbox, idx, flags in bboxes:
+            draw.rectangle(a_bbox, outline='#223CF088', width=3)
+            draw.line(bbox + bbox[:2], fill='#F03C2288', width=3)
+            flag_str = '\n'.join(map(lambda kv: f"{kv[0]}: {round(kv[1], 2)}", list(flags.items())))
+            text = f"[{idx}] {cat_info[cat]['name']}({cat}):\n{flag_str}"
+            print(f"  * {text.replace(chr(10), ' ')}")
+            # Get text position
+            bbox_np = np.array(bbox).reshape((4, 2))
+            position = int(bbox_np.max(axis=0)[0]), int(bbox_np.min(axis=0)[1])
+            # Get text dimensions for gray bg box
+            x, y = 0.0, 0.0
+            for line in text.splitlines():
+                x1, y1 = ImageFont.load_default().getsize(line)
+                x = max(x, x1)
+                y += y1 + 3  # 3: interline spacing
+            x += position[0] + 4
+            y += position[1] + 4
+            # Draw gray bg for text
+            draw.rectangle((position[0], position[1], x, y), fill='#DCDCDC88')
             draw.text((position[0] + 2, position[1] + 2), text, '#F03C22')
             outlier_stats[cat] = outlier_stats.get(cat, 0) + 1
         img.save(osp.join('out_debug', osp.basename(img_fp)))
@@ -311,21 +279,20 @@ def draw_outliers(imgs: dict, cat_info: dict) -> dict:
 
 
 if args.compile:
-    stats = {}
+    stats = defaultdict(lambda: {})
     print("Gathering the stats")
-    cat_to_areas = {}
-    extract_areas(dataset_train, cat_to_areas)
-    extract_areas(dataset_test, cat_to_areas)
+    gather_stats(dataset_train, stats)
+    gather_stats(dataset_test, stats)
     print("Calculating the stats")
-    extract_stats(cat_to_areas, cat_info, stats)
+    compile_stats(stats, dataset_test.obb.cat_info)
     print("Saving the stats")
     with open(STAT_FILE, 'w') as fp:
         json.dump(stats, fp, indent=4)
     print("Done")
 
 if args.flag_outliers:
-    print("Loading stats")
     if 'stats' not in globals():
+        print("Loading stats")
         with open(STAT_FILE, 'r') as fp:
             stats = json.load(fp)
     imgs = {}
@@ -336,9 +303,86 @@ if args.flag_outliers:
     outlier_stats_train = draw_outliers(imgs_train, cat_info)
     print(f"{'#'*10} TEST DATASET {'#'*10}")
     outlier_stats_test = draw_outliers(imgs_test, cat_info)
+    print()
     print("[Train stats]")
+    total = 0
     for cat, number in sorted(outlier_stats_train.items(), reverse=True, key=lambda kvp: kvp[1]):
         print(f"{cat_info[cat]['name']} ({cat}): {number}")
+        total += number
+    print(f"Total possible outliers detected: {total}")
+    print()
     print("[Test stats]")
+    total = 0
     for cat, number in sorted(outlier_stats_test.items(), reverse=True, key=lambda kvp: kvp[1]):
         print(f"{cat_info[cat]['name']} ({cat}): {number}")
+        total += number
+    print(f"Total possible outliers detected: {total}")
+
+def fix_annotations(anns: OBBAnns):
+    def fix_ann(bbox: list) -> list:
+        bbox = list(map(int, bbox))
+        bbox = np.array([bbox[0::2], bbox[1::2]]).T
+        if OBBox.get_area(bbox) < 1.0:
+            if np.all(bbox[:,0] == np.full((4,), bbox[0,0])):  # all X's are the same
+                bbox[1:3,0] = bbox[1:3,0] + np.ones((2,))
+            if np.all(bbox[:,1] == np.full((4,), bbox[0,1])):  # all Ys are the same
+                bbox[2:,1] = bbox[2:,1] + np.ones((2,))
+            if np.all(bbox[0::2,:] == bbox[1::2,:]):  # weird constellation
+                bbox[1, 1] = bbox[2, 1]
+                bbox[3, 1] = bbox[0, 1]
+            print(".", end='')
+        return list(map(int, bbox.reshape((8,))))
+    def map_row(x: Series) -> Series:
+        abbox, obbox, cls_id = x['a_bbox'], x['o_bbox'], x['cat_id']
+        # make abbox into a 8-tuple like obbox
+        abbox = [abbox[2], abbox[3], abbox[2], abbox[1], abbox[0], abbox[1], abbox[0], abbox[3]]
+        abbox = fix_ann(abbox)
+        x['a_bbox'] = [abbox[4], abbox[5], abbox[0], abbox[1]]
+        if '81' in cls_id or '82' in cls_id:  # Align obbox to abbox for fermata
+            obbox = abbox
+        else:
+            obbox = fix_ann(obbox)
+        x['o_bbox'] = obbox
+        x['area'] = int(OBBox.get_area(np.array([obbox[0::2], obbox[1::2]]).T))
+        return x
+    stem_min_l2 = get_thresholds(stats['42'])['l2'][0]
+    def flag_row(x: Series) -> bool:
+        abbox, cls_id = x['a_bbox'], x['cat_id']
+        if '42' in cls_id:  # delete stems that are too short (likely because of overlapping stems)
+            l2 = max(abs(abbox[0] - abbox[2]), abs(abbox[1] - abbox[3]))
+            return l2 < stem_min_l2
+        return False
+    # Fix bboxes
+    anns.ann_info = anns.ann_info.apply(map_row, axis=1)
+    # Delete bboxes
+    to_delete = anns.ann_info.apply(flag_row, axis=1)
+    to_delete |= anns.ann_info.index.isin([
+        # vanished clef 8
+        670134, 670132, 670186, 670147, 670142,
+        # faulty slur
+        346823,
+    ])
+    to_del_anns = anns.ann_info[to_delete]
+    anns.ann_info.drop(to_del_anns.index, inplace=True, errors='ignore')
+    ann_ids = set(map(str, to_del_anns.index))
+    if len(ann_ids) > 0:
+        for im in anns.img_info:
+            for ann_id in ann_ids.intersection(im['ann_ids']):
+                im['ann_ids'].remove(ann_id)
+    else:
+        print('No annotations to delete')
+    print()
+
+if args.fix_annotations:
+    if 'stats' not in globals():
+        with open(STAT_FILE, 'r') as fp:
+            stats = json.load(fp)
+    print('[TRAIN] Fixing annotations')
+    fix_annotations(dataset_train.obb)
+    print('[TRAIN] Saving dataset to deepscores_train.fixed.json')
+    dataset_train.obb.save_annotations('deepscores_train.fixed.json')
+    print('[TEST] Fixing annotations')
+    fix_annotations(dataset_test.obb)
+    print('[TEST] Saving dataset to deepscores_test.fixed.json')
+    dataset_test.obb.save_annotations('deepscores_test.fixed.json')
+    print('Done')
