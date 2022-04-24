@@ -212,7 +212,7 @@ class DeepScoresV2Dataset(CocoDataset):
             
             if self.data_root is None:
                 from pathlib import Path
-                self.data_root = Path('/'.join(self.ann_file.split('/')[0:2]) + '/')
+                self.data_root = Path('/'.join(self.ann_file.split('/')[0:-1]) + '/')
 
             out_dir = os.path.join(work_dir, "visualized_proposals/")
             if not os.path.exists(out_dir):
