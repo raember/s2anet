@@ -211,18 +211,17 @@ def main():
     if args.json_out:
         json_out_fp = Path(args.json_out)
 
-    # build the model and load checkpoint
-    model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
-
     index = []
     stats = {key: [] for key in data_loaders[0].dataset.CLASSES}
 
     outputs_m = []
     for i, checkpoint_file in enumerate(map(Path, args.checkpoints)):
         outputs_m.append([])
+        # build the model and load checkpoint
+        model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+        fp16_cfg = cfg.get('fp16', None)
+        if fp16_cfg is not None:
+            wrap_fp16_model(model)
         checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
         cfg_str = checkpoint['meta']['config']
         config_file = Path(cfg_str.splitlines()[0])
