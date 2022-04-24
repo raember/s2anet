@@ -165,7 +165,7 @@ def include_WBF_metrics(metrics_df, fp):
 
 def main():
     args = parse_args()
-    input_folder = sorted([Path(args.inp) / x for x in os.listdir(args.inp) if "result_" in x])
+    input_folder = sorted(list([x.parent for x in Path(args.inp).rglob("dsv2_metrics.pkl") if "wbf" not in str(x)]))
     metrics_df = get_np_arrays(input_folder)
 
     if args.wbf is not None:

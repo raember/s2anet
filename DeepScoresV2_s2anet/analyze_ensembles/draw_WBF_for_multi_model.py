@@ -284,11 +284,6 @@ def visualize_ensemble(obb,
         img.save(osp.join(out_dir, 'props_' + img_info['filename']))
 
 
-def get_model_names(args):
-    return sorted(
-        [x.split('_', 1)[-1] for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x])
-
-
 class BboxHelper:
 
     def __init__(self, bbox):
@@ -366,7 +361,7 @@ class BboxHelper:
         return np.array([x1, y1, x2, y1, x2, y2, x1, y2])
 
 
-def load_proposals(args, dataset, models, iou_thr=0.1):
+def load_proposals(args, dataset, iou_thr=0.1):
     # iou_thr = 0.1 is the most important hyper parameter; IOU of proposal with fused box.
 
     boxes_list = []
@@ -374,9 +369,8 @@ def load_proposals(args, dataset, models, iou_thr=0.1):
     labels_list = []
     img_idx_list = []
 
-    for i in models:
-        json_result_fp = osp.join(args.inp, f"result_{i}/deepscores_results.json")
-        dataset.obb.load_proposals(json_result_fp)
+    for prop_fp in sorted(list(Path(str(args.inp)).rglob("result.json"))):
+        dataset.obb.load_proposals(prop_fp)
 
         #### WBF Preprocessing
         props = dataset.obb.proposals
@@ -389,7 +383,7 @@ def load_proposals(args, dataset, models, iou_thr=0.1):
         scores_list.append(list(map(float, props['score'].to_list())))
         labels_list.append(props['cat_id'].to_list())
         img_idx_list.append(props['img_idx'])
-        print(f"Adding proposals from ensemble member {i}.")
+        print(f"Adding proposals from ensemble member {prop_fp}.")
     # Calculate proposals_WBF
     max_img_idx = max([max(i) for i in img_idx_list])
     # TODO: use different threshold for ledger line and stem (e.g. 0.01)
@@ -484,9 +478,7 @@ def visualize_proposals(args, dataset, proposals_WBF, debug=False):
     proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < args.vis_thr].index)
 
     if debug:
-        debug_props = []
-        for i in get_model_names(args):
-            debug_props.append(osp.join(args.inp, f"result_{i}/deepscores_results.json"))
+        debug_props = sorted(list(Path(str(args.inp)).rglob("result.json")))
     else:
         debug_props = None
 
@@ -507,11 +499,7 @@ def main():
     if args.l_cache is None:
         dataset = build_dataset(cfg.data.test)
 
-        # Deduce m (number of BatchEnsemble members)
-        models = get_model_names(args)
-        # models = models[21::3]  # TODO: delme (less models for debugging)
-
-        proposals_WBF = load_proposals(args, dataset, models, iou_thr=args.iou_thr)
+        proposals_WBF = load_proposals(args, dataset, iou_thr=args.iou_thr)
         proposals_WBF = postprocess_proposals(proposals_WBF)
         store_proposals(args, proposals_WBF)
 

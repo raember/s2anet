@@ -137,10 +137,10 @@ def main():
             metric_results, categories, occurences_by_class = _calculate_metrics(obb, get_anns_f, count_class_gt_f,
                                                                                  json_pr)
 
-            f1 = json_gt.split("/")[-2] if "/" in json_gt else json_gt
-            f2 = json_pr.split("/")[-2] if "/" in json_pr else json_pr
+            f1 = json_gt.split("/")[-3] if "/" in json_gt else json_gt
+            f2 = json_pr.split("/")[-3] if "/" in json_pr else json_pr
 
-            out_path = out_fp / f"{f1}_{f2}/"
+            out_path = out_fp / f"{f1}-{f2}/"
             if not out_path.exists():
                 out_path.mkdir()
 
