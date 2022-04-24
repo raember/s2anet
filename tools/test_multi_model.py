@@ -256,6 +256,7 @@ def main():
 
             pkl_fp = result_folder / proposals_fp
             if not pkl_fp.exists() or not args.cache:
+                pkl_fp.parent.mkdir(exist_ok=True)
                 print(f"===> Testing model on {ann_file.stem}")
                 if not distributed:
                     model = MMDataParallel(model, device_ids=[0])
