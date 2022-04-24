@@ -151,9 +151,9 @@ optimizer = dict(type='SGD', lr=0.0075, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 
 # learning policy
-n_warmup_epochs = 200
-n_snapshots = 50
-snapshot_epoch_interval = 10
+n_warmup_epochs = 250
+n_snapshots = 15
+snapshot_epoch_interval = 50
 
 n_steps = -(-1362 // data['imgs_per_gpu']) # -(-numerator // denominator) is a way to round up an integer without importing a module like math
 lr_config = dict(
@@ -167,7 +167,7 @@ lr_config = dict(
     restart_weights=[1] * (n_snapshots + 1),
     min_lr_ratio=1e-5,
 )
-checkpoint_config = dict(interval=1)
+checkpoint_config = dict(interval=10)
 log_config = dict(
     interval=10,
     hooks=[
