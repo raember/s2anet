@@ -1,19 +1,22 @@
 # Code implemented based on obb_anns.py and:
 # https://github.com/ZFTurbo/Weighted-Boxes-Fusion/ensemble_boxes/ensemble_boxes_wbf.py, 4.1.2022
 import argparse
+import math
 import os
 import os.path as osp
 import pickle
 from itertools import compress, chain
+from pathlib import Path
 
 import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import mmcv
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import colors
 
+from DeepScoresV2_s2anet.analyze_ensembles.wbf_rotated_boxes import *
 from mmdet.datasets import build_dataset
-from rotated_ensemble_boxes_wbf import *
 
 
 # Functions _draw_bbox_BE and visualize_BE are based on code from obb_anns/obb_anns.py
@@ -23,6 +26,8 @@ from rotated_ensemble_boxes_wbf import *
 # and:
 # ensemble-boxes module, https://github.com/ZFTurbo/Weighted-Boxes-Fusion, 26.1.2022
 
+
+# TODO: Comparison of different thresholds: See reports -> wbf_thresholds.xlsx
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Weighted Box Fusion')
@@ -36,14 +41,38 @@ def parse_args():
         '--out',
         type=str,
         default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/",
-        help="Pth to the output folder")
+        help="Path to the output folder")
+    parser.add_argument(
+        '--iou_thr',
+        type=float,
+        default=0.3,
+        help="WBF Threshold: Min. IoU to fuse two predictions")
+    parser.add_argument(
+        '--vis_thr',
+        type=float,
+        default=0.1,
+        help="Score Threshold: Only proposals with higher score are kept")
+    parser.add_argument(
+        '--plot_proposals',
+        action='store_true',
+        help='Plot the proposals from all ensembles members (otherwise, only fused boxes)')
+    parser.add_argument(
+        '--s_cache',
+        type=str,
+        default=None,
+        help="Store results in a pickle file (for debugging only)")
+    parser.add_argument(
+        '--l_cache',
+        type=str,
+        default=None,
+        help="Load the results from a pickle file and only visualize them")
     args = parser.parse_args()
     return args
 
 
-def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
-                        print_label=False, print_staff_pos=False, print_onset=False,
-                        instances=False, print_score=True, m=1):
+def _draw_bbox_ensemble(obb, draw, ann, oriented, color=None, annotation_set=None,
+                        print_label=True, print_staff_pos=False, print_onset=False,
+                        instances=False, print_score=True, print_score_threshold=0.5):
     """Draws the bounding box onto an image with a given color.
 
     :param ImageDraw.ImageDraw draw: ImageDraw object to draw with.
@@ -63,7 +92,7 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
     are printed on the visualization
     :param Optional[bool] print_onset:  Determines if the onsets are
     printed on the visualization
-    :param int m: Number of ensemble members
+    :param Optional[float] print_score_threshold: Only print text, score, etc. if score is below this threshold
 
     :return: The drawn object.
     :rtype: ImageDraw.ImageDraw
@@ -75,27 +104,26 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
         cat_id = int(cat_id[annotation_set])
 
     if 'comments' in ann.keys():
-        parsed_comments = self.parse_comments(ann['comments'])
+        parsed_comments = obb.parse_comments(ann['comments'])
 
-    score_thr = 0.5  # fused score thr: below this value, transparent polygons are plotted.
+    ann['score'] = float(ann['score'])
+
     if oriented:
         bbox = ann.get('o_bbox', list(ann.get('bbox', [])))
-        color = cm.RdYlGn(ann['score'])
-        color = colors.rgb2hex(color)
-        if ann['score'] < score_thr:
-            # color2 = colors.to_rgba(color, alpha=round(1/m, 2))
-            # color2 = colors.to_hex(color2, keep_alpha=True)
-            draw.polygon(bbox + bbox[:2], outline=None, fill='#ff000040')
+        if color is None:
+            color = cm.RdYlGn(ann['score'])
+            color = colors.rgb2hex(color)
+        if ann['score'] < print_score_threshold:
+            draw.polygon(bbox + bbox[:2], outline=color, fill='#ff000040')
         else:
             draw.line(bbox + bbox[:2], fill=color, width=3)
     else:
         bbox = ann.get('a_bbox', list(ann.get('bbox', [])))
-        color = cm.RdYlGn(ann['score'])
-        color = colors.rgb2hex(color)
-        if ann['score'] < score_thr:
-            color2 = colors.to_rgba(color, alpha=round(1 / m, 2))
-            color2 = colors.to_hex(color2, keep_alpha=True)
-            draw.rectangle(bbox, outline=None, width=2, fill='#ff000040')
+        if color is None:
+            color = cm.RdYlGn(ann['score'])
+            color = colors.rgb2hex(color)
+        if ann['score'] < print_score_threshold:
+            draw.rectangle(bbox, outline=color, width=2, fill='#ff000040')
         else:
             draw.rectangle(bbox, outline=color, width=2)
 
@@ -112,16 +140,18 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
         draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
 
-    def print_scores(position, text, color_text, score_thr):
+    def print_scores(position, text, color_text, score_thr, color_box):
         if float(text) < score_thr:
             x1, y1 = ImageFont.load_default().getsize(text)
             x1 += position[0] + 4
             y1 += position[1] + 4
+            draw.rectangle((position[0], position[1], x1, y1), fill=color_box)
             draw.text((position[0] + 2, position[1] + 2), text, color_text)
         else:
             x1, y1 = ImageFont.load_default().getsize(text)
             x1 += position[0] + 4
             y1 += position[1] + 4
+            draw.rectangle((position[0], position[1], x1, y1), fill=color_box)
             draw.text((position[0] + 2, position[1] + 2), text, color_text)
         return x1, position[1]
 
@@ -130,23 +160,25 @@ def _draw_bbox_ensemble(self, draw, ann, color, oriented, annotation_set=None,
         print_text_label(pos, label, '#ffffff', '#303030')
 
     else:
-        label = self.cat_info[cat_id]['name']
+        label = obb.cat_info[cat_id]['name']
         score = str(round(ann['score'], 2))
-        if print_label:
-            pos = print_text_label(pos, label, '#ffffff', '#303030')
-        if print_score:
-            pos = print_scores(pos, score, color, score_thr)
-        if print_onset and 'onset' in parsed_comments.keys():
-            pos = print_text_label(pos, parsed_comments['onset'], '#ffffff',
-                                   '#091e94')
-        if print_staff_pos and 'rel_position' in parsed_comments.keys():
-            print_text_label(pos, parsed_comments['rel_position'],
-                             '#ffffff', '#0a7313')
+        if label != "stem" and label != "ledgerLine" and ann['score'] < print_score_threshold or (
+                label == "stem" or label == "ledgerLine") and ann['score'] < 0.4:
+            if print_label:
+                pos = print_text_label(pos, label, '#ffffff', color)
+            if print_score:
+                pos = print_scores(pos, score, '#ffffff', print_score_threshold, color)
+            if print_onset and 'onset' in parsed_comments.keys():
+                pos = print_text_label(pos, parsed_comments['onset'], '#ffffff',
+                                       '#091e94')
+            if print_staff_pos and 'rel_position' in parsed_comments.keys():
+                print_text_label(pos, parsed_comments['rel_position'],
+                                 '#ffffff', '#0a7313')
 
     return draw
 
 
-def visualize_ensemble(self,
+def visualize_ensemble(obb,
                        img_idx=None,
                        img_id=None,
                        data_root=None,
@@ -154,8 +186,9 @@ def visualize_ensemble(self,
                        annotation_set=None,
                        oriented=True,
                        instances=False,
-                       m=1,
-                       show=True):
+                       show=True,
+                       debug_proposals=None,
+                       ):
     """Uses PIL to visualize the ground truth labels of a given image.
 
     img_idx and img_id are mutually exclusive. Only one can be used at a
@@ -178,9 +211,7 @@ def visualize_ensemble(self,
         bounding boxes. A value of True means it will show oriented boxes.
     :param bool show: Whether or not to use pillow's show() method to
         visualize the image.
-    :param bool instances: Choose whether to show classes or instances. If
-        False, then shows classes. Else, shows instances as the labels on
-        bounding boxes.
+    :param list debug_proposals: List of other proposals (show them for debugging)
     """
     # Since we can only visualize a single image at a time, we do i[0] so
     # that we don't have to deal with lists. get_img_ann_pair() returns a
@@ -190,18 +221,18 @@ def visualize_ensemble(self,
 
     if annotation_set is None:
         annotation_set = 0
-        self.chosen_ann_set = self.annotation_sets[0]
+        obb.chosen_ann_set = obb.annotation_sets[0]
     else:
-        annotation_set = self.annotation_sets.index(annotation_set)
-        self.chosen_ann_set = self.chosen_ann_set[annotation_set]
+        annotation_set = obb.annotation_sets.index(annotation_set)
+        obb.chosen_ann_set = obb.chosen_ann_set[annotation_set]
 
     img_info, ann_info = [i[0] for i in
-                          self.get_img_ann_pair(
+                          obb.get_img_ann_pair(
                               idxs=img_idx, ids=img_id)]
 
     # Get the data_root from the ann_file path if it doesn't exist
     if data_root is None:
-        data_root = osp.split(self.ann_file)[0]
+        data_root = osp.split(obb.ann_file)[0]
 
     img_dir = osp.join(data_root, 'images')
     seg_dir = osp.join(data_root, 'segmentation')
@@ -213,98 +244,153 @@ def visualize_ensemble(self,
 
     # Remember: PIL Images are in form (h, w, 3)
     img = Image.open(img_fp)
-
-    # if instances:
-    #     # Do stuff
-    #     inst_fp = osp.join(
-    #         inst_dir,
-    #         osp.splitext(img_info['filename'])[0] + '_inst.png'
-    #     )
-    #     overlay = Image.open(inst_fp)
-    #     img.putalpha(255)
-    #     img = Image.alpha_composite(img, overlay)
-    #     img = img.convert('RGB')
-    #
-    # else:
-    #     seg_fp = osp.join(
-    #         seg_dir,
-    #         osp.splitext(img_info['filename'])[0] + '_seg.png'
-    #     )
-    #     overlay = Image.open(seg_fp)
-    #
-    #     # Here we overlay the segmentation on the original image using the
-    #     # colorcet colors
-    #     # First we need to get the new color values from colorcet
-    #     colors = [ImageColor.getrgb(i) for i in cc.glasbey]
-    #     colors = np.array(colors).reshape(768, ).tolist()
-    #     colors[0:3] = [0, 0, 0]  # Set background to black
-    #
-    #     # Then put the palette
-    #     overlay.putpalette(colors)
-    #     overlay_array = np.array(overlay)
-    #
-    #     # Now the img and the segmentation can be composed together. Black
-    #     # areas in the segmentation (i.e. background) are ignored
-    #
-    #     mask = np.zeros_like(overlay_array)
-    #     mask[np.where(overlay_array == 0)] = 255
-    #     mask = Image.fromarray(mask, mode='L')
-    #
-    #     img = Image.composite(img, overlay.convert('RGB'), mask)
     draw = ImageDraw.Draw(img, 'RGBA')
 
-    # Now draw the gt bounding boxes onto the image
-    # for ann in ann_info.to_dict('records'):
-    #     draw = self._draw_bbox(draw, ann, '#43ff64d9', oriented,  # Get rgba hexcode from: https://rgbacolorpicker.com/rgba-to-hex, 22.12.21
-    #                            annotation_set, instances)
+    if debug_proposals is not None:
+        # draw the debug proposals in gray
+        wbf_proposals = obb.proposals
+
+        for props in debug_proposals:
+            obb.load_proposals(props)
+            if obb.proposals is not None:
+                obb.proposals = postprocess_proposals(obb.proposals)
+
+                prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
+
+                for prop in prop_info.to_dict('records'):
+                    if prop['cat_id'] == 42 or prop['cat_id'] == 2:
+                        prop_oriented = len(prop['bbox']) == 8
+                        draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented, color='#d0d0d0', print_label=False,
+                                                   print_score=False, print_score_threshold=0.)
+
+        obb.proposals = wbf_proposals
 
     # Draw the proposals
-    if self.proposals is not None:
-        prop_info = self.get_img_props(idxs=img_idx, ids=img_id)
+    if obb.proposals is not None:
+        prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
 
         for prop in prop_info.to_dict('records'):
-            prop_oriented = len(prop['bbox']) == 8
-            # Use alpha = 1/m; m = size of ensemble. If all props overlap alpha = 1.
-            draw = _draw_bbox_ensemble(self, draw, prop, '#ff436408', prop_oriented, m)
+            if prop['cat_id'] == 42 or prop['cat_id'] == 2:
+                prop_oriented = len(prop['bbox']) == 8
+                draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented)
 
     if show:
-        img.show()
+        plt.figure(figsize=(25, 36))
+        plt.imshow(img)
+        plt.tight_layout()
+        plt.show()
+        # img.show()
     if out_dir is not None:
         img.save(osp.join(out_dir, 'props_' + img_info['filename']))
 
 
-def main():
-    args = parse_args()
-    cfg = mmcv.Config.fromfile(args.config)
+class BboxHelper:
 
-    dataset = build_dataset(cfg.data.test)
+    def __init__(self, bbox):
+        self.bbox = bbox
+        self.bbox_sorted = self.sort_bboxes()
 
-    # Deduce m (number of BatchEnsemble members)
-    models = sorted([x.split('_', 1)[-1] for x in os.listdir(args.inp) if "result_" in x and not "metrics.csv" in x])
-    m = len(models)
+    def sort_bboxes(self):
 
-    # Load proposals from deepscores_results_i.json
+        def algo(x):
+            """ Sort points in CCW order """
+            return (math.atan2(x[0] - np.mean(x_coords), x[1] - np.mean(y_coords)) + 2 * np.pi) % (2 * np.pi)
+
+        y_coords = [self.bbox[1], self.bbox[3], self.bbox[5], self.bbox[7]]
+        x_coords = [self.bbox[0], self.bbox[2], self.bbox[4], self.bbox[6]]
+
+        # Sort points ccw
+        sorted_points = [(self.bbox[0], self.bbox[1]), (self.bbox[2], self.bbox[3]), (self.bbox[4], self.bbox[5]),
+                         (self.bbox[6], self.bbox[7])]
+        sorted_points.sort(key=algo)
+
+        # define P1 as lower left -> assume, it is closest to coord 0,0
+        dist_to_0 = [np.sqrt(sorted_points[i][0] ** 2 + sorted_points[i][1] ** 2) for i in range(4)]
+        p1_pos = np.argmin(dist_to_0)
+        new_ordering = [0, 3, 2, 1]
+        new_ordering = new_ordering[-p1_pos:] + new_ordering[:-p1_pos]
+
+        result = [sorted_points[i] for i in new_ordering]
+
+        # fig, ax = plt.subplots()
+        # label = ['p1', 'p2', 'p3', 'p4']
+        # x = [result[i][0] for i in range(4)]
+        # y = [result[i][1] for i in range(4)]
+        # plt.scatter(x=x, y=y)
+        # for i, txt in enumerate(label):
+        #     ax.annotate(txt, (x[i], y[i]))
+        # plt.show()
+
+        return np.array(list(chain.from_iterable(result)))
+
+    def get_sorted_angle_zero(self, add_x=0., add_y=0., width=None, height=None):
+        x1, x2 = np.mean([self.bbox_sorted[0], self.bbox_sorted[6]]), np.mean(
+            [self.bbox_sorted[2], self.bbox_sorted[4]])
+        y1, y2 = np.mean([self.bbox_sorted[1], self.bbox_sorted[3]]), np.mean(
+            [self.bbox_sorted[5], self.bbox_sorted[7]])
+
+        if width is not None:
+            x = np.mean([x1, x2])
+            x1, x2 = x - width / 2, x + width / 2
+
+        if height is not None:
+            y = np.mean([y1, y2])
+            y1, y2 = y - height / 2, y + height / 2
+
+        x1 -= add_x / 2
+        x2 += add_x / 2
+        y1 -= add_y / 2
+        y2 += add_y / 2
+
+        # fig, ax = plt.subplots()
+        # label = ['p1', 'p2', 'p3', 'p4']
+        # x = [self.bbox_sorted[i * 2] for i in range(4)]
+        # y = [self.bbox_sorted[i * 2 + 1] for i in range(4)]
+        # plt.scatter(x=x, y=y)
+        # for i, txt in enumerate(label):
+        #     ax.annotate(txt, (x[i], y[i]))
+#
+        # x = [x1, x2, x2, x1]
+        # y = [y1, y1, y2, y2]
+        # plt.scatter(x=x, y=y)
+        # for i, txt in enumerate(label):
+        #     ax.annotate(txt, (x[i], y[i]))
+#
+        # plt.show()
+
+        return np.array([x1, y1, x2, y1, x2, y2, x1, y2])
+
+
+def load_proposals(args, dataset, iou_thr=0.1):
+    # iou_thr = 0.1 is the most important hyper parameter; IOU of proposal with fused box.
+
     boxes_list = []
     scores_list = []
     labels_list = []
     img_idx_list = []
-    for i in models:
-        json_result_fp = osp.join(args.inp, f"result_{i}/deepscores_results.json")
-        dataset.obb.load_proposals(json_result_fp)
-        boxes_list.append(dataset.obb.proposals['bbox'].to_list())
-        scores_list.append(list(map(float, dataset.obb.proposals['score'].to_list())))
-        labels_list.append(dataset.obb.proposals['cat_id'].to_list())
-        img_idx_list.append(dataset.obb.proposals['img_idx'])
-        print(f"Adding proposals from ensemble member {i}.")
 
+    for prop_fp in sorted(list(Path(str(args.inp)).rglob("result.json"))):
+        dataset.obb.load_proposals(prop_fp)
+
+        #### WBF Preprocessing
+        props = dataset.obb.proposals
+        for i, row in props.iterrows():
+            if row.cat_id == 42 or row.cat_id == 2:
+                # 2 is stem, 42 is ledgerLine
+                props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
+
+        boxes_list.append(props['bbox'].to_list())
+        scores_list.append(list(map(float, props['score'].to_list())))
+        labels_list.append(props['cat_id'].to_list())
+        img_idx_list.append(props['img_idx'])
+        print(f"Adding proposals from ensemble member {prop_fp}.")
     # Calculate proposals_WBF
     max_img_idx = max([max(i) for i in img_idx_list])
-    iou_thr = 0.1  # This is the most important hyper parameter; IOU of proposal with fused box.
+    # TODO: use different threshold for ledger line and stem (e.g. 0.01)
     skip_box_thr = 0.00001  # Skips proposals if score < thr; However, nms is applied when using routine in test_BE.py and score_thr from config applies already.
     # score_thr: value is set below; skips visualization if fused score is below score_thr
     weights = None  # Could weight proposals from a specific ensemble member
     proposals_WBF = []
-
     # rotated_weighted_boxes mixes boxes from different images during calculation.
     # Thus, execute it on proposals of each image seperately, then concatenate results.
     for i in range(max_img_idx + 1):
@@ -335,16 +421,19 @@ def main():
         proposals_WBF_i = pd.DataFrame(zipped, columns=['bbox', 'cat_id', 'img_idx',
                                                         'score'])
         proposals_WBF.append(proposals_WBF_i)
-    proposals_WBF = pd.concat(proposals_WBF)
 
+    proposals_WBF = pd.concat(proposals_WBF)
+    return proposals_WBF
+
+
+def store_proposals(args, proposals_WBF):
     if not os.path.exists(args.out):
         os.mkdir(args.out)
-
     out_file = os.path.join(args.out, 'proposals_WBF.pkl')
     pickle.dump(proposals_WBF, open(out_file, 'wb'))
 
-    #### Evaluate WBF Performance ####
-    #
+
+def evaluate_wbf_performance(args, cfg, proposals_WBF):
     proposals_WBF_per_img = []
     for img_idx in sorted(set(list(proposals_WBF.img_idx))):
         props = proposals_WBF[proposals_WBF.img_idx == img_idx]
@@ -357,46 +446,81 @@ def main():
                                                           (np.array(list(props_cat.score)).shape[0], 1))), axis=1)
 
         proposals_WBF_per_img.append(result_prop)
-
     dataset = build_dataset(cfg.data.test)
     metrics = dataset.evaluate(proposals_WBF_per_img,
-                               result_json_filename=args.out + "/deepscores_ensemble_results.json",
-                               work_dir=args.out)
-
+                               result_json_filename=str(Path(args.out) / "deepscores_ensemble_results.json"),
+                               work_dir=args.out, visualize=False)
     print("Mean AP for Threshold=0.5 is ", np.mean([v[0.5]['ap'] for v in metrics.values()]))
-
     out_file = open(os.path.join(args.out, "deepscores_ensemble_metrics.pkl"), 'wb')
     pickle.dump(metrics, out_file)
     out_file.close()
+    return dataset
 
-    ############## DRAW WBF PROPOSALS ###############
 
+def postprocess_proposals(proposals):
+    # make all stem vertical and ledger line horizontal
+    proposals = proposals.reset_index(drop=True)
+    for i, row in proposals.iterrows():
+        if row.cat_id == 42 or row.cat_id == 2:
+            # 2 is stem, 42 is ledgerLine
+            proposals.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
+    return proposals
+
+
+def visualize_proposals(args, dataset, proposals_WBF, debug=False):
     # Create output directory
     out_dir = osp.join(args.out, "visualized_proposals/")
     if not osp.exists(out_dir):
         os.makedirs(out_dir)
 
-    # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and all others make no proposal; the fused score is: 0.3/30=0.01)
-    score_thr = 0.00001
-    proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < score_thr].index)
+    # Dropping proposals with an average score < score_thr (e.g. if 1 member makes a proposal with score 0.3 and
+    # 29 other members make no proposal; the fused score is: 0.3/30=0.01)
+    proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < args.vis_thr].index)
 
-    # Drop 'staff'-class (looks ugly on plot)
-    proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.cat_id == 135].index)
+    if debug:
+        debug_props = sorted(list(Path(str(args.inp)).rglob("result.json")))
+    else:
+        debug_props = None
+
     dataset.obb.proposals = proposals_WBF
-
     for img_info in dataset.obb.img_info:
-        # TODO: If implementation works visualize_BE could be added as an OBBAnns method
-        visualize_ensemble(self=dataset.obb,
+        visualize_ensemble(obb=dataset.obb,
                            img_id=img_info['id'],
                            data_root=dataset.data_root,
                            out_dir=out_dir,
-                           m=m)
+                           debug_proposals=debug_props,
+                           )
 
-    # visualize_ensemble(self=dataset.obb,
-    #              img_id=dataset.obb.img_info[0]['id'],
-    #              data_root=dataset.data_root,
-    #              out_dir=out_dir,
-    #              m=m)
+
+def main():
+    args = parse_args()
+    cfg = mmcv.Config.fromfile(args.config)
+
+    if args.l_cache is None:
+        dataset = build_dataset(cfg.data.test)
+
+        proposals_WBF = load_proposals(args, dataset, iou_thr=args.iou_thr)
+        proposals_WBF = postprocess_proposals(proposals_WBF)
+        store_proposals(args, proposals_WBF)
+
+        proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < args.vis_thr].index)
+        dataset = evaluate_wbf_performance(args, cfg, proposals_WBF)
+
+        if args.s_cache is not None:
+            data = {
+                'proposals_WBF': proposals_WBF,
+                'dataset': dataset,
+            }
+            with open(args.s_cache, 'wb') as handle:
+                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    else:
+        with open(args.l_cache, 'rb') as handle:
+            data = pickle.load(handle)
+            proposals_WBF = data['proposals_WBF']
+            dataset = data['dataset']
+
+        visualize_proposals(args, dataset, proposals_WBF, debug=args.plot_proposals)
 
 
 if __name__ == '__main__':

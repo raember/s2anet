@@ -160,7 +160,8 @@ class DeepScoresV2Dataset(CocoDataset):
                  iou_thrs=np.arange(0.5, 0.96, 0.05),
                  average_thrs=False,
                  work_dir = None,
-                 result_json_filename=None):
+                 result_json_filename=None,
+                 visualize=True):
         """Evaluation in COCO protocol.
 
         Args:
@@ -178,6 +179,7 @@ class DeepScoresV2Dataset(CocoDataset):
             iou_thrs (Sequence[float]): IoU threshold used for evaluating
                 recalls. If set to a list, the average recall of all IoUs will
                 also be computed. Default: 0.5.
+            visualize (bool): Whether to visualize the images.
 
         Returns:
             dict[str: float]
@@ -210,17 +212,18 @@ class DeepScoresV2Dataset(CocoDataset):
             
             if self.data_root is None:
                 from pathlib import Path
-                self.data_root = Path('/'.join(self.ann_file.split('/')[0:2]) + '/')
+                self.data_root = Path('/'.join(self.ann_file.split('/')[0:-1]) + '/')
 
             out_dir = os.path.join(work_dir, "visualized_proposals/")
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir)
-            
-            for img_info in self.obb.img_info:
-                self.obb.visualize(img_id=img_info['id'],
-                                   data_root=self.data_root,
-                                   out_dir=out_dir
-                                   )
+
+            if visualize:
+                for img_info in self.obb.img_info:
+                    self.obb.visualize(img_id=img_info['id'],
+                                       data_root=self.data_root,
+                                       out_dir=out_dir
+                                       )
 
         print(metric_results)
         return metric_results
