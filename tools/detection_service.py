@@ -2,6 +2,7 @@ import functools
 import json
 
 import numpy as np
+import torch
 from PIL import Image
 from flask import Flask, request, send_from_directory, Response
 
@@ -13,8 +14,7 @@ UPLOAD_FOLDER = './Patches/'
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
 
 config_path = "configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
-models_checkp_paths = ["data/deepscoresV2_tugg_halfrez_crop_epoch250.pth",
-                       "data/deepscoresV2_tugg_halfrez_crop_epoch250.pth"]  # ["checkpoint.pth"]
+models_checkp_paths = ["data/deepscoresV2_tugg_halfrez_crop_epoch250.pth"]  # ["checkpoint.pth"]
 
 class_names = (
     'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
@@ -55,8 +55,8 @@ def _get_detections_from_pred(predictions):
     bboxes, classes = predictions[0][1][0]
 
     for bbox, class_id in zip(bboxes, classes):
-        out = list(map(round, bbox))
-        out[4] = round(bbox[4], 4)  # angle
+        out = list(map(int, map(torch.round, bbox)))
+        out[4] = float(torch.round(bbox[4] * 10000)) / 10000  # Torch version 1.8.0 does not support decimals
         out[5] = class_names[int(class_id)]
         detect_list.append(out)
 
