@@ -15,7 +15,7 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import colors
 
-from DeepScoresV2_s2anet.analyze_ensembles.rotated_ensemble_boxes_wbf import *
+from DeepScoresV2_s2anet.analyze_ensembles.wbf_rotated_boxes import *
 from mmdet.datasets import build_dataset
 
 
