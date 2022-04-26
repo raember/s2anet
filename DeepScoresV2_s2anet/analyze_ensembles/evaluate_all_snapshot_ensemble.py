@@ -40,6 +40,7 @@ def run_test_multi_model():
         args_.eval = []
         args_.test_sets = None
         args_.cache = None
+        args_.overlap = 0.5
         return args_
 
     test_multi_model.parse_args = get_args
@@ -131,7 +132,7 @@ def run_analyze_errors():
 
 if __name__ == '__main__':
     if BASE_PATH.exists() and any(BASE_PATH.iterdir()):
-        r = input("'eval' folder is not empy - continue? [y/N]")
+        r = input("'eval' folder is not empty - continue? [y/N]")
         if str(r) != "y" or str(r) != "yes":
             exit()
 
