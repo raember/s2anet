@@ -15,7 +15,6 @@ from .reppoints_detector import RepPointsDetector
 from .retinanet import RetinaNet
 from .rpn import RPN
 from .s2anet import S2ANetDetector
-from .s2anet_BE import S2ANetDetectorBE
 from .single_stage import SingleStageDetector
 from .ssd_uda import SingleStageDetectorUDA
 from .two_stage import TwoStageDetector
@@ -25,6 +24,6 @@ __all__ = [
     'FastRCNN', 'FasterRCNN', 'MaskRCNN', 'CascadeRCNN', 'HybridTaskCascade',
     'DoubleHeadRCNN', 'RetinaNet', 'FCOS', 'GridRCNN', 'MaskScoringRCNN',
     'RepPointsDetector', 'FOVEA',
-    'S2ANetDetector', 'S2ANetDetectorBE',
+    'S2ANetDetector',
     'FasterRCNNHBBOBB', 'CascadeS2ANetDetector', 'SingleStageDetectorUDA'
 ]

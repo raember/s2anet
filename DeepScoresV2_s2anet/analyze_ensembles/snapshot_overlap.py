@@ -134,24 +134,31 @@ def main():
         get_anns_f = _get_anns_custom(df)
         count_class_gt_f = _get_custom_class_gt(df)
         for json_pr in args.jsons_pr:
-            metric_results, categories, occurences_by_class = _calculate_metrics(obb, get_anns_f, count_class_gt_f,
-                                                                                 json_pr)
+            if json_gt != json_pr:
+                metric_results, categories, occurences_by_class = _calculate_metrics(obb, get_anns_f, count_class_gt_f,
+                                                                                     json_pr)
 
-            f1 = json_gt.split("/")[-2] if "/" in json_gt else json_gt
-            f2 = json_pr.split("/")[-2] if "/" in json_pr else json_pr
+                f1 = json_gt.split("/")[-3] if "/" in json_gt else json_gt
+                f2 = json_pr.split("/")[-3] if "/" in json_pr else json_pr
 
-            out_path = out_fp / f"{f1}_{f2}/"
-            if not out_path.exists():
-                out_path.mkdir()
+                out_path = out_fp / f"{f1}-{f2}/"
+                if not out_path.exists():
+                    out_path.mkdir()
 
-            filename = "overlap.pkl"
+                filename = "overlap.pkl"
 
-            _store_results(out_path / filename, metric_results)
+                _store_results(out_path / filename, metric_results)
 
-            if json_pr in rows:
-                rows[json_pr].append(metric_results['average'][0.5]['ap'])
+                if json_pr in rows:
+                    rows[json_pr].append(metric_results['average'][0.5]['ap'])
+                else:
+                    rows[json_pr] = [metric_results['average'][0.5]['ap']]
+
             else:
-                rows[json_pr] = [metric_results['average'][0.5]['ap']]
+                if json_pr in rows:
+                    rows[json_pr].append(1.)
+                else:
+                    rows[json_pr] = [1.]
 
         columns.append(json_gt)
 

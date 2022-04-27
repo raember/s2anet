@@ -221,12 +221,6 @@ def main():
     if args.json_out:
         json_out_fp = Path(args.json_out)
 
-    # build the model and load checkpoint
-    model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
-
     index = []
     stats = {'samples': []}
     stats.update({key: [] for key in data_loaders[0].dataset.CLASSES})
@@ -236,6 +230,12 @@ def main():
     outputs_m = {}
     metrics = {}
     for checkpoint_file in map(Path, args.checkpoints):
+        # build the model and load checkpoint
+        model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+        fp16_cfg = cfg.get('fp16', None)
+        if fp16_cfg is not None:
+            wrap_fp16_model(model)
+
         outputs_m[checkpoint_file] = {}
         checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
         cfg_str = checkpoint['meta']['config']
@@ -274,6 +274,7 @@ def main():
 
             pkl_fp = result_folder / proposals_fp
             if not pkl_fp.exists() or not args.cache:
+                pkl_fp.parent.mkdir(exist_ok=True)
                 print(f"===> Testing model on {ann_file.stem}")
                 if not distributed:
                     model = MMDataParallel(model, device_ids=[0])

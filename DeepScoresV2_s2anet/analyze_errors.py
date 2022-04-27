@@ -32,8 +32,7 @@ def get_pickles(evaluations_folder, filename):
             f = open(os.path.join(base_i, pickles[0]), "rb")
             metrics = pickle.load(f)
             f.close()
-            name = base_i.split("/")[-1]
-            error_metrics[name] = metrics
+            error_metrics[base_i] = metrics
         elif len(pickles) > 1:
             print("multiple pickles found")
     return error_metrics
@@ -76,9 +75,9 @@ def add_averages(dframes):
     return dframes
 
 
-def store_csv(dframes, evaluations_folder):
+def store_csv(dframes):
     for key, dframe in dframes.items():
-        path = os.path.join(evaluations_folder, key + "_metrics.csv")
+        path = os.path.join(key + "_metrics.csv")
         print(path)
         dframe.to_csv(path)
     return None
@@ -107,12 +106,12 @@ def main():
     dframes = add_averages(dframes)
 
     # store as csv
-    store_csv(dframes, evaluations_folder)
+    store_csv(dframes)
 
     # create overview: store all dataframes in single file
     if args.create_overview:
         overview = merge_dataframes(dframes)
-        store_csv({'overview': overview}, evaluations_folder)
+        store_csv({f'{args.ev_folder}/overview': overview})
 
 
 if __name__ == '__main__':

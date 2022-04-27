@@ -1,0 +1,13 @@
+*
+.*
+!configs
+!debugging
+!DeepScoresV2_s2anet
+#!demo
+!DOTA_devkit
+!mmdet
+!tools
+!requirements.txt
+!README.md
+!setup.py
+!stats.json
