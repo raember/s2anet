@@ -380,8 +380,8 @@ def main():
         X = np.arange(len(chkpnt_names))
         incr = 1.0/(len(chkpnt_names)+1)
         center_offset = (incr * (len(dataset_names) - 1))/2
-        for i, (ds_name, col) in enumerate(zip(dataset_names, itertools.cycle(['b', 'r', 'g', 'y', 'c', 'm']))):
-            r = ax.bar(X + incr * i - center_offset, mean_aps[i], color=col, width=incr, label=f'{ds_name} ({stat_df["samples"][i]} samples)')
+        for i, (ds_name, col, mean_ap) in enumerate(zip(dataset_names, itertools.cycle(['b', 'r', 'g', 'y', 'c', 'm']), mean_aps.T)):
+            r = ax.bar(X + incr * i - center_offset, mean_ap, color=col, width=incr, label=f'{ds_name} ({stat_df["samples"][i]} samples)')
             ax.bar_label(r, padding=3)
         ax.set_ylabel('AP')
         ax.set_title(f'AP of {name} by model and training set')
