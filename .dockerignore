@@ -3,7 +3,7 @@
 !debugging
 #!DeepScoresV2_s2anet
 #!demo
-!docker
+docker
 !DOTA_devkit
 !mmdet
 !tools
