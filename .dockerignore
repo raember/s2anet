@@ -1,9 +1,9 @@
 *
+.*
 !configs
 !debugging
-#!DeepScoresV2_s2anet
+!DeepScoresV2_s2anet
 #!demo
-docker
 !DOTA_devkit
 !mmdet
 !tools
