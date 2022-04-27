@@ -14,7 +14,7 @@ UPLOAD_FOLDER = './Patches/'
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
 
 config_path = "configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
-models_checkp_paths = ["data/deepscoresV2_tugg_halfrez_crop_epoch250.pth"]  # ["checkpoint.pth"]
+models_checkp_paths = ["checkpoint.pth"]
 
 class_names = (
     'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
