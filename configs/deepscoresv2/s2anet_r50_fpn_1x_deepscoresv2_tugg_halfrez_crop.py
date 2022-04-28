@@ -111,10 +111,10 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=0.5,
+        img_scale=1.0,
         flip=False,
         transforms=[
-            dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
+            dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
             dict(type='RotatedRandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
