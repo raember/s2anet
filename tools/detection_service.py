@@ -1,14 +1,16 @@
 import functools
 import json
+from io import BytesIO
 
 import numpy as np
 import torch
 from PIL import Image
-from flask import Flask, request, send_from_directory, Response
+from flask import Flask, request, send_from_directory, Response, make_response
+from mmcv import imshow_det_bboxes
 
 from DeepScoresV2_s2anet.analyze_ensembles.wbf_rotated_boxes import rotated_weighted_boxes_fusion
 from mmdet.apis import init_detector, inference_detector
-from mmdet.core import outputs_rotated_box_to_poly_np, poly_to_rotated_box_np
+from mmdet.core import outputs_rotated_box_to_poly_np, poly_to_rotated_box_np, rotated_box_to_poly_np
 
 UPLOAD_FOLDER = './Patches/'
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
@@ -57,7 +59,7 @@ def _get_detections_from_pred(predictions):
     for bbox, class_id in zip(bboxes, classes):
         out = list(map(int, map(torch.round, bbox)))
         out[4] = float(torch.round(bbox[4] * 10000)) / 10000  # Torch version 1.8.0 does not support decimals
-        out[5] = class_names[int(class_id)]
+        out[5] = class_names[int(class_id) + 1]
         detect_list.append(out)
 
     return detect_list
@@ -85,7 +87,7 @@ def _get_detections_from_pred_multimodel(predictions):
     # TODO: add postprocessing stem & ledgerLine ? -> currently under development
 
     detect_list = []
-    labels_str = [class_names[int(id_)] for id_ in labels.tolist()]
+    labels_str = [class_names[int(id_) + 1] for id_ in labels.tolist()]
     for b, s, c in zip(boxes.tolist(), scores.tolist(), labels_str):
         out = list(map(round, b))
         out[4] = round(b[4], 4)
@@ -103,8 +105,6 @@ def hello_world():
 @app.route('/classify', methods=['GET', 'POST'])
 def classify():
     if request.method == 'POST':
-        print(request.headers)
-        print(list(request.files.items()))
         file = request.files['image_patch']
         if file and allowed_file(file.filename):
 
@@ -125,6 +125,44 @@ def classify():
             print(f"Detected {len(detect_list)} bboxes")
             detect_dict = dict(bounding_boxes=detect_list)
             return Response(json.dumps(detect_dict), mimetype='application/json')
+        else:
+            return Response('Unsupported filetype', mimetype='application/json')
+    return """
+    <!doctype html>
+    <title>Upload new File</title>
+    <h1>Upload new File</h1>
+    <form method=post enctype=multipart/form-data>
+      <p><input type=file name=image_patch>
+         <input type=submit value=Upload>
+    </form>
+    """
+
+
+@app.route('/classify_img', methods=['GET', 'POST'])
+def classify_img():
+    if request.method == 'POST':
+        file = request.files['image_patch']
+        if file and allowed_file(file.filename):
+
+            pic = Image.open(file).convert('RGB')
+            img = np.asarray(pic)
+
+            predictions = []
+            for checkpoint_pth in models_checkp_paths:
+                model = _get_model(checkpoint_pth)
+                predictions.append(inference_detector(model, img))  # returns a tuple: list
+
+            det_boxes = rotated_box_to_poly_np(predictions[0][1][0][0].cpu().numpy())
+            det_labels = predictions[0][1][0][1].cpu().numpy()
+            img_det = imshow_det_bboxes(img, det_boxes,
+                                        det_labels.astype(int) + 1,
+                                        class_names=list(class_names), show=False, show_label=True, rotated=True)
+            ann_img = Image.fromarray(img_det, "RGB")
+
+            img_io = BytesIO()
+            ann_img.save(img_io, 'png')
+            img_io.seek(0)
+            return Response(img_io, mimetype='image/png')
         else:
             return Response('Unsupported filetype', mimetype='application/json')
     return """
