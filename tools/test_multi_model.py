@@ -1,5 +1,7 @@
 import argparse
 import itertools
+import json
+import math
 import os
 import os.path as osp
 import shutil
@@ -9,6 +11,7 @@ from typing import Tuple
 
 import mmcv
 import numpy as np
+import pandas
 import torch
 import torch.distributed as dist
 from dateutil.parser import parse
@@ -18,7 +21,7 @@ from mmcv.runner import get_dist_info, load_checkpoint, _load_checkpoint
 from pandas import DataFrame
 
 from mmdet.apis import init_dist
-from mmdet.core import coco_eval, results2json, wrap_fp16_model
+from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single
 from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
@@ -322,16 +325,38 @@ def main():
                 outputs_m[checkpoint_file][data_loader] = outputs_rotated_box_to_poly_np(outputs_m[checkpoint_file][data_loader])
 
                 metrics_fp = result_folder / "dsv2_metrics.pkl"
+                result_file = None
+                if args.json_out is not None:
+                    result_file = str(result_folder / args.json_out)
                 if not metrics_fp.exists() or not args.cache:
                     print(f"### EVALUATE: {str(checkpoint_file)} ON {data_loader.dataset.ann_file} IN {str(result_folder)}")
                     data_loader.dataset.evaluate(
                         outputs_m[checkpoint_file][data_loader],
-                        result_json_filename=str(result_folder / "result.json"),
+                        result_json_filename=result_file,
                         work_dir=str(result_folder),
                         iou_thrs=overlaps
                     )  # Extremely slow...
                 print(f'===> Reading calculated metrics from {str(metrics_fp)}')
                 metrics = mmcv.load(metrics_fp)
+
+                if result_file is not None:
+                    print(f"===> Calculating statistics for results")
+                    with open(result_file, 'r') as fp:
+                        proposals = json.load(fp)
+                    prop_stats = {}
+                    for proposal in proposals['proposals']:
+                        cat_id = int(proposal['cat_id'])
+                        cat = data_loader.dataset.CLASSES[cat_id - 1]
+                        x, y, w, h, a = poly_to_rotated_box_single(list(map(float, proposal['bbox'])))
+                        a *= 180.0/math.pi
+                        prop_stats[cat] = prop_stats.get(cat, []) + [a]
+                    prop_data = {}
+                    for i, cat in enumerate(data_loader.dataset.CLASSES):
+                        angles = prop_stats.get(cat, [])
+                        prop_data[cat] = (len(angles), np.mean(angles), np.std(angles))
+                        #print(f'[{i + 1}] {cat} ({len(angles)}): avg:{np.mean(angles):.02f}, std: {np.std(angles):.02f}')
+                    csv_data = pandas.DataFrame(prop_data, index=('occurrences', 'avg', 'std')).transpose()
+                    csv_data.to_csv(result_folder / 'proposal_stats.csv')
 
             print(f'===> Compiling metrics with overlap {args.overlap}')
             for cls in data_loader.dataset.CLASSES:
