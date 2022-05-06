@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument(
         '--wbf',
         type=str,
-        default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/deepscores_ensemble_metrics.pkl",
+        default=None,
         help="Path to the result JSON of the WBF algorithm")
     return parser.parse_args()
 
