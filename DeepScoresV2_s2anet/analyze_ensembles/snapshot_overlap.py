@@ -13,7 +13,8 @@ from obb_anns import OBBAnns
 def parse_args():
     parser = argparse.ArgumentParser(description='Compare Overlap between Models')
     parser.add_argument('config', help='test config file path')
-    parser.add_argument('jsons_gt', nargs='+', default=[], help='Path to JSON file(s) with proposals which is used as ground truth')
+    parser.add_argument('jsons_gt', nargs='+', default=[],
+                        help='Path to JSON file(s) with proposals which is used as ground truth')
     parser.add_argument('--jsons_pr', nargs='+', default=[], help='Path to JSON file(s) with proposals')
     parser.add_argument('--out', default=None, help='Path where to save metrics')
     args = parser.parse_args()
@@ -107,6 +108,12 @@ def _store_results(filename, metric_results):
     print(metric_results)
 
 
+def _read_results(filename):
+    print(f"Read existing results from {filename}...")
+    metric_results = pickle.load(open(filename, 'rb'))
+    return metric_results
+
+
 def _setup_obb_anns(cfg):
     o = OBBAnns(cfg.data.test.ann_file)
     o.load_annotations()
@@ -120,14 +127,15 @@ def main():
     args = parse_args()
     cfg = mmcv.Config.fromfile(args.config)
 
-    out_fp = Path(args.out)
-    if not out_fp.exists():
-        out_fp.mkdir()
+    base_path = Path(args.out)
+    if not base_path.exists():
+        base_path.mkdir()
 
     obb = _setup_obb_anns(cfg)
 
     rows = {}
     columns = []
+    filename = "overlap.pkl"
 
     for json_gt in args.jsons_gt:
         df = _proposal_to_df(obb, json_gt)
@@ -135,19 +143,23 @@ def main():
         count_class_gt_f = _get_custom_class_gt(df)
         for json_pr in args.jsons_pr:
             if json_gt != json_pr:
-                metric_results, categories, occurences_by_class = _calculate_metrics(obb, get_anns_f, count_class_gt_f,
-                                                                                     json_pr)
 
                 f1 = json_gt.split("/")[-3] if "/" in json_gt else json_gt
                 f2 = json_pr.split("/")[-3] if "/" in json_pr else json_pr
 
-                out_path = out_fp / f"{f1}-{f2}/"
+                out_path = base_path / f"{f1}-{f2}/"
                 if not out_path.exists():
                     out_path.mkdir()
+                out_fp = out_path / filename
 
-                filename = "overlap.pkl"
+                if out_fp.exists():
+                    metric_results = _read_results(out_fp)
+                else:
+                    metric_results, categories, occurences_by_class = _calculate_metrics(obb, get_anns_f,
+                                                                                         count_class_gt_f,
+                                                                                         json_pr)
 
-                _store_results(out_path / filename, metric_results)
+                    _store_results(out_fp, metric_results)
 
                 if json_pr in rows:
                     rows[json_pr].append(metric_results['average'][0.5]['ap'])
@@ -162,7 +174,7 @@ def main():
 
         columns.append(json_gt)
 
-    pd.DataFrame.from_dict(rows, orient='index', columns=columns).to_csv(out_fp / "overlap_matrix.csv")
+    pd.DataFrame.from_dict(rows, orient='index', columns=columns).to_csv(base_path / "overlap_matrix.csv")
 
 
 if __name__ == '__main__':
