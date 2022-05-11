@@ -18,6 +18,9 @@ ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
 config_path = "configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
 models_checkp_paths = ["checkpoint.pth"]
 
+#config_path = "s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
+#models_checkp_paths = ["aug_epoch_2000.pth"]
+
 class_names = (
     'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
     'clefUnpitchedPercussion', 'clef8', 'clef15', 'timeSig0', 'timeSig1', 'timeSig2', 'timeSig3', 'timeSig4',
@@ -122,6 +125,7 @@ def classify():
             else:
                 detect_list = _get_detections_from_pred_multimodel(predictions)
 
+            detect_list = bbox_translate(detect_list)
             print(f"Detected {len(detect_list)} bboxes")
             detect_dict = dict(bounding_boxes=detect_list)
             return Response(json.dumps(detect_dict), mimetype='application/json')
@@ -152,8 +156,10 @@ def classify_img():
                 model = _get_model(checkpoint_pth)
                 predictions.append(inference_detector(model, img))  # returns a tuple: list
 
-            det_boxes = rotated_box_to_poly_np(predictions[0][1][0][0].cpu().numpy())
+            det_boxes = predictions[0][1][0][0].cpu().numpy()
             det_labels = predictions[0][1][0][1].cpu().numpy()
+            det_boxes = bbox_translate(det_boxes)
+            det_boxes = rotated_box_to_poly_np(det_boxes)
             img_det = imshow_det_bboxes(img, det_boxes,
                                         det_labels.astype(int) + 1,
                                         class_names=list(class_names), show=False, show_label=True, rotated=True)
@@ -174,6 +180,17 @@ def classify_img():
          <input type=submit value=Upload>
     </form>
     """
+
+# enforce w to be width and h to be height
+def bbox_translate(det_boxes):
+    for det in det_boxes:
+        if det[4] > np.pi/4:
+            det[4] = det[4] - np.pi/2
+            store = det[2]
+            det[2] = det[3]
+            det[3] = store
+
+    return det_boxes
 
 
 @app.route('/uploads/<filename>')
