@@ -159,7 +159,7 @@ lr_config = dict(
     step=[300, 700])
 checkpoint_config = dict(interval=50)
 log_config = dict(
-    interval=500,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
@@ -174,9 +174,9 @@ wandb_cfg = dict(
 
 
 # runtime settings
-total_epochs = 2000
+total_epochs = 5000
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
-resume_from = None
+resume_from = '/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop/latest.pth'
 workflow = [('train', 1)]
