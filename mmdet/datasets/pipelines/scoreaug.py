@@ -21,7 +21,7 @@ class ScoreAug(object):
     _seamless_imgs: List[str]
     _seamed_imgs: List[str]
 
-    def __init__(self, blank_pages_path, padding_length = 200, p_blur=0.5):
+    def __init__(self, blank_pages_path, padding_length = 200, p_blur=0.5, p_augment=1.0):
         self._blank_pages_path = Path(blank_pages_path)
         assert self._blank_pages_path.exists(), "Path to blank pages must exist"
         assert self._blank_pages_path.is_dir(), "Path to blank pages must be a directory"
@@ -29,7 +29,7 @@ class ScoreAug(object):
         self._seamed_imgs = self._load_images(self._blank_pages_path / SEAMED)
         self.padding_length = padding_length
         self.p_blur = p_blur
-
+        self.p_augment = p_augment
 
 
     def _load_images(self, path: Path) -> List[str]:
@@ -41,8 +41,12 @@ class ScoreAug(object):
 
 
     def __call__(self, results: dict):
-        take_seamless = choice([True, False], p=[0.5, 0.5])
-        if not take_seamless:
+        apply_augment = choice([True, False], p=[self.p_augment, 1-self.p_augment])
+        if not apply_augment:
+            return results
+
+        apply_augment = choice([True, False], p=[0.5, 0.5])
+        if not apply_augment:
             bg_imgs = self._seamed_imgs
         else:
             bg_imgs = self._seamless_imgs
@@ -74,7 +78,7 @@ class ScoreAug(object):
             bg_img = bg_img.resize(shape)
 
         # Increase size if seamed
-        if not (take_seamless or crop_resize):
+        if not (apply_augment or crop_resize):
             # compute new shape, resize background
             shape = tuple([x + self.padding_length for x in shape])
             bg_img = bg_img.resize(shape)

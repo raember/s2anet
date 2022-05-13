@@ -98,9 +98,10 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
-    dict(type='RandomCrop', crop_size=(1200, 1200), threshold_rel=0.6, threshold_abs=200.0),
-    dict(type='RotatedResize', img_scale=(1200, 1200), keep_ratio=True),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.1, p_augment=0.3),
+    #dict(type='RandomCrop', crop_size=(2000, 2000), threshold_rel=0.6, threshold_abs=200.0),
+    #dict(type='RotatedResize', img_scale=(1000, 1000), keep_ratio=True),
+    dict(type='RotatedResize', img_scale=(0.5, 0.5), ratio_range=[0.9, 1.1], keep_ratio=True, max_size=(2000, 2000)),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -114,7 +115,7 @@ test_pipeline = [
         img_scale=0.5,
         flip=False,
         transforms=[
-            dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
+            dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
             dict(type='RotatedRandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
@@ -123,7 +124,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=4,
+    imgs_per_gpu=2,
     workers_per_gpu=4,
     train=dict(
         type=dataset_type,
@@ -157,9 +158,9 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     gamma = 0.5,
     step=[300, 700])
-checkpoint_config = dict(interval=10)
+checkpoint_config = dict(interval=50)
 log_config = dict(
-    interval=1,
+    interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
         dict(type='WandbVisualLoggerHook'),
@@ -173,13 +174,10 @@ wandb_cfg = dict(
 )
 
 
-
 # runtime settings
-total_epochs = 500 
+total_epochs = 5000
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-# #load_from = "DeepScoresV2_s2anet/fullrez_crop/epoch_500.pth"
-# resume_from = "/home/ubuntu/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_fullrez_crop/latest.pth"
-load_from = None
+load_from = '/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop/latest.pth'
 resume_from = None
 workflow = [('train', 1)]
