@@ -8,6 +8,7 @@ from PIL.Image import Image, open as img_open
 from PIL import Image as Image_m, ImageEnhance, ImageFilter, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 from ..registry import PIPELINES
+from skimage.util import random_noise
 
 SEAMLESS = 'seamless'
 SEAMED = 'seamed'
@@ -21,7 +22,7 @@ class ScoreAug(object):
     _seamless_imgs: List[str]
     _seamed_imgs: List[str]
 
-    def __init__(self, blank_pages_path, padding_length = 200, p_blur=0.5, p_augment=1.0):
+    def __init__(self, blank_pages_path, padding_length = 200, p_blur=0.5, p_augment=1.0, p_snp=0.5):
         self._blank_pages_path = Path(blank_pages_path)
         assert self._blank_pages_path.exists(), "Path to blank pages must exist"
         assert self._blank_pages_path.is_dir(), "Path to blank pages must be a directory"
@@ -30,6 +31,7 @@ class ScoreAug(object):
         self.padding_length = padding_length
         self.p_blur = p_blur
         self.p_augment = p_augment
+        self.p_snp = p_snp
 
 
     def _load_images(self, path: Path) -> List[str]:
@@ -148,9 +150,23 @@ class ScoreAug(object):
 
 
         fg_blur = choice([True, False], p=[self.p_blur, 1-self.p_blur])
-        if fg_blur or True:
+        if fg_blur:
             fg_img = fg_img.filter(ImageFilter.GaussianBlur(radius=np.random.randint(1, 2)))
 
+        fg_salt_and_pepper = choice([True, False], p=[self.p_snp, 1-self.p_snp])
+        if fg_salt_and_pepper:
+            p_flip_black = 0.1
+            p_flip_white = 0.001
+            fg_img = np.array(fg_img, dtype=np.uint32)
+            color_intensity = np.average(fg_img, 2)
+            black = color_intensity < 100
+            white = color_intensity >= 100
+            flip = np.random.uniform(0, 1, fg_img.shape[0:2])
+
+            fg_img[black * (flip < p_flip_black)] = [255, 255, 255]
+            fg_img[white * (flip < p_flip_white)] = [0, 0, 0]
+
+            fg_img = Image_m.fromarray(fg_img.astype(np.uint8))
 
         # Merge
         results['img'] = np.minimum(fg_img, bg_img)
