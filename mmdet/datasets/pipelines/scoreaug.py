@@ -22,7 +22,7 @@ class ScoreAug(object):
     _seamless_imgs: List[str]
     _seamed_imgs: List[str]
 
-    def __init__(self, blank_pages_path, padding_length = 200, p_blur=0.5, p_augment=1.0, p_snp=0.5):
+    def __init__(self, blank_pages_path, padding_length = 200, p_blur=0.5, p_augment=1.0, p_snp=0.0):
         self._blank_pages_path = Path(blank_pages_path)
         assert self._blank_pages_path.exists(), "Path to blank pages must exist"
         assert self._blank_pages_path.is_dir(), "Path to blank pages must be a directory"
@@ -58,7 +58,7 @@ class ScoreAug(object):
             fg_img[white * (flip < p_flip_white)] = [0, 0, 0]
 
             results['img'] = fg_img
-
+            #Image_m.fromarray(results['img']).show()
 
         apply_augment = choice([True, False], p=[self.p_augment, 1-self.p_augment])
         if not apply_augment:
