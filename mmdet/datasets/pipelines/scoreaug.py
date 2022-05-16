@@ -43,12 +43,29 @@ class ScoreAug(object):
 
 
     def __call__(self, results: dict):
+
+        fg_salt_and_pepper = choice([True, False], p=[self.p_snp, 1-self.p_snp])
+        if fg_salt_and_pepper:
+            p_flip_black = 0.1
+            p_flip_white = 0.001
+            fg_img = results['img']
+            color_intensity = np.average(fg_img, 2)
+            black = color_intensity < 100
+            white = color_intensity >= 100
+            flip = np.random.uniform(0, 1, fg_img.shape[0:2])
+
+            fg_img[black * (flip < p_flip_black)] = [255, 255, 255]
+            fg_img[white * (flip < p_flip_white)] = [0, 0, 0]
+
+            results['img'] = fg_img
+
+
         apply_augment = choice([True, False], p=[self.p_augment, 1-self.p_augment])
         if not apply_augment:
             return results
 
-        apply_augment = choice([True, False], p=[0.5, 0.5])
-        if not apply_augment:
+        seamed_or_seamless = choice([True, False], p=[0.5, 0.5])
+        if not seamed_or_seamless:
             bg_imgs = self._seamed_imgs
         else:
             bg_imgs = self._seamless_imgs
@@ -153,20 +170,7 @@ class ScoreAug(object):
         if fg_blur:
             fg_img = fg_img.filter(ImageFilter.GaussianBlur(radius=np.random.randint(1, 2)))
 
-        fg_salt_and_pepper = choice([True, False], p=[self.p_snp, 1-self.p_snp])
-        if fg_salt_and_pepper:
-            p_flip_black = 0.1
-            p_flip_white = 0.001
-            fg_img = np.array(fg_img, dtype=np.uint32)
-            color_intensity = np.average(fg_img, 2)
-            black = color_intensity < 100
-            white = color_intensity >= 100
-            flip = np.random.uniform(0, 1, fg_img.shape[0:2])
 
-            fg_img[black * (flip < p_flip_black)] = [255, 255, 255]
-            fg_img[white * (flip < p_flip_white)] = [0, 0, 0]
-
-            fg_img = Image_m.fromarray(fg_img.astype(np.uint8))
 
         # Merge
         results['img'] = np.minimum(fg_img, bg_img)
