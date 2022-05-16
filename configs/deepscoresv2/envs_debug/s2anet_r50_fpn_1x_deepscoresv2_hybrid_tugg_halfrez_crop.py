@@ -89,7 +89,7 @@ test_cfg = dict(
     nms=dict(type='nms_rotated', iou_thr=0.1),
     max_per_img=1000)
 # dataset settings
-dataset_type = 'DeepScoresV2Dataset'
+dataset_type = 'DeepScoresV2Dataset_Hybrid'
 data_root = 'data/deep_scores_dense/'
 img_norm_cfg = dict(
     mean = [240, 240, 240],
