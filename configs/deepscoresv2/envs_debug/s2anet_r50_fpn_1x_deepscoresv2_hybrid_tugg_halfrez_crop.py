@@ -177,6 +177,6 @@ wandb_cfg = dict(
 total_epochs = 5000
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = '/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop/latest.pth'
+load_from = '/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_hybrid_tugg_halfrez_nocrop_finalize_snp/latest.pth'
 resume_from = None
 workflow = [('train', 1)]
