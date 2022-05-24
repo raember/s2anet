@@ -16,7 +16,7 @@ UPLOAD_FOLDER = './Patches/'
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
 
 config_path = "configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
-models_checkp_paths = ["checkpoint.pth"]
+models_checkp_paths = ["data/deepscoresV2_tugg_halfrez_crop_epoch250.pth", "data/deepscoresV2_tugg_halfrez_crop_epoch250.pth"]
 
 # config_path = "s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
 # models_checkp_paths = ["aug_epoch_2000.pth"]
@@ -55,19 +55,6 @@ def _get_model(checkpoint_pth):
     return init_detector(config_path, checkpoint_pth, device='cuda:0')
 
 
-def _get_detections_from_pred(predictions):
-    detect_list = []
-    bboxes, classes = predictions[0][1][0]
-
-    for bbox, class_id in zip(bboxes, classes):
-        out = list(map(int, map(torch.round, bbox)))
-        out[4] = float(torch.round(bbox[4] * 10000)) / 10000  # Torch version 1.8.0 does not support decimals
-        out[5] = class_names[int(class_id) + 1]
-        detect_list.append(out)
-
-    return detect_list
-
-
 # enforce w to be width and h to be height
 def bbox_translate(det_boxes):
     for det in det_boxes:
@@ -78,6 +65,13 @@ def bbox_translate(det_boxes):
             det[3] = store
 
     return det_boxes
+
+
+def unravel_predictions(predictions):
+    boxes = predictions[0][1][0][0].cpu().numpy()
+    labels = predictions[0][1][0][1].cpu().numpy()
+
+    return boxes, labels
 
 
 def _apply_wbf(predictions):
@@ -101,10 +95,19 @@ def _apply_wbf(predictions):
     return boxes, scores, labels
 
 
-def _get_detections_from_pred_multimodel(predictions):
-    boxes, scores, labels = _apply_wbf(predictions)
-    boxes = poly_to_rotated_box_np(boxes)
+def _get_detections_from_pred(bboxes, labels):
+    detect_list = []
 
+    for bbox, class_id in zip(bboxes, labels):
+        out = list(map(int, map(round, bbox)))
+        out[4] = round(float(bbox[4]), 4)
+        out[5] = class_names[int(class_id) + 1]
+        detect_list.append(out)
+
+    return detect_list
+
+
+def _get_detections_from_pred_multimodel(boxes, scores, labels):
     detect_list = []
     labels_str = [class_names[int(id_) + 1] for id_ in labels.tolist()]
     for b, s, c in zip(boxes.tolist(), scores.tolist(), labels_str):
@@ -116,22 +119,7 @@ def _get_detections_from_pred_multimodel(predictions):
     return detect_list
 
 
-def _get_labels_boxes_from_pred(predictions):
-    det_boxes = predictions[0][1][0][0].cpu().numpy()
-    det_labels = predictions[0][1][0][1].cpu().numpy()
-    det_boxes = bbox_translate(det_boxes)
-    det_boxes = rotated_box_to_poly_np(det_boxes)
-
-    return det_boxes, det_labels
-
-
-@app.route('/')
-def hello_world():
-    return 'Welcome to the classifier, go to /classify to start classifying'
-
-
 def _classification(pred_processing):
-    print("Using Classification")
     if request.method == 'POST':
         file = request.files['image_patch']
         if file and allowed_file(file.filename):
@@ -142,11 +130,24 @@ def _classification(pred_processing):
             predictions = []
             for checkpoint_pth in models_checkp_paths:
                 model = _get_model(checkpoint_pth)
-                predictions.append(inference_detector(model, img))  # returns a tuple: list
+                prediction = inference_detector(model, img)
+                predictions.append(prediction)  # returns a tuple: list
 
-            # TODO Adhiraj: Add Post-Processing of Predictions here!
+            is_multimodel = len(predictions) != 1
 
-            return pred_processing(predictions, file)
+            if is_multimodel:
+                boxes, scores, labels = _apply_wbf(predictions)
+                boxes = poly_to_rotated_box_np(boxes)
+            else:
+                boxes, labels = unravel_predictions(predictions)
+                scores = None
+
+            print(f"Detected {len(boxes)} bboxes")
+            boxes = bbox_translate(boxes)
+
+            # TODO Adhiraj: Add Post-Processing of boxes here!
+
+            return pred_processing(boxes, scores, labels, file, is_multimodel)
 
         else:
             return Response('Unsupported filetype', mimetype='application/json')
@@ -161,16 +162,19 @@ def _classification(pred_processing):
     """
 
 
+@app.route('/')
+def hello_world():
+    return 'Welcome to the classifier, go to /classify to start classifying'
+
+
 @app.route('/classify', methods=['GET', 'POST'])
 def classify():
-    def pred_processing(predictions, file):
-        if len(predictions) == 1:
-            detect_list = _get_detections_from_pred(predictions)
+    def pred_processing(boxes, scores, labels, file, is_multimodel):
+        if is_multimodel:
+            detect_list = _get_detections_from_pred_multimodel(boxes, scores, labels)
         else:
-            detect_list = _get_detections_from_pred_multimodel(predictions)
+            detect_list = _get_detections_from_pred(boxes, labels)
 
-        detect_list = bbox_translate(detect_list)
-        print(f"Detected {len(detect_list)} bboxes")
         detect_dict = dict(bounding_boxes=detect_list)
 
         return Response(json.dumps(detect_dict), mimetype='application/json')
@@ -180,17 +184,13 @@ def classify():
 
 @app.route('/classify_img', methods=['GET', 'POST'])
 def classify_img():
-    def pred_processing(predictions, file):
-        if len(predictions) == 1:
-            det_boxes, det_labels = _get_labels_boxes_from_pred(predictions)
-        else:
-            det_boxes, _, det_labels = _apply_wbf(predictions)
+    def pred_processing(boxes, scores, labels, file, is_multimodel):
+        boxes = rotated_box_to_poly_np(boxes)
 
         pic = Image.open(file).convert('RGB')
         img = np.asarray(pic)
 
-        img_det = imshow_det_bboxes(img, det_boxes,
-                                    det_labels.astype(int) + 1,
+        img_det = imshow_det_bboxes(img, boxes, labels.astype(int) + 1,
                                     class_names=list(class_names), show=False, show_label=True, rotated=True)
         ann_img = Image.fromarray(img_det, "RGB")
 
@@ -204,8 +204,7 @@ def classify_img():
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'],
-                               filename)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
 def allowed_file(filename):
