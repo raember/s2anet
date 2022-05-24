@@ -5,7 +5,7 @@ from io import BytesIO
 import numpy as np
 import torch
 from PIL import Image
-from flask import Flask, request, send_from_directory, Response, make_response
+from flask import Flask, request, send_from_directory, Response
 from mmcv import imshow_det_bboxes
 
 from DeepScoresV2_s2anet.analyze_ensembles.wbf_rotated_boxes import rotated_weighted_boxes_fusion
@@ -68,7 +68,19 @@ def _get_detections_from_pred(predictions):
     return detect_list
 
 
-def _get_detections_from_pred_multimodel(predictions):
+# enforce w to be width and h to be height
+def bbox_translate(det_boxes):
+    for det in det_boxes:
+        if det[4] > np.pi / 4:
+            det[4] = det[4] - np.pi / 2
+            store = det[2]
+            det[2] = det[3]
+            det[3] = store
+
+    return det_boxes
+
+
+def _apply_wbf(predictions):
     boxes, scores, labels = [], [], []
 
     predictions = [outputs_rotated_box_to_poly_np([x[0]])[0] for x in predictions]
@@ -85,9 +97,13 @@ def _get_detections_from_pred_multimodel(predictions):
 
     boxes, scores, labels = rotated_weighted_boxes_fusion(boxes, scores, labels,
                                                           weights=None, iou_thr=0.3, skip_box_thr=0.00001)
-    boxes = poly_to_rotated_box_np(boxes)
 
-    # TODO: add postprocessing stem & ledgerLine ? -> currently under development
+    return boxes, scores, labels
+
+
+def _get_detections_from_pred_multimodel(predictions):
+    boxes, scores, labels = _apply_wbf(predictions)
+    boxes = poly_to_rotated_box_np(boxes)
 
     detect_list = []
     labels_str = [class_names[int(id_) + 1] for id_ in labels.tolist()]
@@ -100,13 +116,22 @@ def _get_detections_from_pred_multimodel(predictions):
     return detect_list
 
 
+def _get_labels_boxes_from_pred(predictions):
+    det_boxes = predictions[0][1][0][0].cpu().numpy()
+    det_labels = predictions[0][1][0][1].cpu().numpy()
+    det_boxes = bbox_translate(det_boxes)
+    det_boxes = rotated_box_to_poly_np(det_boxes)
+
+    return det_boxes, det_labels
+
+
 @app.route('/')
 def hello_world():
     return 'Welcome to the classifier, go to /classify to start classifying'
 
 
-@app.route('/classify', methods=['GET', 'POST'])
-def classify():
+def _classification(pred_processing):
+    print("Using Classification")
     if request.method == 'POST':
         file = request.files['image_patch']
         if file and allowed_file(file.filename):
@@ -119,16 +144,10 @@ def classify():
                 model = _get_model(checkpoint_pth)
                 predictions.append(inference_detector(model, img))  # returns a tuple: list
 
-            if len(predictions) == 1:
-                detect_list = _get_detections_from_pred(predictions)
+            # TODO Adhiraj: Add Post-Processing of Predictions here!
 
-            else:
-                detect_list = _get_detections_from_pred_multimodel(predictions)
+            return pred_processing(predictions, file)
 
-            detect_list = bbox_translate(detect_list)
-            print(f"Detected {len(detect_list)} bboxes")
-            detect_dict = dict(bounding_boxes=detect_list)
-            return Response(json.dumps(detect_dict), mimetype='application/json')
         else:
             return Response('Unsupported filetype', mimetype='application/json')
     return """
@@ -140,57 +159,47 @@ def classify():
          <input type=submit value=Upload>
     </form>
     """
+
+
+@app.route('/classify', methods=['GET', 'POST'])
+def classify():
+    def pred_processing(predictions, file):
+        if len(predictions) == 1:
+            detect_list = _get_detections_from_pred(predictions)
+        else:
+            detect_list = _get_detections_from_pred_multimodel(predictions)
+
+        detect_list = bbox_translate(detect_list)
+        print(f"Detected {len(detect_list)} bboxes")
+        detect_dict = dict(bounding_boxes=detect_list)
+
+        return Response(json.dumps(detect_dict), mimetype='application/json')
+
+    return _classification(pred_processing)
 
 
 @app.route('/classify_img', methods=['GET', 'POST'])
 def classify_img():
-    if request.method == 'POST':
-        file = request.files['image_patch']
-        if file and allowed_file(file.filename):
-
-            pic = Image.open(file).convert('RGB')
-            img = np.asarray(pic)
-
-            predictions = []
-            for checkpoint_pth in models_checkp_paths:
-                model = _get_model(checkpoint_pth)
-                predictions.append(inference_detector(model, img))  # returns a tuple: list
-
-            det_boxes = predictions[0][1][0][0].cpu().numpy()
-            det_labels = predictions[0][1][0][1].cpu().numpy()
-            det_boxes = bbox_translate(det_boxes)
-            det_boxes = rotated_box_to_poly_np(det_boxes)
-            img_det = imshow_det_bboxes(img, det_boxes,
-                                        det_labels.astype(int) + 1,
-                                        class_names=list(class_names), show=False, show_label=True, rotated=True)
-            ann_img = Image.fromarray(img_det, "RGB")
-
-            img_io = BytesIO()
-            ann_img.save(img_io, 'png')
-            img_io.seek(0)
-            return Response(img_io, mimetype='image/png')
+    def pred_processing(predictions, file):
+        if len(predictions) == 1:
+            det_boxes, det_labels = _get_labels_boxes_from_pred(predictions)
         else:
-            return Response('Unsupported filetype', mimetype='application/json')
-    return """
-    <!doctype html>
-    <title>Upload new File</title>
-    <h1>Upload new File</h1>
-    <form method=post enctype=multipart/form-data>
-      <p><input type=file name=image_patch>
-         <input type=submit value=Upload>
-    </form>
-    """
+            det_boxes, _, det_labels = _apply_wbf(predictions)
 
-# enforce w to be width and h to be height
-def bbox_translate(det_boxes):
-    for det in det_boxes:
-        if det[4] > np.pi/4:
-            det[4] = det[4] - np.pi/2
-            store = det[2]
-            det[2] = det[3]
-            det[3] = store
+        pic = Image.open(file).convert('RGB')
+        img = np.asarray(pic)
 
-    return det_boxes
+        img_det = imshow_det_bboxes(img, det_boxes,
+                                    det_labels.astype(int) + 1,
+                                    class_names=list(class_names), show=False, show_label=True, rotated=True)
+        ann_img = Image.fromarray(img_det, "RGB")
+
+        img_io = BytesIO()
+        ann_img.save(img_io, 'png')
+        img_io.seek(0)
+        return Response(img_io, mimetype='image/png')
+
+    return _classification(pred_processing)
 
 
 @app.route('/uploads/<filename>')
