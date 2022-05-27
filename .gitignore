@@ -122,6 +122,7 @@ wandb/
 DeepScoresV2_s2anet/analyze_ensembles/visualized_proposals
 DeepScoresV2_s2anet/analyze_ensembles/visualization_final
 !DeepScoresV2_s2anet/omr_prototype_alignment/data/
+DeepScoresV2_s2anet/omr_prototype_alignment/cache/*.npy
 
 # Pytorch
 *.pth

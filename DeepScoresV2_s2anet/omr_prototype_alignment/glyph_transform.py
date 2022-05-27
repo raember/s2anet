@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image as PImage
+from scipy.ndimage.interpolation import rotate
 
 from DeepScoresV2_s2anet.omr_prototype_alignment.render import Render
 
@@ -95,12 +96,17 @@ class GlyphGenerator:
         if class_name == self.last_class_name:
             img = self.last_symbol
         else:
-            case = Render(class_name=class_name, height=glyph_height, width=glyph_width, csv_path=csv_path)
-            png_data = case.render(svg_path)
-            with BytesIO(png_data) as bio:
-                img = PImage.open(bio)
-                img.load()
-                img = img.transpose(PImage.FLIP_TOP_BOTTOM)
+            cache_fp = Path(BASE_PATH / 'cache' / f"{class_name}.npy")
+            if cache_fp.exists():
+                img = np.load(str(cache_fp))
+            else:
+                case = Render(class_name=class_name, height=glyph_height, width=glyph_width, csv_path=csv_path)
+                png_data = case.render(svg_path)
+                with BytesIO(png_data) as bio:
+                    img = PImage.open(bio)
+                    img.load()
+                    img = img.transpose(PImage.FLIP_TOP_BOTTOM)
+                np.save(str(cache_fp), img)
 
             self.last_class_name = class_name
             self.last_symbol = img.copy()
@@ -109,14 +115,14 @@ class GlyphGenerator:
             img = self.last_symbol_rotated
 
         else:
-            img = img.rotate(glyph_angle * 180.0 / math.pi, PImage.BILINEAR, expand=True, fillcolor=(0, 0, 0, 0))
+            img = np.array(img)[..., 3]
+            img = rotate(img, angle=glyph_angle * 180.0 / math.pi)
             self.last_symbol_rotated = img.copy()
             self.last_glyph_angle = glyph_angle
 
-        img2 = np.array(img)[..., 3]
-        img2 = np.pad(img2, (
-        (int(np.floor(padding_top - img2.shape[0] / 2)), int(np.ceil(padding_bottom - img2.shape[0] / 2))),
-        (int(np.floor(padding_left - img2.shape[1] / 2)), int(np.ceil(padding_right - img2.shape[1] / 2)))))
+        img2 = np.pad(img, (
+            (int(np.floor(padding_top - img.shape[0] / 2)), int(np.ceil(padding_bottom - img.shape[0] / 2))),
+            (int(np.floor(padding_left - img.shape[1] / 2)), int(np.ceil(padding_right - img.shape[1] / 2)))))
 
         return img2
 
