@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 # [x_ctr,y_ctr,w,h,angle]
 
 SAMPLES = [
-    ('images/sample.png', [
+    (str(BASE_PATH / 'images' / 'sample.png'), [
         {
             'proposal': np.array([155, 242, 41, 112, 0.1105, "clefG"]),
             'gt': np.array([156, 240, 43, 116, 0.0, "clefG"])
