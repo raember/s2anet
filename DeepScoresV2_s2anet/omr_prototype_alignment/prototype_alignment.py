@@ -170,6 +170,10 @@ def generate_video(imgs):
 
     ani.save(str(path / f'debug_{datetime.now().strftime("%Y%m%d-%H%M%S")}.mp4'))
 
+def _create_search_list(lower, upper, stepsize=1):
+    center = (lower + upper) / 2
+    list_1, list_2 = np.arange(lower, center, stepsize), np.arange(center, upper, stepsize)
+    return [ab for a, b in zip(list_1[::-1], list_2) for ab in (a, b)]
 
 def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False) -> Image:
     if len(bbox) == 0:
@@ -186,11 +190,11 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
 
     best_glyph, best_overlap = None, -1
 
-    angles = np.arange(orig_angle - 0.4, orig_angle + 0.4, 0.1)
-    x_shifts = range(img_roi.shape[0] // 2 - 10, img_roi.shape[0] // 2 + 10)
-    y_shifts = range(img_roi.shape[1] // 2 - 10, img_roi.shape[1] // 2 + 10)
-    widths = range(orig_width, orig_width + 5)
-    heights = range(orig_height, orig_height + 5)
+    angles = _create_search_list(orig_angle - 0.2, orig_angle + 0.2, 0.05)
+    x_shifts = _create_search_list(img_roi.shape[0] // 2 - 5, img_roi.shape[0] // 2 + 5)
+    y_shifts = _create_search_list(img_roi.shape[1] // 2 - 5, img_roi.shape[1] // 2 + 5)
+    widths = range(orig_width, orig_width + 3)
+    heights = range(orig_height, orig_height + 3)
 
     # n_tests = len(angles) * len(x_shifts) * len(y_shifts) * len(widths) * len(heights)
     # print("Number of tests:", n_tests, "Estimated duration", n_tests * 0.00023)
@@ -228,11 +232,11 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
                             best_glyph = proposed_glyph
                             count_angle_not_improved, count_xshift_not_improved, count_yshift_not_improved = 0, 0, 0
 
-                if count_yshift_not_improved > 5:
+                if count_yshift_not_improved > 2:
                     break
-            if count_xshift_not_improved > 5:
+            if count_xshift_not_improved > 2:
                 break
-        if count_angle_not_improved > 20:
+        if count_angle_not_improved > 3:
             break
 
     if store_video:
