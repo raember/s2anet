@@ -1,11 +1,14 @@
 import argparse
 import math
 from io import BytesIO
+from pathlib import Path
 
 import numpy as np
 from PIL import Image as PImage
 
-from render import Render
+from DeepScoresV2_s2anet.omr_prototype_alignment.render import Render
+
+BASE_PATH = Path("DeepScoresV2_s2anet/omr_prototype_alignment")
 
 class_names = (
     'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
@@ -36,11 +39,11 @@ class_names = (
 def parse_args():
     parser = argparse.ArgumentParser(description='Glyph transformation for effective post processing')
     parser.add_argument('--class_id', help='Id of the DeepScore Class', type=int, default=5)
-    parser.add_argument('--csv_path', help='the path where name_uni.csv is stored', type=str, default='data/name_uni.csv')
+    parser.add_argument('--csv_path', help='the path where name_uni.csv is stored', type=str, default=str(BASE_PATH / 'data' / 'name_uni.csv'))
     parser.add_argument('--glyph_height', help='height of glyph', type=int, default=254)
     parser.add_argument('--glyph_width', help='width of glyph', type=int, default=236)
     parser.add_argument('--glyph_angle', help='angle of rotation of glyph', type=float, default=0.0)
-    parser.add_argument('--svg_path', help='the path where Bravura.svg is stored', type=str, default='data/Bravura.svg')
+    parser.add_argument('--svg_path', help='the path where Bravura.svg is stored', type=str, default=str(BASE_PATH / 'data' / 'Bravura.svg'))
     parser.add_argument('--padding_left', help='Length of padding on the left of glyph', type=int, default=254)
     parser.add_argument('--padding_right', help='Length of padding on the right of glyph', type=int, default=254)
     parser.add_argument('--padding_top', help='Length of padding on the top of glyph', type=int, default=254)
@@ -59,7 +62,8 @@ class GlyphGenerator:
 
     def get_transformed_glyph(self, class_name: str, glyph_width: int, glyph_height: int, glyph_angle: float,
                               padding_left: int, padding_right: int, padding_top: int, padding_bottom: int,
-                              svg_path: str = 'data/Bravura.svg', csv_path: str = 'data/name_uni.csv') -> np.array:
+                              svg_path: str = str(BASE_PATH / 'data' / 'Bravura.svg'),
+                              csv_path: str = str(BASE_PATH / 'data' / 'name_uni.csv')) -> np.array:
         """
         returns a glyph according the parameters
 

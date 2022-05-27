@@ -10,19 +10,20 @@ from io import BytesIO
 
 
 class Render():
-    def __init__(self, class_name, height, width, csv_path):
+    def __init__(self, class_name, height, width, csv_path="DeepScoresV2_s2anet/omr_prototype_alignment/data/name_uni.csv"):
         super(Render, self).__init__()
         self.csv_path = csv_path
         self.class_name = class_name
         self.height = height
         self.width = width
+        self.name_uni = self.csv2dict(1, 2)
+        self.id_to_class = self.csv2dict(0, 1)
 
-    def csv2dict(self):
+    def csv2dict(self, key_pos, val_pos):
         reader = csv.reader(open(self.csv_path, 'r'))
         d = {}
         for row in reader:
-            no, name, unicode = row
-            d[name] = unicode
+            d[row[key_pos]] = row[val_pos]
         return d
 
     def create_svg(self, bbox, base_path):
@@ -62,7 +63,6 @@ class Render():
         return xml_str
 
     def render(self, bravura_path, save_svg=True, save_png=True):
-        uni_dict = self.csv2dict()
         file = minidom.parse(bravura_path)
 
         glyphs = file.getElementsByTagName('glyph')
@@ -72,7 +72,7 @@ class Render():
             name_copy = 'beam'
         elif name_copy == 'slur':
             name_copy = 'tie'
-        index_uni = glyph_names.index(uni_dict[name_copy])
+        index_uni = glyph_names.index(self.name_uni[name_copy])
         base_path = glyphs[index_uni].attributes['d'].value
         if name_copy == 'tie':
             # example for 50x10

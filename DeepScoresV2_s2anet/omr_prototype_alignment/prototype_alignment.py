@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import List
 
+import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image as PImage
 from PIL.Image import Image
@@ -17,10 +18,9 @@ from shapely.geometry import Polygon
 from skimage.morphology import binary_erosion
 from tqdm import tqdm
 
-from glyph_transform import GlyphGenerator
-from optical_flow import optical_flow_merging
-from render import Render
-import matplotlib.pyplot as plt
+from DeepScoresV2_s2anet.omr_prototype_alignment.glyph_transform import GlyphGenerator, BASE_PATH
+from DeepScoresV2_s2anet.omr_prototype_alignment.optical_flow import optical_flow_merging
+from DeepScoresV2_s2anet.omr_prototype_alignment.render import Render
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 # [x_ctr,y_ctr,w,h,angle]
 
 SAMPLES = [
-    ('images/sample.png', [
+    (str(BASE_PATH / 'images' / 'sample.png'), [
         {
             'proposal': np.array([155, 242, 41, 112, 0.1105, "clefG"]),
             'gt': np.array([156, 240, 43, 116, 0.0, "clefG"])
@@ -73,8 +73,8 @@ def pad(img: Image, pad: int) -> Image:
 
 def cls_to_glyph(class_name: str, width: int, height: int, angle: float, padding: int) -> Image:
     png_data = Render(
-        class_name=class_name, height=height, width=width, csv_path='data/name_uni.csv').render(
-        'data/Bravura.svg', save_svg=False, save_png=False)
+        class_name=class_name, height=height, width=width, csv_path=str(BASE_PATH / 'data' / 'name_uni.csv')).render(
+        str(BASE_PATH / 'data' / 'Bravura.svg'), save_svg=False, save_png=False)
     with BytesIO(png_data) as bio:
         img = PImage.open(bio)
         img.load()
@@ -312,23 +312,37 @@ def visualize(crop: Image, prop_bbox: np.ndarray, gt_bbox: np.ndarray,
     img.crop((x - w // 2 - 50, y - h // 2 - 50, x + w // 2 + 50, y + h // 2 + 50)).show()
 
 
-if __name__ == '__main__':
-    for image_fp, samples in SAMPLES:
-        img = PImage.open(image_fp)
-        for sample in samples:
-            scores = []
-            det_bbox = sample['proposal']
-            prop_bbox: np.ndarray = sample['proposal'][:5].astype(np.float)
-            prop_bbox = bbox_translate(prop_bbox)
-            cls: str = sample['proposal'][5]
+def _process_single(img: Image, samples):
+    bboxes = []
+    for sample in samples:
+        scores = []
+        det_bbox = sample['proposal']
+        prop_bbox: np.ndarray = sample['proposal'][:5].astype(np.float)
+        prop_bbox = bbox_translate(prop_bbox)
+        cls: str = sample['proposal'][5]
+        if 'gt' in sample:
             gt_bbox: np.ndarray = sample['gt'][:5].astype(np.float)
-            print(f"IoU [{cls}]: ", end='')
-            for glyph in get_glyphs(cls, prop_bbox, 0):
-                new_glyph = process2(img, prop_bbox, glyph, cls)
-                derived_bbox = extract_bbox_from(glyph, prop_bbox, cls)
-                new_bbox = extract_bbox_from(new_glyph, prop_bbox, cls)
+            print(f"IoU [{cls}]: ")
+        for glyph in get_glyphs(cls, prop_bbox, 0):
+            new_glyph = process2(img, prop_bbox, glyph, cls)
+            derived_bbox = extract_bbox_from(glyph, prop_bbox, cls)
+            new_bbox = extract_bbox_from(new_glyph, prop_bbox, cls)
+            bboxes.append(new_bbox)
+            if 'gt' in sample:
                 iou = calc_loss(gt_bbox, new_bbox)
                 base_iou = calc_loss(gt_bbox, derived_bbox)
-                #visualize(img, prop_bbox, gt_bbox, glyph, new_bbox, new_glyph)
+                # visualize(img, prop_bbox, gt_bbox, glyph, new_bbox, new_glyph)
                 print(f", {iou:.3} (baseline: {base_iou:.3})", end='')
-            print()
+                print()
+
+    return bboxes
+
+
+def process(samples):
+    for img_fp, boxes in samples:
+        img = PImage.open(img_fp)
+        _process_single(img, boxes)
+
+
+if __name__ == '__main__':
+    process(SAMPLES)

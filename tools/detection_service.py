@@ -3,17 +3,18 @@ import json
 from io import BytesIO
 
 import numpy as np
-import torch
 from PIL import Image
 from flask import Flask, request, send_from_directory, Response
 from mmcv import imshow_det_bboxes
 
 from DeepScoresV2_s2anet.analyze_ensembles.wbf_rotated_boxes import rotated_weighted_boxes_fusion
+from DeepScoresV2_s2anet.omr_prototype_alignment import prototype_alignment, render
 from mmdet.apis import init_detector, inference_detector
 from mmdet.core import outputs_rotated_box_to_poly_np, poly_to_rotated_box_np, rotated_box_to_poly_np
 
 UPLOAD_FOLDER = './Patches/'
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
+ID_TO_CLASS = render.Render(0, 0, 0).id_to_class
 
 config_path = "configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
 models_checkp_paths = ["data/deepscoresV2_tugg_halfrez_crop_epoch250.pth", "data/deepscoresV2_tugg_halfrez_crop_epoch250.pth"]
@@ -49,10 +50,21 @@ class_names = (
 app = Flask(__name__)
 
 
-# TODO: if enough memory -> make maxsize = len(pretrained_models)
-@functools.lru_cache(maxsize=1)
+# TODO: if enough memory -> make maxsize = len(pretrained_models), else maxsize=1
+@functools.lru_cache(maxsize=len(models_checkp_paths))
 def _get_model(checkpoint_pth):
     return init_detector(config_path, checkpoint_pth, device='cuda:0')
+
+
+def _postprocess_bboxes(img, boxes, labels):
+    img = Image.fromarray(img)
+    proposal_list = [{'proposal': np.append(box[:5], ID_TO_CLASS[str(int(label))])} for box, label in
+                     zip(boxes, labels)]
+    processed_proposals = prototype_alignment._process_single(img, proposal_list)
+    new_boxes = np.zeros(boxes.shape)
+    new_boxes[..., :5] = np.stack(processed_proposals)
+    new_boxes[..., 5] = boxes[..., 5]
+    return new_boxes
 
 
 # enforce w to be width and h to be height
@@ -145,7 +157,10 @@ def _classification(pred_processing):
             print(f"Detected {len(boxes)} bboxes")
             boxes = bbox_translate(boxes)
 
-            # TODO Adhiraj: Add Post-Processing of boxes here!
+            # can be called with argument in url, e.g. http://myserver:5000/classify?postprocess=True
+            do_postprocessing = request.args.get("postprocess", default=False, type=lambda v: v.lower() == 'true')
+            if do_postprocessing:
+                boxes = _postprocess_bboxes(img, boxes, labels)
 
             return pred_processing(boxes, scores, labels, file, is_multimodel)
 
