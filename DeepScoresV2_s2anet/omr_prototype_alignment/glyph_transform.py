@@ -115,8 +115,8 @@ class GlyphGenerator:
 
         img2 = np.array(img)[..., 3]
         img2 = np.pad(img2, (
-        (int(np.floor(padding_left - img2.shape[0] / 2)), int(np.ceil(padding_right - img2.shape[0] / 2))),
-        (int(np.floor(padding_top - img2.shape[1] / 2)), int(np.ceil(padding_bottom - img2.shape[1] / 2)))))
+        (int(np.floor(padding_top - img2.shape[0] / 2)), int(np.ceil(padding_bottom - img2.shape[0] / 2))),
+        (int(np.floor(padding_left - img2.shape[1] / 2)), int(np.ceil(padding_right - img2.shape[1] / 2)))))
 
         return img2
 
