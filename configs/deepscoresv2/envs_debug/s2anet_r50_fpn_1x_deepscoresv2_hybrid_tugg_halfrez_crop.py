@@ -89,7 +89,7 @@ test_cfg = dict(
     nms=dict(type='nms_rotated', iou_thr=0.1),
     max_per_img=1000)
 # dataset settings
-dataset_type = 'DeepScoresV2Dataset'
+dataset_type = 'DeepScoresV2Dataset_Hybrid'
 data_root = 'data/deep_scores_dense/'
 img_norm_cfg = dict(
     mean = [240, 240, 240],
@@ -98,7 +98,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
+    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.3, p_augment=0.5, p_snp = 0.5),
     dict(type='RandomCrop', crop_size=(2000, 2000), threshold_rel=0.6, threshold_abs=200.0),
     dict(type='RotatedResize', img_scale=(1000, 1000), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
@@ -177,6 +177,6 @@ wandb_cfg = dict(
 total_epochs = 5000
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None
+load_from = '/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_hybrid_tugg_halfrez_crop/latest.pth'
 resume_from = None
 workflow = [('train', 1)]

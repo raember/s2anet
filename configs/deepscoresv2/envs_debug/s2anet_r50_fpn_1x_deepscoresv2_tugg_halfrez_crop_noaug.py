@@ -98,7 +98,6 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
     dict(type='RandomCrop', crop_size=(2000, 2000), threshold_rel=0.6, threshold_abs=200.0),
     dict(type='RotatedResize', img_scale=(1000, 1000), keep_ratio=True),
     dict(type='RotatedRandomFlip', flip_ratio=0.0),
@@ -157,7 +156,7 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     gamma = 0.5,
     step=[300, 700])
-checkpoint_config = dict(interval=50)
+checkpoint_config = dict(interval=100)
 log_config = dict(
     interval=100,
     hooks=[
@@ -169,14 +168,15 @@ wandb_cfg = dict(
     entity="tuggeluk",
     project='s2anet_scoreaug_test_env',
     dryrun=False,
-    name_prefix = ""
+    name_prefix = "no_aug"
 )
 
 
+
 # runtime settings
-total_epochs = 5000
+total_epochs = 5000 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
-resume_from = None
+resume_from = "/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop_noaug/latest.pth"
 workflow = [('train', 1)]

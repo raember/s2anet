@@ -156,7 +156,7 @@ lr_config = dict(
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
     gamma = 0.5,
-    step=[300, 700])
+    step=[300, 600, 900, 1200, 1500, 1800])
 checkpoint_config = dict(interval=50)
 log_config = dict(
     interval=100,
@@ -178,5 +178,5 @@ total_epochs = 5000
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
-resume_from = None
+resume_from = '/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop/latest.pth'
 workflow = [('train', 1)]
