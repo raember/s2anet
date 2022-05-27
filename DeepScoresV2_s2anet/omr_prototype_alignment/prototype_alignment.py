@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 # [x_ctr,y_ctr,w,h,angle]
 
 SAMPLES = [
-    (str(BASE_PATH / 'images' / 'sample.png'), [
+    ('images/sample.png', [
         {
             'proposal': np.array([155, 242, 41, 112, 0.1105, "clefG"]),
             'gt': np.array([156, 240, 43, 116, 0.0, "clefG"])
@@ -39,25 +39,25 @@ SAMPLES = [
             'proposal': np.array([513, 180, 19, 16, -0.1463, "noteheadBlackOnLine"]),
             'gt': np.array([513, 180, 19, 17, 0.0, "noteheadBlackOnLine"])
         }, {
-            'proposal': np.array([513, 163, 71, 14, 0.0841, "slur"]),
-            'gt': np.array([512, 164, 75, 18, 0.1401, "slur"])
+            'proposal': np.array([513, 163, 71, 14, -0.0841, "slur"]),
+            'gt': np.array([512, 164, 75, 18, -0.1401, "slur"])
         }, {
-            'proposal': np.array([619, 240, 16, 30, 0.8093, "rest8th"]),
+            'proposal': np.array([619, 240, 16, 28, 0.3046, "rest8th"]),
             'gt': np.array([621, 240, 17, 27, 0.0, "rest8th"])
         }, {
-            'proposal': np.array([946, 311, 32, 39, 0.1764, "dynamicF"]),
+            'proposal': np.array([947, 312, 15, 44, 0.6168, "dynamicF"]),
             'gt': np.array([948, 312, 34, 37, 0.0, "dynamicF"])
         }, {
             'proposal': np.array([985, 193, 28, 3, 0.177, "ledgerLine"]),
             'gt': np.array([987, 194, 26, 3, 0.0, "ledgerLine"])
         }, {
             'proposal': np.array([1308, 266, 98, 5, 0.0303, "beam"]),
-            'gt': np.array([1310, 266, 100, 7, -0.03434, "beam"])
+            'gt': np.array([1310, 266, 100, 7, 0.03434, "beam"])
         }, {
             'proposal': np.array([590, 311, 551, 23, -0.0208, "dynamicCrescendoHairpin"]),
             'gt': np.array([597, 311, 586, 26, 0.0, "dynamicCrescendoHairpin"])
         }, {
-            'proposal': np.array([734, 1087, 16, 43, 0.891, "flag8thDown"]),
+            'proposal': np.array([734, 1087, 16, 43, 0.491, "flag8thDown"]),
             'gt': np.array([733, 1088, 19, 44, 0.0, "flag8thDown"])
         },
     ])
