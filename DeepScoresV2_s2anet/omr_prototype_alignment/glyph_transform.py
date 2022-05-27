@@ -39,11 +39,13 @@ class_names = (
 def parse_args():
     parser = argparse.ArgumentParser(description='Glyph transformation for effective post processing')
     parser.add_argument('--class_id', help='Id of the DeepScore Class', type=int, default=5)
-    parser.add_argument('--csv_path', help='the path where name_uni.csv is stored', type=str, default=str(BASE_PATH / 'data' / 'name_uni.csv'))
+    parser.add_argument('--csv_path', help='the path where name_uni.csv is stored', type=str,
+                        default=str(BASE_PATH / 'data' / 'name_uni.csv'))
     parser.add_argument('--glyph_height', help='height of glyph', type=int, default=254)
     parser.add_argument('--glyph_width', help='width of glyph', type=int, default=236)
     parser.add_argument('--glyph_angle', help='angle of rotation of glyph', type=float, default=0.0)
-    parser.add_argument('--svg_path', help='the path where Bravura.svg is stored', type=str, default=str(BASE_PATH / 'data' / 'Bravura.svg'))
+    parser.add_argument('--svg_path', help='the path where Bravura.svg is stored', type=str,
+                        default=str(BASE_PATH / 'data' / 'Bravura.svg'))
     parser.add_argument('--padding_left', help='Length of padding on the left of glyph', type=int, default=254)
     parser.add_argument('--padding_right', help='Length of padding on the right of glyph', type=int, default=254)
     parser.add_argument('--padding_top', help='Length of padding on the top of glyph', type=int, default=254)
@@ -59,6 +61,8 @@ class GlyphGenerator:
     def __init__(self):
         self.last_class_name = None
         self.last_symbol = None
+        self.last_symbol_rotated = None
+        self.last_glyph_angle = None
 
     def get_transformed_glyph(self, class_name: str, glyph_width: int, glyph_height: int, glyph_angle: float,
                               padding_left: int, padding_right: int, padding_top: int, padding_bottom: int,
@@ -79,10 +83,10 @@ class GlyphGenerator:
         """
 
         def add_padding(img, top, right, bottom, left):
-            new_width = right + left
-            new_height = top + bottom
-            result = PImage.new(img.mode, (new_width, new_height), (0, 0, 0))
-            result.paste(img, (left, top))
+            new_width = int(right + left)
+            new_height = int(top + bottom)
+            result = PImage.new(img.mode, (new_width, new_height), (0, 0, 0, 0))
+            result.paste(img, (int(left) - img.width // 2, int(top) - img.height // 2))
             return result
 
         # Assuming the angle is not formatted, if it is comment the next line
@@ -96,34 +100,23 @@ class GlyphGenerator:
             with BytesIO(png_data) as bio:
                 img = PImage.open(bio)
                 img.load()
+                img = img.transpose(PImage.FLIP_TOP_BOTTOM)
 
             self.last_class_name = class_name
             self.last_symbol = img.copy()
 
-        img2 = img.rotate(glyph_angle * 180.0 / math.pi, PImage.BILINEAR, expand=True, fillcolor=(0, 0, 0, 0))
-        img2 = img2.transpose(PImage.FLIP_TOP_BOTTOM)
-        # img2 = add_padding(img2, padding_top, padding_right, padding_bottom, padding_left)
+        if self.last_glyph_angle == glyph_angle:
+            img = self.last_symbol_rotated
 
-        img2 = np.array(img2)
-        try:
-            img2 = np.pad(img2[..., 3], (
-            (int(np.floor(padding_left - img2.shape[0] / 2)), int(np.ceil(padding_right - img2.shape[0] / 2))),
-            (int(np.floor(padding_top - img2.shape[1] / 2)), int(np.ceil(padding_bottom - img2.shape[1] / 2)))))
-        except ValueError as e:
-            import matplotlib.pyplot as plt
-            from matplotlib.patches import Rectangle
+        else:
+            img = img.rotate(glyph_angle * 180.0 / math.pi, PImage.BILINEAR, expand=True, fillcolor=(0, 0, 0, 0))
+            self.last_symbol_rotated = img.copy()
+            self.last_glyph_angle = glyph_angle
 
-            print("Image-Shape:", img2.shape, "Padding Left:", padding_left, "Padding Right:", padding_right, "Padding Top:", padding_top, "Padding Bottom:", padding_bottom)
-
-            plt.imshow(img2, cmap="gray")
-
-            plt.title(f"Width: {glyph_width}, Height: {glyph_height}")
-
-            plt.tight_layout()
-            plt.grid()
-            plt.show()
-
-            print(e)
+        img2 = np.array(img)[..., 3]
+        img2 = np.pad(img2, (
+        (int(np.floor(padding_left - img2.shape[0] / 2)), int(np.ceil(padding_right - img2.shape[0] / 2))),
+        (int(np.floor(padding_top - img2.shape[1] / 2)), int(np.ceil(padding_bottom - img2.shape[1] / 2)))))
 
         return img2
 

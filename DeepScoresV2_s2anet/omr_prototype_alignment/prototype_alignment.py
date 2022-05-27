@@ -1,4 +1,5 @@
 import math
+import time
 import warnings
 from datetime import datetime
 from io import BytesIO
@@ -147,7 +148,7 @@ def extract_bbox_from(glyph: Image, prop_bbox: np.ndarray, cls: str) -> np.ndarr
 #    return np.zeros((padding_left + padding_right, padding_top + padding_bottom))
 
 def get_roi(img, bbox):
-    area_size = (np.sqrt(bbox[2] ** 2 + bbox[3] ** 2) + 50) / 2 + 20
+    area_size = (np.sqrt(bbox[2] ** 2 + bbox[3] ** 2)) / 2 + 20
     x_min, x_max = int(max(0, np.floor(bbox[0] - area_size))), int(min(img.shape[1], np.ceil(bbox[0] + area_size)))
     y_min, y_max = int(max(0, np.floor(bbox[1] - area_size))), int(min(img.shape[0], np.ceil(bbox[1] + area_size)))
 
@@ -196,9 +197,6 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
     widths = range(orig_width, orig_width + 3)
     heights = range(orig_height, orig_height + 3)
 
-    # n_tests = len(angles) * len(x_shifts) * len(y_shifts) * len(widths) * len(heights)
-    # print("Number of tests:", n_tests, "Estimated duration", n_tests * 0.00023)
-
     assert len(x_shifts) > 0 and len(y_shifts) > 0
 
     imgs, i = [], 0
@@ -212,9 +210,9 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
                 for width in widths:
                     for height in heights:
                         padding_left = x_shift
-                        padding_right = img_roi.shape[0] - padding_left
+                        padding_right = img_roi.shape[1] - padding_left
                         padding_top = y_shift
-                        padding_bottom = img_roi.shape[1] - padding_top
+                        padding_bottom = img_roi.shape[0] - padding_top
 
                         proposed_glyph = glyph.get_transformed_glyph(cls, width, height, angle, padding_left,
                                                                      padding_right, padding_top, padding_bottom)
@@ -349,4 +347,6 @@ def process(samples):
 
 
 if __name__ == '__main__':
+    start = time.time()
     process(SAMPLES)
+    print(time.time()-start)  # Pillow-SMID 25.3835 vs. 31.33
