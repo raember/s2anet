@@ -254,6 +254,10 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
 
     return PImage.fromarray(best_glyph)
 
+def process_simple(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False) -> Image:
+
+    return glyph
+
 
 def process(img: Image, bbox: np.ndarray, glyph: Image, cls: str) -> Image:
     if len(bbox) == 0:
@@ -316,19 +320,30 @@ def visualize(crop: Image, prop_bbox: np.ndarray, gt_bbox: np.ndarray,
     img.crop((x - w // 2 - 50, y - h // 2 - 50, x + w // 2 + 50, y + h // 2 + 50)).show()
 
 
-def _process_single(img: Image, samples):
+def _process_single(img: Image, samples, whitelist=[]):
     bboxes = []
+
     for sample in samples:
         scores = []
         det_bbox = sample['proposal']
         prop_bbox: np.ndarray = sample['proposal'][:5].astype(np.float)
         prop_bbox = bbox_translate(prop_bbox)
+
         cls: str = sample['proposal'][5]
+        if len(whitelist) > 0:
+            if len([x for x in whitelist if x in cls]) < 1:
+                print("cont on: "+cls)
+                bboxes.append(sample['proposal'][:-1])
+                continue
+
+        print("process: "+cls)
         if 'gt' in sample:
             gt_bbox: np.ndarray = sample['gt'][:5].astype(np.float)
             print(f"IoU [{cls}]: ")
         for glyph in get_glyphs(cls, prop_bbox, 0):
-            new_glyph = process2(img, prop_bbox, glyph, cls)
+            #new_glyph = process2(img, prop_bbox, glyph, cls)
+            new_glyph = process_simple(img, prop_bbox, glyph, cls)
+
             derived_bbox = extract_bbox_from(glyph, prop_bbox, cls)
             new_bbox = extract_bbox_from(new_glyph, prop_bbox, cls)
             bboxes.append(new_bbox)

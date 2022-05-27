@@ -17,10 +17,12 @@ ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
 ID_TO_CLASS = render.Render(0, 0, 0).id_to_class
 
 config_path = "configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
-models_checkp_paths = ["data/deepscoresV2_tugg_halfrez_crop_epoch250.pth", "data/deepscoresV2_tugg_halfrez_crop_epoch250.pth"]
+# models_checkp_paths = ["data/deepscoresV2_tugg_halfrez_crop_epoch250.pth", "data/deepscoresV2_tugg_halfrez_crop_epoch250.pth"]
 
 # config_path = "s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
 # models_checkp_paths = ["aug_epoch_2000.pth"]
+models_checkp_paths = ["/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_hybrid_tugg_halfrez_nocrop_finalize_snp/latest.pth"]
+
 
 class_names = (
     'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
@@ -47,6 +49,9 @@ class_names = (
     'tuplet7', 'tuplet8', 'tuplet9', 'tupletBracket', 'staff', 'ottavaBracket'
 )
 
+
+
+
 app = Flask(__name__)
 
 
@@ -58,9 +63,8 @@ def _get_model(checkpoint_pth):
 
 def _postprocess_bboxes(img, boxes, labels):
     img = Image.fromarray(img)
-    proposal_list = [{'proposal': np.append(box[:5], ID_TO_CLASS[str(int(label))])} for box, label in
-                     zip(boxes, labels)]
-    processed_proposals = prototype_alignment._process_single(img, proposal_list)
+    proposal_list = [{'proposal': np.append(box[:5], class_names[int(label)+1])} for box, label in zip(boxes, labels)]
+    processed_proposals = prototype_alignment._process_single(img, proposal_list, whitelist=["key", "clef", "accidental"])
     new_boxes = np.zeros(boxes.shape)
     new_boxes[..., :5] = np.stack(processed_proposals)
     new_boxes[..., 5] = boxes[..., 5]
