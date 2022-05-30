@@ -11,16 +11,20 @@ from PIL import Image as PImage
 from PIL.Image import Image
 from PIL.ImageChops import invert
 from PIL.ImageDraw import Draw
-from PIL.ImageOps import grayscale
+from PIL.ImageOps import grayscale, flip
 from matplotlib import cm
 from shapely.affinity import rotate
 from shapely.geometry import Polygon
 from skimage.morphology import binary_erosion
 from tqdm import tqdm
+import cv2 as cv
+from matplotlib import pyplot as plt
 
 from DeepScoresV2_s2anet.omr_prototype_alignment.glyph_transform import GlyphGenerator, BASE_PATH
 from DeepScoresV2_s2anet.omr_prototype_alignment.optical_flow import optical_flow_merging
 from DeepScoresV2_s2anet.omr_prototype_alignment.render import Render
+
+from mmdet.core import rotated_box_to_poly_np
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -254,9 +258,71 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
 
     return PImage.fromarray(best_glyph)
 
-def process_simple(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False) -> Image:
+def process_simple(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False, padding = 20) -> Image:
 
-    return glyph
+    if len(bbox) == 0:
+        return
+
+    img_np = np.array(img.convert('L'))
+
+    padding_dicts = {'clef': (20, 20), 'accidental': (5, 5), 'notehead': (5, 5), 'key': (5, 5)}
+    padding = padding_dicts[[key for key in padding_dicts.keys() if key in cls ][0]]
+
+    poly = rotated_box_to_poly_np(np.expand_dims(bbox, 0))[0]
+    y_min, y_max = max(int(np.min(poly[1::2])-padding[0]), 0), min(int(np.max(poly[1::2])+padding[0]), img_np.shape[0])
+    x_min, x_max = max(int(np.min(poly[::2])-padding[0]), 0), min(int(np.max(poly[::2])+padding[0]), img_np.shape[1])
+
+    needs_flip = ['clefF']
+    if cls in needs_flip:
+        glyph_orig = np.array(flip(glyph))
+    else:
+        glyph_orig = np.array(glyph)
+
+    img_roi = img_np[y_min:y_max, x_min:x_max]
+    img_roi = 255 - img_roi # invert
+    #img_region = PImage.fromarray(img_roi)
+
+    best_box, best_overlap = None, -1
+
+    #dimensions = np.arange(0.8, 1.205, 0.05)
+    dimensions = [1]
+    for dimension in dimensions:
+        w, h = np.array(glyph_orig.shape[::-1]) * dimension
+        current_glyph = cv.resize(glyph_orig,(int(w),int(h)))
+        # All the 6 methods for comparison in a list
+        #methods = ['cv.TM_CCOEFF', 'cv.TM_CCOEFF_NORMED', 'cv.TM_CCORR',
+        #            'cv.TM_CCORR_NORMED', 'cv.TM_SQDIFF', 'cv.TM_SQDIFF_NORMED']
+        methods = ['cv.TM_CCORR_NORMED']
+        for meth in methods:
+            img_roi_copy = img_roi.copy()
+            method = eval(meth)
+            # Apply template Matching
+            res = cv.matchTemplate(img_roi_copy, current_glyph, method)
+            min_val, max_val, min_loc, max_loc = cv.minMaxLoc(res)
+            # If the method is TM_SQDIFF or TM_SQDIFF_NORMED, take minimum
+            if method in [cv.TM_SQDIFF, cv.TM_SQDIFF_NORMED]:
+                top_left = min_loc
+            else:
+                top_left = max_loc
+
+
+            if max_val > best_overlap:
+                best_overlap = max_val
+                global_topleft = bbox[0:2]+(np.array(top_left)-np.array(padding))
+                best_box = tuple(global_topleft)+(int(w), int(h), 0)
+
+            # bottom_right = (top_left[0] + int(w), top_left[1] + int(h))
+            # cv.rectangle(img_roi_copy, top_left, bottom_right, 255, 2)
+            # plt.subplot(131), plt.imshow(res, cmap='gray')
+            # plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
+            # plt.subplot(132), plt.imshow(img_roi_copy, cmap='gray')
+            # plt.title('Detected Point' + str(max_val)), plt.xticks([]), plt.yticks([])
+            # plt.subplot(133), plt.imshow(current_glyph, cmap='gray')
+            # plt.title('Glyph'), plt.xticks([]), plt.yticks([])
+            # plt.suptitle(meth)
+            # plt.show()
+
+    return np.array(best_box)
 
 
 def process(img: Image, bbox: np.ndarray, glyph: Image, cls: str) -> Image:
@@ -345,7 +411,11 @@ def _process_single(img: Image, samples, whitelist=[]):
             new_glyph = process_simple(img, prop_bbox, glyph, cls)
 
             derived_bbox = extract_bbox_from(glyph, prop_bbox, cls)
-            new_bbox = extract_bbox_from(new_glyph, prop_bbox, cls)
+
+            if isinstance(new_glyph, np.ndarray):
+                new_bbox = new_glyph
+            else:
+                new_bbox = extract_bbox_from(new_glyph, prop_bbox, cls)
             bboxes.append(new_bbox)
             if 'gt' in sample:
                 iou = calc_loss(gt_bbox, new_bbox)

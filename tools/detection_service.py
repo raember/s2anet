@@ -21,7 +21,7 @@ config_path = "configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_
 
 # config_path = "s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
 # models_checkp_paths = ["aug_epoch_2000.pth"]
-models_checkp_paths = ["/home/ubuntu/conda_based_run/s2anet/work_dirs/s2anet_r50_fpn_1x_deepscoresv2_hybrid_tugg_halfrez_nocrop_finalize_snp/latest.pth"]
+models_checkp_paths = ["/home/tugg/Documents/RealScores/s2anet/detection_service/hybrid_nocrop_finalize_snp_epoch150.pth"]
 
 
 class_names = (
@@ -64,7 +64,7 @@ def _get_model(checkpoint_pth):
 def _postprocess_bboxes(img, boxes, labels):
     img = Image.fromarray(img)
     proposal_list = [{'proposal': np.append(box[:5], class_names[int(label)+1])} for box, label in zip(boxes, labels)]
-    processed_proposals = prototype_alignment._process_single(img, proposal_list, whitelist=["key", "clef", "accidental"])
+    processed_proposals = prototype_alignment._process_single(img, proposal_list, whitelist=["key", "clef", "accidental", "notehead"])
     new_boxes = np.zeros(boxes.shape)
     new_boxes[..., :5] = np.stack(processed_proposals)
     new_boxes[..., 5] = boxes[..., 5]
