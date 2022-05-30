@@ -220,11 +220,11 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
                         if store_video and i % 100 == 0:
                             img = img_roi.copy()
                             img = img * 1
-                            img[proposed_glyph > 128] = 2
+                            img[proposed_glyph] = 2
                             imgs.append(img)
                         i += 1
 
-                        overlap = np.average(img_roi[proposed_glyph > 128])
+                        overlap = np.average(img_roi[proposed_glyph])
                         if overlap > best_overlap:
                             best_overlap = overlap
                             best_glyph = proposed_glyph
@@ -240,7 +240,7 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
     if store_video:
         img = img_roi.copy()
         img = img * 1
-        img[best_glyph > 128] = 2
+        img[best_glyph] = 2
         imgs.append(img)
         generate_video(imgs)
 
@@ -349,4 +349,4 @@ def process(samples):
 if __name__ == '__main__':
     start = time.time()
     process(SAMPLES)
-    print(time.time()-start)  # Pillow-SMID 25.3835 vs. 31.33
+    print(time.time()-start)

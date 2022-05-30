@@ -106,6 +106,8 @@ class GlyphGenerator:
                     img = PImage.open(bio)
                     img.load()
                     img = img.transpose(PImage.FLIP_TOP_BOTTOM)
+                    img = np.array(img)[..., 3]
+                    img = img > 128
                 np.save(str(cache_fp), img)
 
             self.last_class_name = class_name
@@ -115,14 +117,14 @@ class GlyphGenerator:
             img = self.last_symbol_rotated
 
         else:
-            img = np.array(img)[..., 3]
             img = rotate(img, angle=glyph_angle * 180.0 / math.pi)
             self.last_symbol_rotated = img.copy()
             self.last_glyph_angle = glyph_angle
 
-        img2 = np.pad(img, (
-            (int(np.floor(padding_top - img.shape[0] / 2)), int(np.ceil(padding_bottom - img.shape[0] / 2))),
-            (int(np.floor(padding_left - img.shape[1] / 2)), int(np.ceil(padding_right - img.shape[1] / 2)))))
+        # custom padding - faster than numpy.pad
+        img2 = np.zeros((int(padding_top+padding_bottom), int(padding_left + padding_right)), dtype="bool")
+        offsets = np.where(img)
+        img2[offsets[0] + int(math.floor(padding_top - img.shape[0] / 2)), offsets[1] + int(math.floor(padding_left - img.shape[1] / 2))] = True
 
         return img2
 
