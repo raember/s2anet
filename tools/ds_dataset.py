@@ -12,7 +12,7 @@ from mmdet.core import rotated_box_to_poly_single
 from obb_anns import OBBAnns
 
 MAIN_ANN_FILE = Path('data/deep_scores_dense/imslp_test.json')
-DELETE_ENTRIES = False
+DELETE_ENTRIES = True
 VISUALIZE = True
 CREATE_TAR = True
 NEW_ANNS = {
@@ -24,6 +24,11 @@ NEW_ANNS = {
     'in/grieg-peer-gynt-suite-no-1-op-46-piano#2.png': 'in/grieg-peer-gynt-suite-no-1-op-46-piano#2.V2.json',
     'in/grieg-peer-gynt-suite-no-1-op-46-piano#3.png': 'in/grieg-peer-gynt-suite-no-1-op-46-piano#3.V2.json',
     'in/IMSLP529977#4.png': 'in/IMSLP529977#4.V2.json',
+    'in/SixGrandesSonates#1.png': 'in/SixGrandesSonates#1.V2.json',
+    'in/SixGrandesSonates#2.png': 'in/SixGrandesSonates#2.V2.json',
+    'in/SixGrandesSonates#3.png': 'in/SixGrandesSonates#3.V2.json',
+    'in/pianoSonata#2.png': 'in/pianoSonata#2.V2.json',
+    'in/pianoSonata#3.png': 'in/pianoSonata#3.V2.json',
 }
 ANN_OUT_FILE = Path('data/deep_scores_dense/imslp_test_new.json')
 VISUALIZATION_OUT_FOLDER = Path(f"out_{MAIN_ANN_FILE.stem}")
