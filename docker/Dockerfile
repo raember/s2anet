@@ -73,7 +73,7 @@ ENV MMCV_WITH_OPS=1
 RUN pip install -e /mmcv
 
 # Install Pillow-SIMD
-RUN pip uninstall pillow
+RUN pip uninstall pillow -y
 RUN CC="cc -mavx2" pip install -U --force-reinstall pillow-simd
 
 # Setup s2anet for disk sharing
