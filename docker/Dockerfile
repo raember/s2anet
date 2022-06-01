@@ -1,6 +1,10 @@
-ARG PYTORCH="1.3.0"
-ARG CUDA="10.0"
-ARG CUDNN="7"
+ARG PYTORCH="1.8.0"
+ARG CUDA="11.1"
+ARG CUDNN="8"
+
+#ARG PYTORCH="1.3.0"
+#ARG CUDA="10.0"
+#ARG CUDNN="7"
 
 FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
 
@@ -8,9 +12,14 @@ ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
 ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
 ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
 
-RUN apt-get update && apt-get install -y curl ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 swig \
+RUN apt-get update && apt-get install -y curl wget apt-transport-https ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 swig \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+RUN apt-key del 7fa2af80
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb
+RUN dpkg -i cuda-keyring_1.0-1_all.deb
+
 #RUN conda clean --all
 #RUN conda install cython
 

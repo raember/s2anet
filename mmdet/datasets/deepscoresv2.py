@@ -234,10 +234,10 @@ thresholds = {
     # int/float: absolute threshold
     # If high value first: Inverted threshold (mainly used for angles)
     #   Area,           Angle,          L1,         L2,         Ratio           # Class name
-    1:  ((1000, 30000), angle_thr_def,  (5, 50),    (10, 600),  (7, 50)),       # brace
+    1:  ((1000, 30000), (85, 5),        (5, 50),    (10, 600),  (7, 50)),       # brace
     2:  ((23, 258),     (90, 0),        (1, 5),     (17, 100),  (5, 100)),      # ledgerLine
     3:  ((20, 90),      None,           (4, 10),    (4, 13),    (1, 1.7)),      # repeatDot
-    4:  ((1500, 9000),  angle_thr_def,  (25, 90),   (30, 110),  (1, 1.7)),      # segno
+    4:  ((1500, 9000),  (85, 5),        (25, 90),   (30, 110),  (1, 1.7)),      # segno
     5:  ((1000, 9000),  None,           (25, 90),   (30, 110),  (1, 1.5)),      # code
     6:  ((2500, 6500),  (75, 20),       (25, 50),   (70, 150),  (2, 3.5)),      # clefG
     7:  ((1500, 5000),  (0, 4),         (25, 50),   (40, 100),  (1.3, 2.1)),    # clefCAlto
