@@ -6,8 +6,9 @@ import os
 import os.path as osp
 import shutil
 import tempfile
+from functools import lru_cache
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, List
 
 import mmcv
 import numpy as np
@@ -16,6 +17,7 @@ import torch
 import torch.distributed as dist
 from dateutil.parser import parse
 from matplotlib import pyplot as plt
+from mmcv import DataLoader, Config
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import get_dist_info, load_checkpoint, _load_checkpoint
 from pandas import DataFrame
@@ -170,6 +172,37 @@ def parse_args():
     return args
 
 
+def config_from_str(cfg_str: str, path: Path = None) -> Config:
+    if path is None:
+        path = Path(cfg_str.splitlines()[0])
+    if cfg_str.startswith(str(path)):
+        cfg_str = cfg_str[len(str(path))+1:]
+    with tempfile.NamedTemporaryFile('w', suffix='.py') as fp:
+        fp.write(cfg_str)
+        fp.seek(0)
+        config = Config.fromfile(fp.name)
+        cfg_txt = str(config.text).replace(fp.name + "\n", '')
+    return Config(getattr(config, '_cfg_dict'), cfg_txt, str(path))
+
+
+@lru_cache()
+def get_test_sets(config: Config, dataset_type: str, distributed: bool, *test_sets: Path) -> List[DataLoader]:
+    data_loaders = []
+    for path in test_sets:
+        assert path.exists(), f"Test set does not exist at {str(path)}"
+        tds = config.data.test.deepcopy()
+        tds.ann_file = str(path)
+        tds.type = dataset_type
+        data_loaders.append(build_dataloader(
+            build_dataset(tds),
+            imgs_per_gpu=1,
+            workers_per_gpu=config.data.workers_per_gpu,
+            dist=distributed,
+            shuffle=False
+        ))
+    return data_loaders
+
+
 def main():
     args = parse_args()
 
@@ -197,27 +230,10 @@ def main():
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
-    data_loaders = []
     if args.test_sets is not None:
-        for path in map(Path, args.test_sets):
-            assert path.exists(), f"Test set does not exist at {str(path)}"
-            tds =  cfg.data.test.deepcopy()
-            tds.ann_file = str(path)
-            data_loaders.append(build_dataloader(
-                build_dataset(tds),
-                imgs_per_gpu=1,
-                workers_per_gpu=cfg.data.workers_per_gpu,
-                dist=distributed,
-                shuffle=False
-            ))
+        test_sets = list(map(Path, args.test_sets))
     else:
-        data_loaders.append(build_dataloader(
-            build_dataset(cfg.data.test),
-            imgs_per_gpu=1,
-            workers_per_gpu=cfg.data.workers_per_gpu,
-            dist=distributed,
-            shuffle=False
-        ))
+        test_sets = [Path(args.test_sets)]
 
     out_folder = Path('eval')
     proposals_fp = Path(args.out)
@@ -226,23 +242,64 @@ def main():
 
     index = []
     stats = {'samples': []}
-    stats.update({key: [] for key in data_loaders[0].dataset.CLASSES})
+    stats.update({key: [] for key in get_test_sets(cfg, cfg.dataset_type, distributed, *test_sets)[0].dataset.CLASSES})
 
-    overlaps = np.arange(0.1, 0.96, 0.05)
-    overlap = overlaps[np.isclose(overlaps, args.overlap)].tolist()[0]
-    outputs_m = {}
-    metrics = {}
+    # Make sure we only use the best epochs for each config
+    checkpoints = {}
     for checkpoint_file in map(Path, args.checkpoints):
-        # build the model and load checkpoint
+        if not checkpoint_file.exists():
+            print(f"!!! Checkpoint file {str(checkpoint_file)} does not exist")
+            continue
         model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
         fp16_cfg = cfg.get('fp16', None)
         if fp16_cfg is not None:
             wrap_fp16_model(model)
 
-        outputs_m[checkpoint_file] = {}
-        checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
+        try:
+            checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
+        except RuntimeError as e:
+            print(f"!!! Failed loading checkpoint {str(checkpoint_file)}: {e}")
+            continue
+
         cfg_str = checkpoint['meta']['config']
-        config_file = Path(cfg_str.splitlines()[0])
+        chkp_cfg = config_from_str(cfg_str)
+        config_file = Path(chkp_cfg.filename)
+        parents = [config_file.name]
+        for parent in config_file.parents:
+            parents.append(parent.name)
+            if parent.name == 'configs':
+                break
+            if parent.name == '/':
+                raise Exception("Did not find configs dir")
+        config_file = Path(*reversed(parents))
+
+        other_ckpnt_file, other_ckpnt, other_model = checkpoints.get(str(config_file), (None, None, None))
+        if other_ckpnt is not None and int(other_ckpnt['meta']['epoch']) >= int(checkpoint['meta']['epoch']):
+            checkpoint_file, checkpoint, model = other_ckpnt_file, other_ckpnt, other_model
+        checkpoints[str(config_file)] = checkpoint_file, checkpoint, model
+
+    overlaps = np.arange(0.1, 0.96, 0.05)
+    overlap = overlaps[np.isclose(overlaps, args.overlap)].tolist()[0]
+    outputs_m = {}
+    metrics = {}
+    got_all_ds_names = False
+    dataset_names = []
+    for config_file, (checkpoint_file, checkpoint, model) in checkpoints.items():
+        # # build the model and load checkpoint
+        # model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+        # fp16_cfg = cfg.get('fp16', None)
+        # if fp16_cfg is not None:
+        #     wrap_fp16_model(model)
+        #
+        # outputs_m[checkpoint_file] = {}
+        # try:
+        #     checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
+        # except RuntimeError as e:
+        #     raise Exception(f"Failed loading checkpoint {str(checkpoint_file)}: {e}")
+        checkpoint_file = Path(checkpoint_file)
+        cfg_str = checkpoint['meta']['config']
+        chkp_cfg = config_from_str(cfg_str)
+        config_file = Path(chkp_cfg.filename)
         assert config_file.suffix == '.py'
         epoch = checkpoint['meta']['epoch']
         time = parse(checkpoint['meta']['time'])
@@ -260,7 +317,9 @@ def main():
             new_chkpnt.unlink()
         new_chkpnt.symlink_to(os.path.relpath(checkpoint_file, new_chkpnt.parent))
 
-        for data_loader in data_loaders:
+        for data_loader in get_test_sets(cfg, chkp_cfg.data.test.type, distributed, *test_sets):
+            if not got_all_ds_names:
+                dataset_names.append(data_loader.dataset.obb.dataset_info['description'])
             stats['samples'].append(len(data_loader.dataset.img_ids))
             ann_file = Path(data_loader.dataset.ann_file)
             print(f"==> Selecting dataset: {ann_file.stem}")
@@ -276,6 +335,7 @@ def main():
                 model.CLASSES = data_loader.dataset.CLASSES
 
             pkl_fp = result_folder / proposals_fp
+            outputs_m[checkpoint_file] = {}
             if not pkl_fp.exists() or not args.cache:
                 pkl_fp.parent.mkdir(exist_ok=True)
                 print(f"===> Testing model on {ann_file.stem}")
@@ -339,7 +399,7 @@ def main():
                 print(f'===> Reading calculated metrics from {str(metrics_fp)}')
                 metrics = mmcv.load(metrics_fp)
 
-                if result_file is not None:
+                if result_file is not None and not (result_folder / 'proposal_stats.csv').exists():
                     print(f"===> Calculating statistics for results")
                     with open(result_file, 'r') as fp:
                         proposals = json.load(fp)
@@ -374,6 +434,7 @@ def main():
                         for name in outputs_m[checkpoint_file][data_loader][0]:
                             outputs_ = [out[name] for out in outputs_m[checkpoint_file][data_loader]]
                             results2json(data_loader.dataset, outputs_, result_file.with_suffix(f'.{name}{result_file.suffix}'))
+        got_all_ds_names = True
     eval_fp = out_folder / 'eval.csv'
     print(f"=> Saving stats to {eval_fp}")
     stat_df = DataFrame(stats, index=index)
@@ -387,9 +448,8 @@ def main():
         'keys': {'keyFlat', 'keyNatural', 'keySharp'},
         'rests': {'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th', 'rest32nd', 'rest64th', 'rest128th'},
         'beams': {'beam'},
-        'all classes': set(data_loaders[0].dataset.CLASSES)
+        'all classes': set(data_loader.dataset.CLASSES)
     }
-    dataset_names = list(map(lambda dsl: dsl.dataset.obb.dataset_info['description'], data_loaders))
     n_datasets = len(dataset_names)
     chkpnt_names = [s.split(' - ')[0] for s in stat_df.index[::n_datasets]]
     for name, classes in CLASSES.items():
