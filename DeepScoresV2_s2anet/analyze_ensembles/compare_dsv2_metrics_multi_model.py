@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument(
         '--wbf',
         type=str,
-        default="work_dirs/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop/analyze_BE_output/deepscores_ensemble_metrics.pkl",
+        default=None,
         help="Path to the result JSON of the WBF algorithm")
     return parser.parse_args()
 
@@ -58,26 +58,27 @@ def get_np_arrays(evaluations_folder):
     all_classes = set().union(*(d.keys() for d in error_metrics))
 
     # Create dummy dict for missing classes
-    dummy_dict = {0.5: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
-                  0.55: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
-                  0.6000000000000001: {'ap': 0.0, 'precision': 0.0,
-                                       'recall': 0.0},
-                  0.6500000000000001: {'ap': 0.0, 'precision': 0.0,
-                                       'recall': 0.0},
-                  0.7000000000000002: {'ap': 0.0, 'precision': 0.0,
-                                       'recall': 0.0},
-                  0.7500000000000002: {'ap': 0.0, 'precision': 0.0,
-                                       'recall': 0.0},
-                  0.8000000000000003: {'ap': 0.0, 'precision': 0.0,
-                                       'recall': 0.0},
-                  0.8500000000000003: {'ap': 0.0, 'precision': 0.0,
-                                       'recall': 0.0},
-                  0.9000000000000004: {'ap': 0.0, 'precision': 0.0,
-                                       'recall': 0.0},
-                  0.9500000000000004: {'ap': 0.0, 'precision': 0.0,
-                                       'recall': 0.0},
-                  'no_occurences': 0
-                  }
+    dummy_dict = {
+        0.1: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.15: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.2: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.25: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.3: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.35: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.4: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.45: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.5: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.55: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.6: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.65: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.7: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.75: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.8: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.85: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.9: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        0.95: {'ap': 0.0, 'precision': 0.0, 'recall': 0.0},
+        'no_occurences': 0
+    }
 
     # Get np arrays for each ensemble member
     np_arrays = []
@@ -94,20 +95,20 @@ def get_np_arrays(evaluations_folder):
             if symbol in error_metrics[i].keys():
                 metrics = error_metrics[i][symbol]
                 for overlap, ap in metrics.items():
+                    overlap_r = round(overlap, 2) if isinstance(overlap, float) else overlap
                     if isinstance(ap, dict):
-                        metrics_df[overlap][symbol] = ap['ap']
-
+                        metrics_df[overlap_r][symbol] = ap['ap']
                     else:
-                        metrics_df[overlap][symbol] = ap
+                        metrics_df[overlap_r][symbol] = ap
 
             else:
                 metrics = dummy_dict
-
                 for overlap, ap in metrics.items():
+                    overlap_r = round(overlap, 2) if isinstance(overlap, float) else overlap
                     if isinstance(ap, dict):
-                        metrics_df[overlap][symbol] = ap['ap']
+                        metrics_df[overlap_r][symbol] = ap['ap']
                     else:
-                        metrics_df[overlap][symbol] = ap
+                        metrics_df[overlap_r][symbol] = ap
 
         np_arrays.append(metrics_df.to_numpy())
 

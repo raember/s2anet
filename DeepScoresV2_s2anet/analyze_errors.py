@@ -43,6 +43,7 @@ def create_dframe(error_metrics):
     for name, values in error_metrics.items():
         row_names = list(values.keys())
         column_names = list(values[row_names[0]].keys())
+        column_names = [round(cn, 2) if isinstance(cn, float) else cn for cn in column_names]
 
         metrics_df = pa.DataFrame(np.zeros((len(row_names), len(column_names))))
         metrics_df.index = row_names
@@ -50,10 +51,11 @@ def create_dframe(error_metrics):
 
         for symbol, metrics in values.items():
             for overlap, ap in metrics.items():
+                overlap_r = round(overlap, 2) if isinstance(overlap, float) else overlap
                 if isinstance(ap, dict):
-                    metrics_df[overlap][symbol] = ap['ap']
+                    metrics_df[overlap_r][symbol] = ap['ap']
                 else:
-                    metrics_df[overlap][symbol] = ap
+                    metrics_df[overlap_r][symbol] = ap
 
         dframes[name] = metrics_df
 
