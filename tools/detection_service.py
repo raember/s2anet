@@ -3,23 +3,24 @@ import json
 from io import BytesIO
 
 import numpy as np
-import torch
 from PIL import Image
-from flask import Flask, request, send_from_directory, Response, make_response
+from flask import Flask, request, send_from_directory, Response
 from mmcv import imshow_det_bboxes
 
 from DeepScoresV2_s2anet.analyze_ensembles.wbf_rotated_boxes import rotated_weighted_boxes_fusion
+from DeepScoresV2_s2anet.omr_prototype_alignment import prototype_alignment, render
 from mmdet.apis import init_detector, inference_detector
 from mmdet.core import outputs_rotated_box_to_poly_np, poly_to_rotated_box_np, rotated_box_to_poly_np
 
 UPLOAD_FOLDER = './Patches/'
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
+ID_TO_CLASS = render.Render(0, 0, 0).id_to_class
 
 config_path = "configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
-models_checkp_paths = ["checkpoint.pth"]
+models_checkp_paths = ["data/deepscoresV2_tugg_halfrez_crop_epoch250.pth", "data/deepscoresV2_tugg_halfrez_crop_epoch250.pth"]
 
-#config_path = "s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
-#models_checkp_paths = ["aug_epoch_2000.pth"]
+# config_path = "s2anet_r50_fpn_1x_deepscoresv2_tugg_halfrez_crop.py"
+# models_checkp_paths = ["aug_epoch_2000.pth"]
 
 class_names = (
     'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
@@ -49,26 +50,43 @@ class_names = (
 app = Flask(__name__)
 
 
-# TODO: if enough memory -> make maxsize = len(pretrained_models)
-@functools.lru_cache(maxsize=1)
+# TODO: if enough memory -> make maxsize = len(pretrained_models), else maxsize=1
+@functools.lru_cache(maxsize=len(models_checkp_paths))
 def _get_model(checkpoint_pth):
     return init_detector(config_path, checkpoint_pth, device='cuda:0')
 
 
-def _get_detections_from_pred(predictions):
-    detect_list = []
-    bboxes, classes = predictions[0][1][0]
-
-    for bbox, class_id in zip(bboxes, classes):
-        out = list(map(int, map(torch.round, bbox)))
-        out[4] = float(torch.round(bbox[4] * 10000)) / 10000  # Torch version 1.8.0 does not support decimals
-        out[5] = class_names[int(class_id) + 1]
-        detect_list.append(out)
-
-    return detect_list
+def _postprocess_bboxes(img, boxes, labels):
+    img = Image.fromarray(img)
+    proposal_list = [{'proposal': np.append(box[:5], class_names[int(label) + 1])} for box, label in zip(boxes, labels)]
+    processed_proposals = prototype_alignment._process_single(img, proposal_list,
+                                                              whitelist=["key", "clef", "accidental", "notehead"])
+    new_boxes = np.zeros(boxes.shape)
+    new_boxes[..., :5] = np.stack(processed_proposals)
+    # new_boxes[..., 5] = boxes[..., 5]
+    return new_boxes
 
 
-def _get_detections_from_pred_multimodel(predictions):
+# enforce w to be width and h to be height
+def bbox_translate(det_boxes):
+    for det in det_boxes:
+        if det[4] > np.pi / 4:
+            det[4] = det[4] - np.pi / 2
+            store = det[2]
+            det[2] = det[3]
+            det[3] = store
+
+    return det_boxes
+
+
+def unravel_predictions(predictions):
+    boxes = predictions[0][1][0][0].cpu().numpy()
+    labels = predictions[0][1][0][1].cpu().numpy()
+
+    return boxes, labels
+
+
+def _apply_wbf(predictions):
     boxes, scores, labels = [], [], []
 
     predictions = [outputs_rotated_box_to_poly_np([x[0]])[0] for x in predictions]
@@ -85,10 +103,23 @@ def _get_detections_from_pred_multimodel(predictions):
 
     boxes, scores, labels = rotated_weighted_boxes_fusion(boxes, scores, labels,
                                                           weights=None, iou_thr=0.3, skip_box_thr=0.00001)
-    boxes = poly_to_rotated_box_np(boxes)
 
-    # TODO: add postprocessing stem & ledgerLine ? -> currently under development
+    return boxes, scores, labels
 
+
+def _get_detections_from_pred(bboxes, labels):
+    detect_list = []
+
+    for bbox, class_id in zip(bboxes, labels):
+        out = list(map(int, map(round, bbox)))
+        out[4] = round(float(bbox[4]), 4)
+        out[5] = class_names[int(class_id) + 1]
+        detect_list.append(out)
+
+    return detect_list
+
+
+def _get_detections_from_pred_multimodel(boxes, scores, labels):
     detect_list = []
     labels_str = [class_names[int(id_) + 1] for id_ in labels.tolist()]
     for b, s, c in zip(boxes.tolist(), scores.tolist(), labels_str):
@@ -100,6 +131,52 @@ def _get_detections_from_pred_multimodel(predictions):
     return detect_list
 
 
+def _classification(pred_processing):
+    if request.method == 'POST':
+        file = request.files['image_patch']
+        if file and allowed_file(file.filename):
+
+            pic = Image.open(file).convert('RGB')
+            img = np.asarray(pic)
+
+            predictions = []
+            for checkpoint_pth in models_checkp_paths:
+                model = _get_model(checkpoint_pth)
+                prediction = inference_detector(model, img)
+                predictions.append(prediction)  # returns a tuple: list
+
+            is_multimodel = len(predictions) != 1
+
+            if is_multimodel:
+                boxes, scores, labels = _apply_wbf(predictions)
+                boxes = poly_to_rotated_box_np(boxes)
+            else:
+                boxes, labels = unravel_predictions(predictions)
+                scores = None
+
+            print(f"Detected {len(boxes)} bboxes")
+            boxes = bbox_translate(boxes)
+
+            # can be called with argument in url, e.g. http://myserver:5000/classify?postprocess=True
+            do_postprocessing = request.args.get("postprocess", default=False, type=lambda v: v.lower() == 'true')
+            if do_postprocessing:
+                boxes = _postprocess_bboxes(img, boxes, labels)
+
+            return pred_processing(boxes, scores, labels, file, is_multimodel)
+
+        else:
+            return Response('Unsupported filetype', mimetype='application/json')
+    return """
+    <!doctype html>
+    <title>Upload new File</title>
+    <h1>Upload new File</h1>
+    <form method=post enctype=multipart/form-data>
+      <p><input type=file name=image_patch>
+         <input type=submit value=Upload>
+    </form>
+    """
+
+
 @app.route('/')
 def hello_world():
     return 'Welcome to the classifier, go to /classify to start classifying'
@@ -107,96 +184,42 @@ def hello_world():
 
 @app.route('/classify', methods=['GET', 'POST'])
 def classify():
-    if request.method == 'POST':
-        file = request.files['image_patch']
-        if file and allowed_file(file.filename):
-
-            pic = Image.open(file).convert('RGB')
-            img = np.asarray(pic)
-
-            predictions = []
-            for checkpoint_pth in models_checkp_paths:
-                model = _get_model(checkpoint_pth)
-                predictions.append(inference_detector(model, img))  # returns a tuple: list
-
-            if len(predictions) == 1:
-                detect_list = _get_detections_from_pred(predictions)
-
-            else:
-                detect_list = _get_detections_from_pred_multimodel(predictions)
-
-            detect_list = bbox_translate(detect_list)
-            print(f"Detected {len(detect_list)} bboxes")
-            detect_dict = dict(bounding_boxes=detect_list)
-            return Response(json.dumps(detect_dict), mimetype='application/json')
+    def pred_processing(boxes, scores, labels, file, is_multimodel):
+        if is_multimodel:
+            detect_list = _get_detections_from_pred_multimodel(boxes, scores, labels)
         else:
-            return Response('Unsupported filetype', mimetype='application/json')
-    return """
-    <!doctype html>
-    <title>Upload new File</title>
-    <h1>Upload new File</h1>
-    <form method=post enctype=multipart/form-data>
-      <p><input type=file name=image_patch>
-         <input type=submit value=Upload>
-    </form>
-    """
+            detect_list = _get_detections_from_pred(boxes, labels)
+
+        detect_dict = dict(bounding_boxes=detect_list)
+
+        return Response(json.dumps(detect_dict), mimetype='application/json')
+
+    return _classification(pred_processing)
 
 
 @app.route('/classify_img', methods=['GET', 'POST'])
 def classify_img():
-    if request.method == 'POST':
-        file = request.files['image_patch']
-        if file and allowed_file(file.filename):
+    def pred_processing(boxes, scores, labels, file, is_multimodel):
+        boxes = rotated_box_to_poly_np(boxes)
 
-            pic = Image.open(file).convert('RGB')
-            img = np.asarray(pic)
+        pic = Image.open(file).convert('RGB')
+        img = np.asarray(pic)
 
-            predictions = []
-            for checkpoint_pth in models_checkp_paths:
-                model = _get_model(checkpoint_pth)
-                predictions.append(inference_detector(model, img))  # returns a tuple: list
+        img_det = imshow_det_bboxes(img, boxes, labels.astype(int) + 1,
+                                    class_names=list(class_names), show=False, show_label=True, rotated=True)
+        ann_img = Image.fromarray(img_det, "RGB")
 
-            det_boxes = predictions[0][1][0][0].cpu().numpy()
-            det_labels = predictions[0][1][0][1].cpu().numpy()
-            det_boxes = bbox_translate(det_boxes)
-            det_boxes = rotated_box_to_poly_np(det_boxes)
-            img_det = imshow_det_bboxes(img, det_boxes,
-                                        det_labels.astype(int) + 1,
-                                        class_names=list(class_names), show=False, show_label=True, rotated=True)
-            ann_img = Image.fromarray(img_det, "RGB")
+        img_io = BytesIO()
+        ann_img.save(img_io, 'png')
+        img_io.seek(0)
+        return Response(img_io, mimetype='image/png')
 
-            img_io = BytesIO()
-            ann_img.save(img_io, 'png')
-            img_io.seek(0)
-            return Response(img_io, mimetype='image/png')
-        else:
-            return Response('Unsupported filetype', mimetype='application/json')
-    return """
-    <!doctype html>
-    <title>Upload new File</title>
-    <h1>Upload new File</h1>
-    <form method=post enctype=multipart/form-data>
-      <p><input type=file name=image_patch>
-         <input type=submit value=Upload>
-    </form>
-    """
-
-# enforce w to be width and h to be height
-def bbox_translate(det_boxes):
-    for det in det_boxes:
-        if det[4] > np.pi/4:
-            det[4] = det[4] - np.pi/2
-            store = det[2]
-            det[2] = det[3]
-            det[3] = store
-
-    return det_boxes
+    return _classification(pred_processing)
 
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'],
-                               filename)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
 def allowed_file(filename):
@@ -205,4 +228,7 @@ def allowed_file(filename):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0')
+    # print("Setup cache for post-processing...", end=" ")
+    # render.fill_cache()
+    # print("Done")
+    app.run(host='0.0.0.0')  # 1:42

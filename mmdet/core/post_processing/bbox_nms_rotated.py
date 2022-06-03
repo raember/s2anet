@@ -49,7 +49,22 @@ def multiclass_nms_rotated(multi_bboxes,
     nms_type = nms_cfg_.pop('type', 'nms')
     iou_thr = nms_cfg_.pop('iou_thr', 0.1)
     labels = labels.to(bboxes)
-    keep = ml_nms_rotated(bboxes, scores, labels, iou_thr)
+
+    if "merge_classes" in nms_cfg:
+        merge_classes = nms_cfg["merge_classes"]
+        merge_except = nms_cfg["merge_except"]
+    else:
+        merge_classes = False
+
+    if merge_classes:
+        labels_iou = torch.clone(labels)
+        labels_iou[:] = len(merge_except) + 1
+        for i in range(len(merge_except)):
+            labels_iou[labels == merge_except[i]] = i
+        keep = ml_nms_rotated(bboxes, scores, labels_iou, iou_thr)
+    else:
+        keep = ml_nms_rotated(bboxes, scores, labels, iou_thr)
+
     bboxes = bboxes[keep]
     scores = scores[keep]
     labels = labels[keep]
