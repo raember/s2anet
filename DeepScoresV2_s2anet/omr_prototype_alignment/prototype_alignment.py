@@ -432,7 +432,7 @@ def _process_single(img: Image, samples, whitelist=[], n_workers=5):
 def process(samples, n_workers):
     for img_fp, boxes in samples:
         img = PImage.open(img_fp)
-        _process_single(img, boxes * 100, whitelist=['clef', 'accidental', 'notehead', 'key'], n_workers=n_workers)
+        _process_single(img, boxes, whitelist=['clef', 'accidental', 'notehead', 'key'], n_workers=n_workers)
 
 
 if __name__ == '__main__':

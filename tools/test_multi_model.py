@@ -23,13 +23,26 @@ from mmcv.runner import get_dist_info, load_checkpoint, _load_checkpoint
 from pandas import DataFrame
 
 from mmdet.apis import init_dist
-from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single
+from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single, bbox2result
 from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
+from DeepScoresV2_s2anet.omr_prototype_alignment import render
+
+from tools.detection_service import _postprocess_bboxes
 
 
-# Code based on test_BE.py
+render.fill_cache()
+
+def _post_process_bbox_list(img, bbox_list):
+    boxes = bbox_list[0][0].cpu().numpy()
+    labels = bbox_list[0][1].cpu().numpy()
+    print("bboxes x_center values", boxes[:, 0])
+    print("bboxes y_center values", boxes[:, 1])
+
+    boxes_new = _postprocess_bboxes(img, boxes, labels)
+    return torch.from_numpy(boxes_new)
+
 
 def single_gpu_test(model, data_loader, show=False, cfg=None):
     model.eval()
@@ -39,6 +52,11 @@ def single_gpu_test(model, data_loader, show=False, cfg=None):
     for i, data in enumerate(data_loader):
         with torch.no_grad():
             result, bbox_list = model(return_loss=False, rescale=not show, **data)
+        img = data['img'][0][0].cpu().numpy().astype("uint8")
+        img = img.transpose(1, 2, 0)
+        print("\nimage shape:", img.shape)
+        #boxes_new = _post_process_bbox_list(img, bbox_list)
+        #result2 = bbox2result(boxes_new, bbox_list[0][1], num_classes=136)  # TODO: get num classes from config
         results.append(result)
         if show:
             print("asdf")

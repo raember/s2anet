@@ -500,7 +500,7 @@ def main():
         dataset = build_dataset(cfg.data.test)
 
         proposals_WBF = load_proposals(args, dataset, iou_thr=args.iou_thr)
-        proposals_WBF = postprocess_proposals(proposals_WBF)
+        #proposals_WBF = postprocess_proposals(proposals_WBF)
         store_proposals(args, proposals_WBF)
 
         proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < args.vis_thr].index)
