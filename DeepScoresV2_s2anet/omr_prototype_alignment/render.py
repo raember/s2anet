@@ -1,16 +1,48 @@
 import csv
+from io import BytesIO
 from pathlib import Path
 from xml.dom import minidom
 
 import numpy as np
+from PIL import Image as PImage
+from PIL.ImageOps import flip
 from cairosvg import svg2png
 from svgpathtools import parse_path
-from PIL import Image as PImage
-from io import BytesIO
+
+from mmdet.datasets.deepscoresv2 import thresholds
+
+BASE_PATH = Path("DeepScoresV2_s2anet/omr_prototype_alignment")
+CACHE_PATH = (BASE_PATH / "cache")
+
+class_names = (
+    'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
+    'clefUnpitchedPercussion', 'clef8', 'clef15', 'timeSig0', 'timeSig1', 'timeSig2', 'timeSig3', 'timeSig4',
+    'timeSig5', 'timeSig6', 'timeSig7', 'timeSig8', 'timeSig9', 'timeSigCommon', 'timeSigCutCommon',
+    'noteheadBlackOnLine', 'noteheadBlackOnLineSmall', 'noteheadBlackInSpace', 'noteheadBlackInSpaceSmall',
+    'noteheadHalfOnLine', 'noteheadHalfOnLineSmall', 'noteheadHalfInSpace', 'noteheadHalfInSpaceSmall',
+    'noteheadWholeOnLine', 'noteheadWholeOnLineSmall', 'noteheadWholeInSpace', 'noteheadWholeInSpaceSmall',
+    'noteheadDoubleWholeOnLine', 'noteheadDoubleWholeOnLineSmall', 'noteheadDoubleWholeInSpace',
+    'noteheadDoubleWholeInSpaceSmall', 'augmentationDot', 'stem', 'tremolo1', 'tremolo2', 'tremolo3', 'tremolo4',
+    'tremolo5', 'flag8thUp', 'flag8thUpSmall', 'flag16thUp', 'flag32ndUp', 'flag64thUp', 'flag128thUp', 'flag8thDown',
+    'flag8thDownSmall', 'flag16thDown', 'flag32ndDown', 'flag64thDown', 'flag128thDown', 'accidentalFlat',
+    'accidentalFlatSmall', 'accidentalNatural', 'accidentalNaturalSmall', 'accidentalSharp', 'accidentalSharpSmall',
+    'accidentalDoubleSharp', 'accidentalDoubleFlat', 'keyFlat', 'keyNatural', 'keySharp', 'articAccentAbove',
+    'articAccentBelow', 'articStaccatoAbove', 'articStaccatoBelow', 'articTenutoAbove', 'articTenutoBelow',
+    'articStaccatissimoAbove', 'articStaccatissimoBelow', 'articMarcatoAbove', 'articMarcatoBelow', 'fermataAbove',
+    'fermataBelow', 'caesura', 'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th',
+    'rest32nd', 'rest64th', 'rest128th', 'restHNr', 'dynamicP', 'dynamicM', 'dynamicF', 'dynamicS', 'dynamicZ',
+    'dynamicR', 'graceNoteAcciaccaturaStemUp', 'graceNoteAppoggiaturaStemUp', 'graceNoteAcciaccaturaStemDown',
+    'graceNoteAppoggiaturaStemDown', 'ornamentTrill', 'ornamentTurn', 'ornamentTurnInverted', 'ornamentMordent',
+    'stringsDownBow', 'stringsUpBow', 'arpeggiato', 'keyboardPedalPed', 'keyboardPedalUp', 'tuplet3', 'tuplet6',
+    'fingering0', 'fingering1', 'fingering2', 'fingering3', 'fingering4', 'fingering5', 'slur', 'beam', 'tie',
+    'restHBar', 'dynamicCrescendoHairpin', 'dynamicDiminuendoHairpin', 'tuplet1', 'tuplet2', 'tuplet4', 'tuplet5',
+    'tuplet7', 'tuplet8', 'tuplet9', 'tupletBracket', 'staff', 'ottavaBracket'
+)
 
 
-class Render():
-    def __init__(self, class_name, height, width, csv_path="DeepScoresV2_s2anet/omr_prototype_alignment/data/name_uni.csv"):
+class Render:
+    def __init__(self, class_name, height, width,
+                 csv_path="DeepScoresV2_s2anet/omr_prototype_alignment/data/name_uni.csv"):
         super(Render, self).__init__()
         self.csv_path = csv_path
         self.class_name = class_name
@@ -118,3 +150,44 @@ class Render():
                 f.write(xml_str)
 
         return png_data
+
+
+def remove_padding(img):
+    x_values = np.where(np.max(img, axis=0) > 0)
+    y_values = np.where(np.max(img, axis=1) > 0)
+
+    return img[np.min(y_values):np.max(y_values) + 1, np.min(x_values):np.max(x_values) + 1]
+
+
+def fill_cache():
+    needs_flip = ['clefF']
+
+    if not CACHE_PATH.exists():
+        CACHE_PATH.mkdir()
+
+    for name, params in zip(class_names, thresholds.values()):
+        if len(params) == 0:
+            continue
+        l1 = list(params[2]) if isinstance(params[2], tuple) else [params[2]]
+        l2 = list(params[3]) if isinstance(params[2], tuple) else [params[3]]
+        size = max(l1 + l2)
+        png_data = Render(
+            class_name=name, height=size, width=size,
+            csv_path=str(BASE_PATH / 'data' / 'name_uni.csv')).render(
+            str(BASE_PATH / 'data' / 'Bravura.svg'), save_svg=False, save_png=False)
+
+        with BytesIO(png_data) as bio:
+            img = PImage.open(bio)
+            img.load()
+            img = img.transpose(PImage.FLIP_TOP_BOTTOM)
+            if name in needs_flip:
+                img = flip(img)
+
+            img = np.array(img)[..., 3]
+            img = remove_padding(img)
+
+            np.save(CACHE_PATH / name, img)
+
+
+if __name__ == '__main__':
+    fill_cache()

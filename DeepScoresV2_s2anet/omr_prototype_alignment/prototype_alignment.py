@@ -6,7 +6,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import List
 
-import matplotlib.pyplot as plt
+import cv2
+import cv2 as cv
 import numpy as np
 from PIL import Image as PImage
 from PIL.Image import Image
@@ -14,14 +15,15 @@ from PIL.ImageChops import invert
 from PIL.ImageDraw import Draw
 from PIL.ImageOps import grayscale
 from matplotlib import cm
+from matplotlib import pyplot as plt
 from shapely.affinity import rotate
 from shapely.geometry import Polygon
 from skimage.morphology import binary_erosion
-from tqdm import tqdm
 
-from DeepScoresV2_s2anet.omr_prototype_alignment.glyph_transform import GlyphGenerator, BASE_PATH
+from DeepScoresV2_s2anet.omr_prototype_alignment.glyph_transform import GlyphGenerator
 from DeepScoresV2_s2anet.omr_prototype_alignment.optical_flow import optical_flow_merging
-from DeepScoresV2_s2anet.omr_prototype_alignment.render import Render
+from DeepScoresV2_s2anet.omr_prototype_alignment.render import Render, BASE_PATH
+from mmdet.core import rotated_box_to_poly_np
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -63,6 +65,8 @@ SAMPLES = [
         },
     ])
 ]
+
+GLYPH_GEN = GlyphGenerator()
 
 
 def pad(img: Image, pad: int) -> Image:
@@ -171,10 +175,12 @@ def generate_video(imgs):
 
     ani.save(str(path / f'debug_{datetime.now().strftime("%Y%m%d-%H%M%S")}.mp4'))
 
+
 def _create_search_list(lower, upper, stepsize=1):
     center = (lower + upper) / 2
     list_1, list_2 = np.arange(lower, center, stepsize), np.arange(center, upper, stepsize)
     return [ab for a, b in zip(list_1[::-1], list_2) for ab in (a, b)]
+
 
 def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False) -> Image:
     if len(bbox) == 0:
@@ -186,8 +192,6 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
     orig_angle = bbox[4]
     orig_height = round(abs(bbox[2] * math.sin(orig_angle)) + abs(bbox[3] * math.cos(orig_angle)))
     orig_width = round(abs(bbox[2] * math.cos(orig_angle)) + abs(bbox[3] * math.sin(orig_angle)))
-
-    glyph = GlyphGenerator()
 
     best_glyph, best_overlap = None, -1
 
@@ -202,7 +206,7 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
     imgs, i = [], 0
 
     count_angle_not_improved = 0
-    for angle in tqdm(angles):
+    for angle in angles:
         count_xshift_not_improved = 0
         for x_shift in x_shifts:
             count_yshift_not_improved = 0
@@ -214,8 +218,8 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
                         padding_top = y_shift
                         padding_bottom = img_roi.shape[0] - padding_top
 
-                        proposed_glyph = glyph.get_transformed_glyph(cls, width, height, angle, padding_left,
-                                                                     padding_right, padding_top, padding_bottom)
+                        proposed_glyph = GLYPH_GEN.get_transformed_glyph(cls, width, height, angle, padding_left,
+                                                                         padding_right, padding_top, padding_bottom)
 
                         if store_video and i % 100 == 0:
                             img = img_roi.copy()
@@ -251,6 +255,63 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
         plt.close()
 
     return PImage.fromarray(best_glyph)
+
+
+def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False, padding=20) -> Image:
+    if len(bbox) == 0:
+        return
+
+    padding_dicts = {'clef': (20, 20), 'accidental': (5, 5), 'notehead': (7, 7), 'key': (6, 6)}
+    padding = padding_dicts[[key for key in padding_dicts.keys() if key in cls][0]]
+
+    poly = rotated_box_to_poly_np(np.expand_dims(bbox, 0))[0]
+    y_min, y_max = max(int(np.min(poly[1::2]) - padding[0]), 0), min(int(np.max(poly[1::2]) + padding[0]),
+                                                                     img_np.shape[0])
+    x_min, x_max = max(int(np.min(poly[::2]) - padding[1]), 0), min(int(np.max(poly[::2]) + padding[1]),
+                                                                    img_np.shape[1])
+
+    img_roi = img_np[y_min:y_max, x_min:x_max]
+    img_roi = 255 - img_roi  # invert
+    # img_region = PImage.fromarray(img_roi)
+
+    best_box, best_overlap = None, -1
+    glyph = GlyphGenerator()
+
+    orig_angle = bbox[4]
+    orig_height = round(abs(bbox[2] * math.sin(orig_angle)) + abs(bbox[3] * math.cos(orig_angle)))
+    orig_width = round(abs(bbox[2] * math.cos(orig_angle)) + abs(bbox[3] * math.sin(orig_angle)))
+    angles = _create_search_list(orig_angle - 0.2, orig_angle + 0.2, 0.05)
+    widths = range(orig_width, orig_width + 3)
+    heights = range(orig_height, orig_height + 3)
+
+    method = eval('cv.TM_CCORR_NORMED')
+
+    count_angle_not_improved = 0
+    for angle in angles:
+
+        proposed_glyph = glyph.get_transformed_glyph(cls, orig_width, orig_height, angle, padding_left=None,
+                                                     padding_right=None, padding_top=None, padding_bottom=None)
+
+        img_roi_copy = img_roi.copy()
+        try:
+            res = cv.matchTemplate(img_roi_copy, proposed_glyph, method)
+        except cv2.error as e:
+            print(e)
+            print(cls, img_roi_copy.shape, proposed_glyph.shape)
+
+        min_val, max_val, min_loc, max_loc = cv.minMaxLoc(res)
+        top_left = max_loc
+
+        if max_val > best_overlap:
+            best_overlap = max_val
+            global_topleft = bbox[0:2] + (np.array(top_left) - np.array(padding))
+            w, h = np.array(proposed_glyph.shape[::-1])
+            best_box = tuple(global_topleft) + (int(w), int(h), 0)
+
+        if count_angle_not_improved > 3:
+            break
+
+    return np.array(best_box)
 
 
 def process(img: Image, bbox: np.ndarray, glyph: Image, cls: str) -> Image:
@@ -314,39 +375,68 @@ def visualize(crop: Image, prop_bbox: np.ndarray, gt_bbox: np.ndarray,
     img.crop((x - w // 2 - 50, y - h // 2 - 50, x + w // 2 + 50, y + h // 2 + 50)).show()
 
 
-def _process_single(img: Image, samples):
-    bboxes = []
-    for sample in samples:
-        scores = []
-        det_bbox = sample['proposal']
-        prop_bbox: np.ndarray = sample['proposal'][:5].astype(np.float)
-        prop_bbox = bbox_translate(prop_bbox)
-        cls: str = sample['proposal'][5]
-        if 'gt' in sample:
-            gt_bbox: np.ndarray = sample['gt'][:5].astype(np.float)
-            print(f"IoU [{cls}]: ")
-        for glyph in get_glyphs(cls, prop_bbox, 0):
-            new_glyph = process2(img, prop_bbox, glyph, cls)
-            derived_bbox = extract_bbox_from(glyph, prop_bbox, cls)
+def _process_sample(img: Image, sample, whitelist=[]):
+    scores = []
+    det_bbox = sample['proposal']
+    prop_bbox: np.ndarray = sample['proposal'][:5].astype(np.float)
+    prop_bbox = bbox_translate(prop_bbox)
+
+    cls: str = sample['proposal'][5]
+    if len(whitelist) > 0:
+        if len([x for x in whitelist if x in cls]) < 1:
+            return sample['proposal'][:-1]
+
+    if 'gt' in sample:
+        gt_bbox: np.ndarray = sample['gt'][:5].astype(np.float)
+        # print(f"IoU [{cls}]: ")
+    for glyph in get_glyphs(cls, prop_bbox, 0):
+        # new_glyph = process2(img, prop_bbox, glyph, cls)
+        new_glyph = process_simple(img, prop_bbox, glyph, cls)
+
+        derived_bbox = extract_bbox_from(glyph, prop_bbox, cls)
+
+        if isinstance(new_glyph, np.ndarray):
+            new_bbox = new_glyph
+            # print(sample['proposal'], new_bbox)
+        else:
             new_bbox = extract_bbox_from(new_glyph, prop_bbox, cls)
-            bboxes.append(new_bbox)
-            if 'gt' in sample:
-                iou = calc_loss(gt_bbox, new_bbox)
-                base_iou = calc_loss(gt_bbox, derived_bbox)
-                # visualize(img, prop_bbox, gt_bbox, glyph, new_bbox, new_glyph)
-                print(f", {iou:.3} (baseline: {base_iou:.3})", end='')
-                print()
+
+        if 'gt' in sample:
+            iou = calc_loss(gt_bbox, new_bbox)
+            base_iou = calc_loss(gt_bbox, derived_bbox)
+            # visualize(img, prop_bbox, gt_bbox, glyph, new_bbox, new_glyph)
+            # print(f", {iou:.3} (baseline: {base_iou:.3})", end='')
+            # print()
+        return new_bbox
+
+
+def _process_single(img: Image, samples, whitelist=[], n_workers=5):
+    bboxes, jobs = [], []
+
+    img = np.array(img.convert('L'))
+
+    # with ThreadPoolExecutor(max_workers=n_workers) as executor:
+    #    for sample in samples:
+    #        future = executor.submit(_process_sample, img, sample, whitelist)
+    #        jobs.append(future)
+    #
+    #    for future in concurrent.futures.as_completed(jobs):
+    #        bboxes.append(future.result())
+
+    for sample in samples:
+        bboxes.append(_process_sample(img, sample, whitelist))
 
     return bboxes
 
 
-def process(samples):
+def process(samples, n_workers):
     for img_fp, boxes in samples:
         img = PImage.open(img_fp)
-        _process_single(img, boxes)
+        _process_single(img, boxes * 100, whitelist=['clef', 'accidental', 'notehead', 'key'], n_workers=n_workers)
 
 
 if __name__ == '__main__':
-    start = time.time()
-    process(SAMPLES)
-    print(time.time()-start)
+    for i in range(1, 10):
+        start = time.time()
+        process(SAMPLES, i)
+        print("Duration for workers=", i, ":", time.time() - start)

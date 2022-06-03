@@ -58,12 +58,12 @@ def _get_model(checkpoint_pth):
 
 def _postprocess_bboxes(img, boxes, labels):
     img = Image.fromarray(img)
-    proposal_list = [{'proposal': np.append(box[:5], ID_TO_CLASS[str(int(label))])} for box, label in
-                     zip(boxes, labels)]
-    processed_proposals = prototype_alignment._process_single(img, proposal_list)
+    proposal_list = [{'proposal': np.append(box[:5], class_names[int(label) + 1])} for box, label in zip(boxes, labels)]
+    processed_proposals = prototype_alignment._process_single(img, proposal_list,
+                                                              whitelist=["key", "clef", "accidental", "notehead"])
     new_boxes = np.zeros(boxes.shape)
     new_boxes[..., :5] = np.stack(processed_proposals)
-    new_boxes[..., 5] = boxes[..., 5]
+    # new_boxes[..., 5] = boxes[..., 5]
     return new_boxes
 
 
@@ -228,4 +228,7 @@ def allowed_file(filename):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0')
+    # print("Setup cache for post-processing...", end=" ")
+    # render.fill_cache()
+    # print("Done")
+    app.run(host='0.0.0.0')  # 1:42
