@@ -67,9 +67,6 @@ class GlyphGenerator:
         elif class_name == self.last_class_name and glyph_width == self.last_width and glyph_height == self.last_height:
             img = self.last_symbol_resized
             do_rotate = True
-        elif class_name == self.last_class_name:
-            img = self.last_symbol
-            do_rotate, do_resize = True, True
         else:
             if class_name not in self.symbols:
                 self.symbols[class_name] = np.load(str(CACHE_PATH / class_name) + ".npy")

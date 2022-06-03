@@ -156,7 +156,7 @@ def get_roi(img, bbox):
     x_min, x_max = int(max(0, np.floor(bbox[0] - area_size))), int(min(img.shape[1], np.ceil(bbox[0] + area_size)))
     y_min, y_max = int(max(0, np.floor(bbox[1] - area_size))), int(min(img.shape[0], np.ceil(bbox[1] + area_size)))
 
-    return img[y_min:y_max, x_min:x_max]
+    return img[y_min:y_max, x_min:x_max], (y_min, x_max)
 
 
 def generate_video(imgs):
@@ -182,24 +182,20 @@ def _create_search_list(lower, upper, stepsize=1):
     return [ab for a, b in zip(list_1[::-1], list_2) for ab in (a, b)]
 
 
-def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False) -> Image:
+def process2(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False) -> Image:
     if len(bbox) == 0:
         return
 
-    img_np = np.array(img.convert('L')) < 128
-    img_roi = get_roi(img_np, bbox)
+    img_roi, (y_off, x_off) = get_roi(img_np, bbox)
 
     orig_angle = bbox[4]
-    orig_height = round(abs(bbox[2] * math.sin(orig_angle)) + abs(bbox[3] * math.cos(orig_angle)))
-    orig_width = round(abs(bbox[2] * math.cos(orig_angle)) + abs(bbox[3] * math.sin(orig_angle)))
 
     best_glyph, best_overlap = None, -1
 
     angles = _create_search_list(orig_angle - 0.2, orig_angle + 0.2, 0.05)
     x_shifts = _create_search_list(img_roi.shape[0] // 2 - 5, img_roi.shape[0] // 2 + 5)
     y_shifts = _create_search_list(img_roi.shape[1] // 2 - 5, img_roi.shape[1] // 2 + 5)
-    widths = range(orig_width, orig_width + 3)
-    heights = range(orig_height, orig_height + 3)
+
 
     assert len(x_shifts) > 0 and len(y_shifts) > 0
 
@@ -211,28 +207,28 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
         for x_shift in x_shifts:
             count_yshift_not_improved = 0
             for y_shift in y_shifts:
-                for width in widths:
-                    for height in heights:
-                        padding_left = x_shift
-                        padding_right = img_roi.shape[1] - padding_left
-                        padding_top = y_shift
-                        padding_bottom = img_roi.shape[0] - padding_top
 
-                        proposed_glyph = GLYPH_GEN.get_transformed_glyph(cls, width, height, angle, padding_left,
-                                                                         padding_right, padding_top, padding_bottom)
+                padding_left = x_shift
+                padding_right = img_roi.shape[1] - padding_left
+                padding_top = y_shift
+                padding_bottom = img_roi.shape[0] - padding_top
 
-                        if store_video and i % 100 == 0:
-                            img = img_roi.copy()
-                            img = img * 1
-                            img[proposed_glyph] = 2
-                            imgs.append(img)
-                        i += 1
+                proposed_glyph = GLYPH_GEN.get_transformed_glyph(cls, int(bbox[3]), int(bbox[2]), angle, padding_left,
+                                                                 padding_right, padding_top, padding_bottom)
 
-                        overlap = np.average(img_roi[proposed_glyph])
-                        if overlap > best_overlap:
-                            best_overlap = overlap
-                            best_glyph = proposed_glyph
-                            count_angle_not_improved, count_xshift_not_improved, count_yshift_not_improved = 0, 0, 0
+                if store_video and i % 100 == 0:
+                    img = img_roi.copy()
+                    img = img * 1
+                    img[proposed_glyph] = 2
+                    imgs.append(img)
+                i += 1
+
+                overlap = np.average(img_roi[proposed_glyph])
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_glyph = proposed_glyph
+                    best_box = np.array([x_off+x_shift, y_off+y_shift, bbox[2], bbox[3], angle])
+                    count_angle_not_improved, count_xshift_not_improved, count_yshift_not_improved = 0, 0, 0
 
                 if count_yshift_not_improved > 2:
                     break
@@ -254,14 +250,14 @@ def process2(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_video: 
         plt.savefig(Path("process2_debugging") / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
         plt.close()
 
-    return PImage.fromarray(best_glyph)
+    return best_box
 
 
 def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False, padding=20) -> Image:
     if len(bbox) == 0:
         return
 
-    padding_dicts = {'clef': (20, 20), 'accidental': (5, 5), 'notehead': (7, 7), 'key': (6, 6)}
+    padding_dicts = {'clef': (40, 31), 'accidental': (25, 15), 'notehead': (7, 7), 'key': (20, 15)}
     padding = padding_dicts[[key for key in padding_dicts.keys() if key in cls][0]]
 
     poly = rotated_box_to_poly_np(np.expand_dims(bbox, 0))[0]
@@ -269,10 +265,8 @@ def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video
                                                                      img_np.shape[0])
     x_min, x_max = max(int(np.min(poly[::2]) - padding[1]), 0), min(int(np.max(poly[::2]) + padding[1]),
                                                                     img_np.shape[1])
-
     img_roi = img_np[y_min:y_max, x_min:x_max]
     img_roi = 255 - img_roi  # invert
-    # img_region = PImage.fromarray(img_roi)
 
     best_box, best_overlap = None, -1
     glyph = GlyphGenerator()
@@ -281,15 +275,13 @@ def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video
     orig_height = round(abs(bbox[2] * math.sin(orig_angle)) + abs(bbox[3] * math.cos(orig_angle)))
     orig_width = round(abs(bbox[2] * math.cos(orig_angle)) + abs(bbox[3] * math.sin(orig_angle)))
     angles = _create_search_list(orig_angle - 0.2, orig_angle + 0.2, 0.05)
-    widths = range(orig_width, orig_width + 3)
-    heights = range(orig_height, orig_height + 3)
 
     method = eval('cv.TM_CCORR_NORMED')
 
     count_angle_not_improved = 0
     for angle in angles:
 
-        proposed_glyph = glyph.get_transformed_glyph(cls, orig_width, orig_height, angle, padding_left=None,
+        proposed_glyph = glyph.get_transformed_glyph(cls, int(bbox[3]), int(bbox[2]), angle, padding_left=None,
                                                      padding_right=None, padding_top=None, padding_bottom=None)
 
         img_roi_copy = img_roi.copy()
@@ -306,7 +298,8 @@ def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video
             best_overlap = max_val
             global_topleft = bbox[0:2] + (np.array(top_left) - np.array(padding))
             w, h = np.array(proposed_glyph.shape[::-1])
-            best_box = tuple(global_topleft) + (int(w), int(h), 0)
+            print(global_topleft, (y_min, x_min))
+            best_box = tuple(global_topleft) + (int(bbox[2]), int(bbox[3]), angle)  # wrong! we need center not top left
 
         if count_angle_not_improved > 3:
             break

@@ -8,8 +8,9 @@ import shutil
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Tuple, List
+from typing import List
 
+import cv2
 import mmcv
 import numpy as np
 import pandas
@@ -19,32 +20,37 @@ from dateutil.parser import parse
 from matplotlib import pyplot as plt
 from mmcv import DataLoader, Config
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import get_dist_info, load_checkpoint, _load_checkpoint
+from mmcv.runner import get_dist_info, load_checkpoint
 from pandas import DataFrame
 
+from DeepScoresV2_s2anet.omr_prototype_alignment import render
 from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single, bbox2result
 from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
-from DeepScoresV2_s2anet.omr_prototype_alignment import render
-
 from tools.detection_service import _postprocess_bboxes
 
-
-render.fill_cache()
-
-def _post_process_bbox_list(img, bbox_list):
+def _post_process_bbox_list(img, bbox_list, cfg):
+    img = img.cpu().numpy().astype("uint8")
+    img = img.transpose(1, 2, 0)
+    scale = 1 / cfg['test_pipeline'][1]['img_scale']
+    img = cv2.resize(img, dsize=(int(img.shape[1] * scale), int(img.shape[0] * scale)))
     boxes = bbox_list[0][0].cpu().numpy()
     labels = bbox_list[0][1].cpu().numpy()
-    print("bboxes x_center values", boxes[:, 0])
-    print("bboxes y_center values", boxes[:, 1])
 
     boxes_new = _postprocess_bboxes(img, boxes, labels)
-    return torch.from_numpy(boxes_new)
+    boxes_new = torch.from_numpy(boxes_new)
+    return boxes_new
 
 
-def single_gpu_test(model, data_loader, show=False, cfg=None):
+def round_results(result):
+    result[:, :4] = torch.round(result[:, :4])
+    result[:, 5] = torch.round(result[:, 5] * 1000) / 1000
+    return result
+
+
+def single_gpu_test(model, data_loader, show=False, cfg=None, post_process=False, round_=False):
     model.eval()
     results = []
     dataset = data_loader.dataset
@@ -52,11 +58,18 @@ def single_gpu_test(model, data_loader, show=False, cfg=None):
     for i, data in enumerate(data_loader):
         with torch.no_grad():
             result, bbox_list = model(return_loss=False, rescale=not show, **data)
-        img = data['img'][0][0].cpu().numpy().astype("uint8")
-        img = img.transpose(1, 2, 0)
-        print("\nimage shape:", img.shape)
-        #boxes_new = _post_process_bbox_list(img, bbox_list)
-        #result2 = bbox2result(boxes_new, bbox_list[0][1], num_classes=136)  # TODO: get num classes from config
+
+        if post_process:
+            img = data['img'][0][0]
+            boxes = _post_process_bbox_list(img, bbox_list, cfg)
+        else:
+            boxes = bbox_list[0][0]
+
+        if round_:
+            boxes = round_results(boxes)
+
+        result = bbox2result(boxes, bbox_list[0][1], num_classes=cfg['model']['bbox_head']['num_classes'])
+
         results.append(result)
         if show:
             print("asdf")
@@ -73,7 +86,7 @@ def single_gpu_test(model, data_loader, show=False, cfg=None):
     return results
 
 
-def multi_gpu_test(model, data_loader, tmpdir=None):
+def multi_gpu_test(model, data_loader, tmpdir=None, cfg=None, post_process=False, round_=False):
     model.eval()
     results = []
     dataset = data_loader.dataset
@@ -82,7 +95,19 @@ def multi_gpu_test(model, data_loader, tmpdir=None):
         prog_bar = mmcv.ProgressBar(len(dataset))
     for i, data in enumerate(data_loader):
         with torch.no_grad():
-            result = model(return_loss=False, rescale=True, **data)
+            result, bbox_list = model(return_loss=False, rescale=True, **data)
+
+        if post_process:
+            img = data['img'][0][0]
+            boxes = _post_process_bbox_list(img, bbox_list, cfg)
+        else:
+            boxes = bbox_list[0][0]
+
+        if round_:
+            boxes = round_results(boxes)
+
+        result = bbox2result(boxes, bbox_list[0][1], num_classes=cfg['model']['bbox_head']['num_classes'])
+
         results.append(result)
 
         if rank == 0:
@@ -184,6 +209,18 @@ def parse_args():
         type=float,
         help='Overlap to choose the metrics from (default: 0.5)'
     )
+    parser.add_argument(
+        '--postprocess',
+        action='store_true',
+        default=False,
+        help='post-process the results'
+    )
+    parser.add_argument(
+        '--round',
+        action='store_true',
+        default=False,
+        help='round the results (similar to detection service)'
+    )
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -194,7 +231,7 @@ def config_from_str(cfg_str: str, path: Path = None) -> Config:
     if path is None:
         path = Path(cfg_str.splitlines()[0])
     if cfg_str.startswith(str(path)):
-        cfg_str = cfg_str[len(str(path))+1:]
+        cfg_str = cfg_str[len(str(path)) + 1:]
     with tempfile.NamedTemporaryFile('w', suffix='.py') as fp:
         fp.write(cfg_str)
         fp.seek(0)
@@ -230,6 +267,9 @@ def main():
 
     if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
         raise ValueError('The output file must be a pkl file.')
+
+    if args.postprocess:
+        render.fill_cache()
 
     cfg = mmcv.Config.fromfile(args.config)
     # set cudnn_benchmark
@@ -359,10 +399,12 @@ def main():
                 print(f"===> Testing model on {ann_file.stem}")
                 if not distributed:
                     model = MMDataParallel(model, device_ids=[0])
-                    outputs_m[checkpoint_file][data_loader] = single_gpu_test(model, data_loader, args.show, cfg)
+                    outputs_m[checkpoint_file][data_loader] = single_gpu_test(model, data_loader, args.show, cfg,
+                                                                              args.postprocess, args.round)
                 else:
                     model = MMDistributedDataParallel(model.cuda())
-                    outputs_m[checkpoint_file][data_loader] = multi_gpu_test(model, data_loader, args.tmpdir)
+                    outputs_m[checkpoint_file][data_loader] = multi_gpu_test(model, data_loader, args.tmpdir, cfg,
+                                                                             args.postprocess, args.round)
                 print()  # The tests use ncurses and don't append a new line at the end
 
                 print(f'===> Writing proposals to {str(pkl_fp)}')
