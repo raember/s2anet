@@ -2,7 +2,7 @@ import logging
 import torch
 from . import resnet, vgg
 from .feature_extractor import vgg_feature_extractor, resnet_feature_extractor
-from .classifier import Classifier_V2
+from .classifier import ASPP_Classifier_V2
 from .discriminator import *
 
 def build_model(cfg):
@@ -26,9 +26,9 @@ def build_feature_extractor(cfg):
 def build_classifier(cfg):
     _, backbone_name = cfg.MODEL.NAME.split('_')
     if backbone_name.startswith('vgg'):
-        classifier = Classifier_V2(1024, [6, 12, 18, 24], [6, 12, 18, 24], cfg.MODEL.NUM_CLASSES)
+        classifier = ASPP_Classifier_V2(1024, [6, 12, 18, 24], [6, 12, 18, 24], cfg.MODEL.NUM_CLASSES)
     elif backbone_name.startswith('resnet'):
-        classifier = Classifier_V2(2048, [6, 12, 18, 24], [6, 12, 18, 24], cfg.MODEL.NUM_CLASSES)
+        classifier = ASPP_Classifier_V2(2048, [6, 12, 18, 24], [6, 12, 18, 24], cfg.MODEL.NUM_CLASSES)
     else:
         raise NotImplementedError
     return classifier
@@ -46,3 +46,10 @@ def build_adversarial_discriminator(cfg, num_features=None, mid_nc=256):
     else:
         raise NotImplementedError
     return model_D
+
+def build_binary_discriminator(ngpu, features, hidden_size):
+    # return DomainDiscriminator(in_feature=features, hidden_size=hidden_size)
+    # return PixelDiscriminator(hidden_size, features, num_classes=1)
+    net_D = Discriminator(hidden_size, features)
+    # net_D = nn.DataParallel(net_D, list(range(ngpu)))
+    return net_D
