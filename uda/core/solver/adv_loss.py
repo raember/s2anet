@@ -25,6 +25,6 @@ class DomainAdversarialLoss(nn.Module):
     def forward(self, domain_pred, domain_label='source'):
         assert domain_label in ['source', 'target']
         if domain_label == 'source':
-            return F.binary_cross_entropy(domain_pred, torch.ones_like(domain_pred).to('cuda:0'))
+            return F.binary_cross_entropy(domain_pred, torch.ones_like(domain_pred).cuda())
         else:
-            return F.binary_cross_entropy(domain_pred, torch.zeros_like(domain_pred).to('cuda:0'))
+            return F.binary_cross_entropy(domain_pred, torch.zeros_like(domain_pred).cuda())
