@@ -288,7 +288,7 @@ def process_simple(img: Image, bbox: np.ndarray, glyph: Image, cls: str, store_v
     dimensions = [1]
     for dimension in dimensions:
         w, h = np.array(glyph_orig.shape[::-1]) * dimension
-        current_glyph = cv.resize(glyph_orig,(int(w),int(h)))
+        current_glyph = cv.resize(glyph_orig, (int(w), int(h)))
         # All the 6 methods for comparison in a list
         #methods = ['cv.TM_CCOEFF', 'cv.TM_CCOEFF_NORMED', 'cv.TM_CCORR',
         #            'cv.TM_CCORR_NORMED', 'cv.TM_SQDIFF', 'cv.TM_SQDIFF_NORMED']
