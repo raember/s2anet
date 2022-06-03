@@ -25,6 +25,7 @@ def create_dframe(error_metrics):
     for name, values in error_metrics.items():
         row_names = list(values.keys())
         column_names = list(values[row_names[0]].keys())
+        print(column_names)
 
         metrics_df = pa.DataFrame(np.zeros((len(row_names), len(column_names))))
         metrics_df.index = row_names
@@ -64,7 +65,7 @@ def store_csv(dframes, evaluations_folder):
 
 def main():
 
-    evaluations_folder = "models/test_imslp/"
+    evaluations_folder = "models/test_ds2/"
     error_metrics = get_pickles(evaluations_folder)
     dframes = create_dframe(error_metrics)
 

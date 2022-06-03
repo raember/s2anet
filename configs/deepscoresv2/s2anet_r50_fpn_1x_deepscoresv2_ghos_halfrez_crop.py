@@ -86,7 +86,7 @@ test_cfg = dict(
     nms_pre=5000,
     min_bbox_size=0,
     score_thr=0.4,
-    nms=dict(type='nms_rotated', iou_thr=0.1),
+    nms=dict(type='nms_rotated', iou_thr=0.3),
     max_per_img=1000)
 # dataset settings
 dataset_type = 'DeepScoresV2Dataset'
@@ -95,18 +95,6 @@ img_norm_cfg = dict(
     mean = [240, 240, 240],
     std = [57, 57, 57],
     to_rgb=False)
-# train_pipeline = [
-#     dict(type='LoadImageFromFile'),
-#     dict(type='LoadAnnotations', with_bbox=True),
-#     dict(type='ScoreAug', blank_pages_path=data_root + 'blanks', p_blur=0.4),
-#     dict(type='RandomCrop', crop_size=(2000, 2000), threshold_rel=0.6, threshold_abs=200.0),
-#     dict(type='RotatedResize', img_scale=(1000, 1000), keep_ratio=True),
-#     dict(type='RotatedRandomFlip', flip_ratio=0.0),
-#     dict(type='Normalize', **img_norm_cfg),
-#     dict(type='Pad', size_divisor=32),
-#     dict(type='DefaultFormatBundle'),
-#     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
-# ]
 test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
@@ -124,7 +112,7 @@ test_pipeline = [
 ]
 data = dict(
     imgs_per_gpu=4,
-    workers_per_gpu=4,
+    workers_per_gpu=2,
     # train=dict(
     #     type=dataset_type,
     #     ann_file=data_root + 'deepscores_train.json',

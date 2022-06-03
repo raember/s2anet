@@ -1,4 +1,5 @@
 import inspect
+from typing import Tuple, Optional, List, Union
 
 import albumentations
 import mmcv
@@ -21,7 +22,8 @@ class Resize(object):
     scale in the init method is used.
 
     `img_scale` can either be a tuple (single-scale) or a list of tuple
-    (multi-scale). There are 3 multiscale modes:
+    (multi-scale) or a single scalar.
+    There are 3 multiscale modes:
     - `ratio_range` is not None: randomly sample a ratio from the ratio range
         and multiply it with the image scale.
     - `ratio_range` is None and `multiscale_mode` == "range": randomly sample a
@@ -30,7 +32,7 @@ class Resize(object):
         scale from multiple scales.
 
     Args:
-        img_scale (tuple or list[tuple]): Images scales for resizing.
+        img_scale (tuple or list[tuple] or scalar): Images scales for resizing.
         multiscale_mode (str): Either "range" or "value".
         ratio_range (tuple[float]): (min_ratio, max_ratio)
         keep_ratio (bool): Whether to keep the aspect ratio when resizing the
@@ -41,7 +43,8 @@ class Resize(object):
                  img_scale=None,
                  multiscale_mode='range',
                  ratio_range=None,
-                 keep_ratio=True):
+                 keep_ratio=True,
+                 max_size=None):
         if img_scale is None:
             self.img_scale = None
         else:
@@ -49,7 +52,7 @@ class Resize(object):
                 self.img_scale = img_scale
             else:
                 self.img_scale = [img_scale]
-            assert mmcv.is_list_of(self.img_scale, tuple)
+            assert mmcv.is_list_of(self.img_scale, tuple) or mmcv.is_list_of(self.img_scale, float)
 
         if ratio_range is not None:
             # mode 1: given a scale and a range of image ratio
@@ -61,6 +64,7 @@ class Resize(object):
         self.multiscale_mode = multiscale_mode
         self.ratio_range = ratio_range
         self.keep_ratio = keep_ratio
+        self.max_size = max_size
 
     @staticmethod
     def random_select(img_scales):
@@ -109,12 +113,20 @@ class Resize(object):
         results['scale_idx'] = scale_idx
 
     def _resize_img(self, results):
+
+        resize_target = results['scale']
+        if self.max_size is not None:
+            if results['img'].shape[1] > self.max_size[0] or \
+                    results['img'].shape[0] > self.max_size[1]:
+                resize_target = self.max_size
+
         if self.keep_ratio:
             img, scale_factor = mmcv.imrescale(
-                results['img'], results['scale'], return_scale=True)
+                results['img'], resize_target, return_scale=True)
+
         else:
             img, w_scale, h_scale = mmcv.imresize(
-                results['img'], results['scale'], return_scale=True)
+                results['img'], resize_target, return_scale=True)
             scale_factor = np.array([w_scale, h_scale, w_scale, h_scale],
                                     dtype=np.float32)
         results['img'] = img
@@ -243,7 +255,8 @@ class Pad(object):
 
     def _pad_img(self, results):
         if self.size is not None:
-            padded_img = mmcv.impad(results['img'], self.size)
+            # padded_img = mmcv.impad(results['img'], self.size)
+            padded_img = mmcv.impad(results['img'], shape=(1024, 1024), pad_val=0)
         elif self.size_divisor is not None:
             padded_img = mmcv.impad_to_multiple(
                 results['img'], self.size_divisor, pad_val=self.pad_val)
@@ -303,67 +316,566 @@ class Normalize(object):
         return repr_str
 
 
+class OBBox:
+    """Toolbox for handling oriented bboxes"""
+    @staticmethod
+    def get_inside_outside_edge_mask(bboxes: np.ndarray, crop_shape: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Calculate which bounding boxes are completely inside, completely outside or intersecting a given shape.
+
+        Edge cases can be bboxes that have 0-3 corners inside the boundary.
+
+        :param crop_shape: Shape of the crop.
+        :type crop_shape: Tuple[int]
+        :param bboxes: List of 8 dimensional bounding boxes.
+        :type bboxes: np.ndarray
+        :return: A tuple containing boolean masks for the corresponding bbox being inside, outside or an edge case.
+        :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray]
+        """
+        assert bboxes.shape[1] == 8
+        one_dim_bbox_shape = bboxes[:, 0::2].shape
+        one_dim_ones = np.ones(one_dim_bbox_shape)
+        x = one_dim_ones * crop_shape[0]
+        y = one_dim_ones * crop_shape[1]
+        zeros = np.zeros(one_dim_bbox_shape)
+        # Find which coords are outside the crop.
+        # If sum = 4, all corners are too far away.
+        # If sum = 0, the corners are within the particular boundary condition.
+        # If sum in [1, 2, 3], it might be an edge case.
+        too_high = (bboxes[:, 0::2] < zeros).sum(axis=1)
+        too_low = (bboxes[:, 0::2] > x).sum(axis=1)
+        too_left = (bboxes[:, 1::2] < zeros).sum(axis=1)
+        too_right = (bboxes[:, 1::2] > y).sum(axis=1)
+        # Bbox is outside if the corners are outside in any direction
+        outside = ((too_high == 4) + (too_low == 4) + (too_left == 4) + (too_right == 4)) == 1
+        # Bbox is inside if the corners are inside in all directions
+        inside = (too_high == 0) * (too_low == 0) * (too_left == 0) * (too_right == 0)
+        # If the bbox is neither completely inside nor outside, it's an edge case and needs to be handles separately
+        edge_cases = ((1 - outside) + (1 - inside)) == 2
+        return inside, outside, edge_cases
+
+    @staticmethod
+    def is_point_inside(point: np.ndarray, crop_shape: Tuple[int, int]) -> bool:
+        """
+        Test whether a point is inside a crop.
+
+        Regard points on the border to be inside as well.
+
+        :param point: The point to test.
+        :type point: np.ndarray
+        :param crop_shape: The crop shape to test for.
+        :type crop_shape: Tuple[int]
+        :return: True if the point is inside the crop. False otherwise.
+        :rtype: bool
+        """
+        assert point.shape == (2,)
+        x, y = point
+        if x < 0 or x > crop_shape[0]:
+            return False
+        if y < 0 or y > crop_shape[1]:
+            return False
+        return True
+
+    @staticmethod
+    def is_bbox_inside(bbox: Union[List[Tuple[float, float]], np.ndarray], crop_shape: Tuple[int, int]) -> bool:
+        """
+        Test whether a bounding box is inside a crop.
+
+        Regard points on the border to be inside as well.
+
+        :param bbox: The coordinates of the bbox.
+        :type bbox: Union[List[Tuple[float, float]], np.ndarray]
+        :param crop_shape: The crop shape to test for.
+        :type crop_shape: Tuple[int]
+        :return: True if bbox is inside the crop. False otherwise.
+        :rtype: bool
+        """
+        if isinstance(bbox, np.ndarray) and bbox.shape != (4, 2):
+            bbox = bbox.copy().reshape((4, 2))
+        for point in bbox:
+            if not OBBox.is_point_inside(point, crop_shape):
+                return False
+        return True
+
+    @staticmethod
+    def crop_bbox(
+            corners: np.ndarray,
+            crop_shape: Tuple[int, int],
+            threshold_rel: float = 0.6,
+            threshold_abs: float = 20.0) -> Optional[np.ndarray]:
+        """
+        Crop bounding box along a given shape.
+
+        Find the intersecting edges and shorten them so the rectangle fits inside the border.
+
+        :param corners: The corners of the bbox.
+        :type corners: np.ndarray
+        :param crop_shape: The border shape of the image.
+        :type crop_shape: Tuple[int]
+        :param threshold_rel: The threshold of the new area divided by the old area under which to dismiss bboxes.
+        :type threshold_rel: float
+        :param threshold_abs: The threshold of the new area over which to accept crops even if they'e below the relative threshold.
+        :type threshold_abs: float
+        :return: The cropped bbox.
+        :rtype: Optional[np.ndarray]
+        """
+        assert corners.shape == (4, 2)
+        if OBBox.is_bbox_inside(corners, crop_shape):
+            return corners
+        orig_area = OBBox.get_area(corners)
+        bboxes_by_area = {}
+        for bbox in OBBox._get_possible_crop_solutions(corners, crop_shape):
+            if not OBBox.is_bbox_inside(bbox, crop_shape):
+                continue
+            area = OBBox.get_area(bbox)
+            if area > orig_area * threshold_rel or area > threshold_abs:
+                bboxes_by_area[area] = bbox
+        if len(bboxes_by_area) == 0:
+            # No suitable crop available
+            return None
+        highest_area = max(bboxes_by_area.keys())
+        return bboxes_by_area[highest_area]
+
+    @staticmethod
+    def _get_possible_crop_solutions(corners: np.ndarray, crop_shape: Tuple[int, int]) -> List[np.ndarray]:
+        """
+        Find possible crops that lie inside the crop boundary
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param crop_shape: The shape of the crop boundary
+        :type crop_shape: Tuple[int, int]
+        :return: A list of all possible crops
+        :rtype: List[np.ndarray]
+        """
+        return OBBox._get_possible_side_truncated_crops(corners, crop_shape) + \
+               OBBox._get_possible_diagonal_crops(corners, crop_shape)
+
+    @staticmethod
+    def _get_possible_diagonal_crops(corners: np.ndarray, crop_shape: Tuple[int, int]) -> List[np.ndarray]:
+        """
+        Find possible crops that lie inside the crop boundary by truncating along the diagonal
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param crop_shape: The shape of the crop
+        :type crop_shape: Tuple[int, int]
+        :return: A list of possible crops
+        :rtype: List[np.ndarray]
+        """
+        truncated = []
+        for i in range(4):
+            corner = corners[i]
+            if not OBBox.is_point_inside(corner, crop_shape):
+                continue
+            forward_idx = (i + 1) % 4
+            backward_idx = (i - 1) % 4
+            opposite_idx = (i + 2) % 4
+            opposite = corners[opposite_idx]
+            if not OBBox.is_point_inside(opposite, crop_shape):
+                intersec = OBBox._intersect(corner, opposite, crop_shape)
+                if intersec is None:
+                    continue
+                new_corners = corners.copy()
+                new_corners[opposite_idx] = intersec
+                # Get intersections of the edges shifted to the new opposite corner
+                forward_ext = intersec - (opposite - corners[forward_idx])
+                backward_ext = intersec - (opposite - corners[backward_idx])
+                new_corners[forward_idx] = OBBox._seg_intersect(corner, corners[forward_idx], intersec, forward_ext)
+                new_corners[backward_idx] = OBBox._seg_intersect(corner, corners[backward_idx], intersec, backward_ext)
+                truncated.append(new_corners)
+        for i, bbox in enumerate(truncated):
+            if not OBBox.is_bbox_inside(bbox, crop_shape):
+                # Although this is not a solution, recurse to possibly find a better solution based off of it
+                truncated.pop(i)
+                # Recurse
+                truncated += OBBox._get_possible_crop_solutions(bbox, crop_shape)
+        return truncated
+
+    @staticmethod
+    def _get_possible_side_truncated_crops(corners: np.ndarray, crop_shape: Tuple[int, int]) -> List[np.ndarray]:
+        """
+        Find possible crops that lie inside the crop boundary by truncating along the edges.
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param crop_shape: The shape of the crop
+        :type crop_shape: Tuple[int, int]
+        :return: A list of possible crops
+        :rtype: List[np.ndarray]
+        """
+        truncated = []
+        # Identify which edge crosses the crop border to shorten them
+        for i in range(4):
+            corner = corners[i]
+            forward_idx = (i + 1) % 4
+            backward_idx = (i - 1) % 4
+            opposite_idx = (i + 2) % 4
+
+            forward_intersection = OBBox._intersect(corner, corners[forward_idx], crop_shape)
+            if forward_intersection is not None:
+                # The current corner and the next corner are separated by the crop border
+                if OBBox.is_point_inside(corner, crop_shape):
+                    # The current corner is inside
+                    # The next corner along with the corner opposite of it need to be shifted
+                    retract_idx = forward_idx
+                    adj_idx = opposite_idx
+                else:
+                    # The current corner is outside
+                    # Itself and the corner before it need to be shifted
+                    retract_idx = i
+                    adj_idx = backward_idx
+                new_bbox = OBBox._retract_to_intersection(corners.copy(), forward_intersection, retract_idx, adj_idx)
+                is_new = True
+                for bbox in truncated:
+                    is_new &= not np.allclose(bbox, new_bbox)
+                if is_new:
+                    truncated.append(new_bbox)
+
+            backward_intersection = OBBox._intersect(corner, corners[backward_idx], crop_shape)
+            if backward_intersection is not None:
+                # The current corner and the last corner are separated by the crop border
+                if OBBox.is_point_inside(corner, crop_shape):
+                    # The current corner is inside
+                    # The last corner along with the corner opposite of it need to be shifted
+                    retract_idx = backward_idx
+                    adj_idx = opposite_idx
+                else:
+                    # The current corner is outside
+                    # Itself and the corner after it need to be shifted
+                    retract_idx = i
+                    adj_idx = forward_idx
+                new_bbox = OBBox._retract_to_intersection(corners.copy(), backward_intersection, retract_idx, adj_idx)
+                is_new = True
+                for bbox in truncated:
+                    is_new &= not np.allclose(bbox, new_bbox)
+                if is_new:
+                    truncated.append(new_bbox)
+        for i, bbox in enumerate(truncated):
+            if not OBBox.is_bbox_inside(bbox, crop_shape):
+                # Although this is not a solution, recurse to possibly find a better solution based off of it
+                truncated.pop(i)
+                # Recurse
+                truncated += OBBox._get_possible_crop_solutions(bbox, crop_shape)
+        return truncated
+
+    # noinspection DuplicatedCode
+    @staticmethod
+    def _retract_one_side(corners: np.ndarray, crop_shape: Tuple[int, int]) -> np.ndarray:
+        """
+        Search for one side to be contracted as to make the bbox fit inside the boundary.
+
+        Make sure to return the retraction with the lowest area loss.
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param crop_shape: The shape of the image boundary
+        :type crop_shape: Tuple[int, int]
+        :return: A bbox with one side corrected
+        :rtype: np.ndarray
+        """
+        assert corners.shape == (4, 2)
+        if OBBox.is_bbox_inside(corners, crop_shape):
+            return corners
+        retraction_candidates = {}
+        # Identify which edge crosses the crop border to shorten them
+        for i in range(4):
+            corner = corners[i]
+            forward_idx = (i + 1) % 4
+            backward_idx = (i - 1) % 4
+            opposite_idx = (i + 2) % 4
+
+            forward_intersection = OBBox._intersect(corner, corners[forward_idx], crop_shape)
+            if forward_intersection is not None:
+                if OBBox.is_point_inside(corner, crop_shape):
+                    retract_idx = forward_idx
+                    adj_idx = opposite_idx
+                else:
+                    retract_idx = i
+                    adj_idx = backward_idx
+                new_corners = OBBox._retract_to_intersection(corners.copy(), forward_intersection, retract_idx, adj_idx)
+                retraction_candidates[OBBox.get_area(new_corners)] = new_corners
+
+            backward_intersection = OBBox._intersect(corner, corners[backward_idx], crop_shape)
+            if backward_intersection is not None:
+                if OBBox.is_point_inside(corner, crop_shape):
+                    retract_idx = backward_idx
+                    adj_idx = opposite_idx
+                else:
+                    retract_idx = i
+                    adj_idx = forward_idx
+                new_corners = OBBox._retract_to_intersection(corners.copy(), backward_intersection, retract_idx, adj_idx)
+                retraction_candidates[OBBox.get_area(new_corners)] = new_corners
+        if len(retraction_candidates) == 0:
+            # No side left to retract
+            return corners
+        highest_area = max(retraction_candidates.keys())
+        return retraction_candidates[highest_area]
+
+    @staticmethod
+    def _retract_to_intersection(corners: np.ndarray, intersec: np.ndarray, corner_idx: int, adj_corner_idx: int) -> np.ndarray:
+        """
+        Retract corners from indexed croner to intersection.
+
+        :param corners: The corners of the bbox
+        :type corners: np.ndarray
+        :param intersec: The intersection to retract to
+        :type intersec: np.ndarray
+        :param corner_idx: The index or the corner from which to retract from
+        :type corner_idx: int
+        :param adj_corner_idx: The index or the adjacent corner to include in the retraction
+        :type adj_corner_idx: int
+        :return: The resulting bbox
+        :rtype: np.ndarray
+        """
+        offset = intersec - corners[corner_idx]
+        corners[corner_idx] += offset
+        corners[adj_corner_idx] += offset
+        return corners
+
+    @staticmethod
+    def get_area(corners: np.ndarray) -> float:
+        """
+        Calculate the area of a bounding box based on its corners.
+
+        Assumption of a rectangle is acceptable, as the area is only used for comparisons.
+
+        :param corners: The four corners of the bbox.
+        :type corners: np.ndarray
+        :return: The area encased by the bbox corners
+        :rtype: float
+        """
+        assert corners.shape == (4, 2)
+        w = np.linalg.norm(corners[1] - corners[0])
+        h = np.linalg.norm(corners[3] - corners[0])
+        return w * h
+
+    @staticmethod
+    def get_angle(corners: np.ndarray) -> float:
+        assert corners.shape == (4, 2)
+        a, b, _, d = corners
+        if np.linalg.norm(b - a) > np.linalg.norm(d - a):  # The longer edge provides a better measurement for the angle
+            v = b - a
+        else:
+            v = d - a
+        v = v/np.sqrt(np.dot(v, v))
+        return np.rad2deg(np.arccos(v))[0]
+
+    @staticmethod
+    def get_edge_ratio(corners: np.ndarray) -> float:
+        assert corners.shape == (4, 2)
+        a, b, _, d = corners
+        v1 = b - a
+        v2 = d - a
+        return np.linalg.norm(v1)/np.linalg.norm(v2)
+
+    @staticmethod
+    def _intersect(start_corner: np.ndarray, end_corner: np.ndarray, crop_shape: Tuple[int, int]) -> Optional[np.ndarray]:
+        """
+        Find the intersection of the given edge and the border closest to the first corner.
+
+        :param start_corner: The corner of the edge that is inside
+        :type start_corner: np.ndarray
+        :param end_corner: The corner of the edge that is outside
+        :type end_corner: np.ndarray
+        :param crop_shape: The shape that defines the border
+        :type crop_shape: Tuple[int, int]
+        :return: The intersecting corner of the given edge and the border
+        :rtype: np.ndarray
+        """
+        assert start_corner.shape == (2,)
+        assert end_corner.shape == (2,)
+        if OBBox.is_point_inside(start_corner, crop_shape) and OBBox.is_point_inside(end_corner, crop_shape):
+            return None
+        edge_vec = end_corner - start_corner
+        max_dist = np.float32(np.linalg.norm(edge_vec))
+        edge_unit_vec = edge_vec/np.linalg.norm(edge_vec)
+        intersecs = {}
+        # In case the dimensions are mixed up, fix here:
+        border_corners = [
+            np.array((0, 0)),
+            np.array((crop_shape[0], 0)),
+            np.array((crop_shape[0], crop_shape[1])),
+            np.array((0, crop_shape[1])),
+        ]
+        for i in range(4):
+            border_a = border_corners[i]
+            border_b = border_corners[(i + 1) % 4]
+            intersection = OBBox._seg_intersect(start_corner, end_corner, border_a, border_b)
+            if intersection is None:  # If the edge and the border are parallel, there's no intersection
+                continue
+            if min(border_a[0], border_b[0]) <= intersection[0] <= max(border_a[0], border_b[0]) and \
+                min(border_a[1], border_b[1]) <= intersection[1] <= max(border_a[1], border_b[1]):
+                if (intersection == start_corner).all() or (intersection == end_corner).all():
+                    # Do no pursue the path of total despair, for only the darkest monsters dwell within those crevices
+                    continue
+                offset_vec = intersection - start_corner
+                if offset_vec[0] == 0.0 and offset_vec[1] == 0.0:
+                    # Intersection and corner coincide
+                    continue
+                dist = np.float32(np.linalg.norm(offset_vec))  # Floaty bois be floaty
+                offset_unit_vec = offset_vec/dist
+                if 0 < dist < max_dist and np.allclose(offset_unit_vec, edge_unit_vec):
+                    intersecs[dist] = intersection
+        if len(intersecs) == 0:
+            return None
+        return intersecs[min(intersecs.keys())]
+
+    @staticmethod
+    def _seg_intersect(a1: np.ndarray, a2: np.ndarray, b1: np.ndarray, b2: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Calculate the intersection point of two lines.
+
+        https://stackoverflow.com/questions/3252194/numpy-and-line-intersections#3252222
+
+        :param a1: Start point of the first line
+        :type a1: np.ndarray
+        :param a2: End point of the first line
+        :type a2: np.ndarray
+        :param b1: Start point of the second line
+        :type b1: np.ndarray
+        :param b2: End point of the second line
+        :type b2: np.ndarray
+        :return: Intersection point of found
+        :rtype: Optional[np.ndarray]
+        """
+        da = a2 - a1
+        db = b2 - b1
+        dp = a1 - b1
+        dap = np.empty_like(da)
+        dap[0] = -da[1]
+        dap[1] = da[0]
+        denom = np.dot(dap, db)
+        if denom == 0.0:
+            return None
+        num = np.dot(dap, dp)
+        return (num / denom.astype(float)) * db + b1
+
+
+
 @PIPELINES.register_module
 class RandomCrop(object):
     """Random crop the image & bboxes & masks.
-
     Args:
         crop_size (tuple): Expected size after cropping, (h, w).
+        allow_negative_crop (bool): Whether to allow a crop that does not
+            contain any bbox area. Default to False.
+        bbox_clip_border (bool, optional): Whether clip the objects outside
+            the border of the image. Defaults to True.
+    Note:
+        - If the image is smaller than the crop size, return the original image
+        - The keys for bboxes, labels and masks must be aligned. That is,
+          `gt_bboxes` corresponds to `gt_labels` and `gt_masks`, and
+          `gt_bboxes_ignore` corresponds to `gt_labels_ignore` and
+          `gt_masks_ignore`.
+        - If the crop does not contain any gt-bbox region and
+          `allow_negative_crop` is set to False, skip this image.
     """
 
-    def __init__(self, crop_size):
+    def __init__(self,
+                 crop_size,
+                 allow_negative_crop=False,
+                 bbox_clip_border=True,
+                 threshold_rel=0.6,
+                 threshold_abs=20.0):
+        assert crop_size[0] > 0 and crop_size[1] > 0
         self.crop_size = crop_size
+        self.threshold_rel = threshold_rel
+        self.threshold_abs = threshold_abs
+        self.allow_negative_crop = allow_negative_crop
+        self.bbox_clip_border = bbox_clip_border
+        # The key correspondence from bboxes to labels and masks.
+        self.bbox2label = {
+            'gt_bboxes': 'gt_labels',
+            'gt_bboxes_ignore': 'gt_labels_ignore'
+        }
+        self.bbox2mask = {
+            'gt_bboxes': 'gt_masks',
+            'gt_bboxes_ignore': 'gt_masks_ignore'
+        }
 
     def __call__(self, results):
-        img = results['img']
-        margin_h = max(img.shape[0] - self.crop_size[0], 0)
-        margin_w = max(img.shape[1] - self.crop_size[1], 0)
-        offset_h = np.random.randint(0, margin_h + 1)
-        offset_w = np.random.randint(0, margin_w + 1)
-        crop_y1, crop_y2 = offset_h, offset_h + self.crop_size[0]
-        crop_x1, crop_x2 = offset_w, offset_w + self.crop_size[1]
+        """Call function to randomly crop images, bounding boxes, masks,
+        semantic segmentation maps.
+        Args:
+            results (dict): Result dict from loading pipeline.
+        Returns:
+            dict: Randomly cropped results, 'img_shape' key in result dict is
+                updated according to crop size.
+        """
 
-        # crop the image
-        img = img[crop_y1:crop_y2, crop_x1:crop_x2, :]
-        img_shape = img.shape
-        results['img'] = img
+        for key in results.get('img_fields', ['img']):
+            img = results[key]
+            margin_h = max(img.shape[0] - self.crop_size[0], 0)
+            margin_w = max(img.shape[1] - self.crop_size[1], 0)
+            offset_h = np.random.randint(0, margin_h + 1)
+            offset_w = np.random.randint(0, margin_w + 1)
+            crop_y1, crop_y2 = offset_h, offset_h + self.crop_size[0]
+            crop_x1, crop_x2 = offset_w, offset_w + self.crop_size[1]
+
+            # crop the image
+            img = img[crop_y1:crop_y2, crop_x1:crop_x2, ...]
+            img_shape = img.shape
+            results[key] = img
         results['img_shape'] = img_shape
 
         # crop bboxes accordingly and clip to the image boundary
         for key in results.get('bbox_fields', []):
-            bbox_offset = np.array([offset_w, offset_h, offset_w, offset_h],
+            # e.g. gt_bboxes and gt_bboxes_ignore
+            bbox_offset = np.array([offset_w, offset_h, offset_w, offset_h, offset_w, offset_h, offset_w, offset_h],
                                    dtype=np.float32)
             bboxes = results[key] - bbox_offset
-            bboxes[:, 0::2] = np.clip(bboxes[:, 0::2], 0, img_shape[1] - 1)
-            bboxes[:, 1::2] = np.clip(bboxes[:, 1::2], 0, img_shape[0] - 1)
-            results[key] = bboxes
+            if self.bbox_clip_border:
+                inside, outside, edge_cases = OBBox.get_inside_outside_edge_mask(bboxes, self.crop_size)
+                for i, (o_bbox, is_edge_case) in enumerate(zip(bboxes, edge_cases)):
+                    if not is_edge_case:
+                        continue
+                    corners = o_bbox.reshape((4, 2))
 
-        # filter out the gt bboxes that are completely cropped
-        if 'gt_bboxes' in results:
-            gt_bboxes = results['gt_bboxes']
-            valid_inds = (gt_bboxes[:, 2] > gt_bboxes[:, 0]) & (
-                gt_bboxes[:, 3] > gt_bboxes[:, 1])
-            # if no gt bbox remains after cropping, just skip this image
-            if not np.any(valid_inds):
+                    # Crop bbox
+                    cropped_bbox = OBBox.crop_bbox(
+                        corners,
+                        self.crop_size,
+                        threshold_rel=self.threshold_rel,
+                        threshold_abs=self.threshold_abs,
+                    )
+                    if cropped_bbox is None:
+                        # The cropped bbox is faulty (i.e. too small)
+                        # Treat as if outside as to discard it
+                        edge_cases[i] = False
+                        outside[i] = True
+                    else:
+                        bboxes[i] = cropped_bbox.reshape((8,))
+            assert bboxes.shape[0] == inside.sum() + outside.sum() + edge_cases.sum()
+            valid_inds = inside | edge_cases
+            # If the crop does not contain any gt-bbox area and
+            # self.allow_negative_crop is False, skip this image.
+            if (key == 'gt_bboxes' and not valid_inds.any()
+                    and not self.allow_negative_crop):
                 return None
-            results['gt_bboxes'] = gt_bboxes[valid_inds, :]
-            if 'gt_labels' in results:
-                results['gt_labels'] = results['gt_labels'][valid_inds]
+            results[key] = bboxes[valid_inds, :]
+            # label fields. e.g. gt_labels and gt_labels_ignore
+            label_key = self.bbox2label.get(key)
+            if label_key in results:
+                results[label_key] = results[label_key][valid_inds]
 
-            # filter and crop the masks
-            if 'gt_masks' in results:
-                valid_gt_masks = []
-                for i in np.where(valid_inds)[0]:
-                    gt_mask = results['gt_masks'][i][crop_y1:crop_y2, crop_x1:
-                                                     crop_x2]
-                    valid_gt_masks.append(gt_mask)
-                results['gt_masks'] = valid_gt_masks
+            # mask fields, e.g. gt_masks and gt_masks_ignore
+            mask_key = self.bbox2mask.get(key)
+            if mask_key in results:
+                results[mask_key] = results[mask_key][
+                    valid_inds.nonzero()[0]].crop(
+                        np.asarray([crop_x1, crop_y1, crop_x2, crop_y2]))
+
+        # crop semantic seg
+        for key in results.get('seg_fields', []):
+            results[key] = results[key][crop_y1:crop_y2, crop_x1:crop_x2]
 
         return results
 
     def __repr__(self):
-        return self.__class__.__name__ + '(crop_size={})'.format(
-            self.crop_size)
+        repr_str = self.__class__.__name__ + f'(crop_size={self.crop_size}), '
+        repr_str += f'bbox_clip_border={self.bbox_clip_border})'
+        return repr_str
 
 
 @PIPELINES.register_module
@@ -830,5 +1342,3 @@ class Albu(object):
         repr_str = self.__class__.__name__
         repr_str += '(transformations={})'.format(self.transformations)
         return repr_str
-
-

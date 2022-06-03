@@ -7,7 +7,6 @@ from torch.utils.data import Dataset, DataLoader
 
 # Ignore warnings
 import warnings
-
 warnings.filterwarnings("ignore")
 
 class ImslpDataset(Dataset):
@@ -36,12 +35,13 @@ class ImslpDataset(Dataset):
         img_name = os.path.join(self.root_dir,
                                 self.split[idx][:-1])
 
-        image = io.imread(img_name)
-        image = cv2.resize(image, (1024, 1024))
-        sample = {'image': image}
+        if os.path.exists(img_name):
+            image = io.imread(img_name)
+            image = cv2.resize(image, (1024, 1024))
+            sample = {'image': image}
 
-        if self.transform:
-            sample = self.transform(sample)
+            if self.transform:
+                sample = self.transform(sample)
 
-        return sample
+            return sample
 

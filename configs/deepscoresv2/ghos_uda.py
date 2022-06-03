@@ -183,5 +183,8 @@ total_epochs = 500
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
-resume_from = None
 workflow = [('train', 1)]
+trade_off = 0.1
+resume = False
+distributed = True
+num_gpu = 2

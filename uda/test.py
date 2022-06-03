@@ -26,7 +26,8 @@ def single_gpu_test(model, data_loader, show=False, cfg = None):
     prog_bar = mmcv.ProgressBar(len(dataset))
     for i, data in enumerate(data_loader):
         with torch.no_grad():
-            result, bbox_list = model(return_loss=False, rescale=not show, **data)
+            result = model(return_loss=False, rescale=not show, **data)
+            # result, bbox_list = model(return_loss=False, rescale=not show, **data)
         results.append(result)
         if show:
             print("asdf")
@@ -84,10 +85,10 @@ def collect_results(result_part, size, tmpdir=None):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
-    parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_ghos_halfrez_no_aug.py')
+    parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_ghos_halfrez_crop.py')
     # parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/uda/model_020.pth')
     # parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/deepscoresV2_tugg_halfrez_crop_epoch250.pth')
-    parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/epoch_40.pth')
+    parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/uda_test_model/model_000.pth')
     parser.add_argument('--out', help='output result file', default = 'results/test_imslp/s2anet_no_aug/test_imslp.pkl')
     parser.add_argument('--eval_folder', help='Evaluation folder', default = 'results/test_imslp/s2anet_no_aug')
     parser.add_argument('--model_type', help='Type of model (Basic s2anet or UDA)', default = 's2anet')
