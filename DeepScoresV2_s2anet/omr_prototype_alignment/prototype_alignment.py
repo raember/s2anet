@@ -131,26 +131,6 @@ def extract_bbox_from(glyph: Image, prop_bbox: np.ndarray, cls: str) -> np.ndarr
     return np.array([int(x2), int(y2), int(w), int(h), angle])
 
 
-# def get_transformed_glyph(class_id: int, glyph_width: int, glyph_height: int, glyph_angle: float, padding_left: int,
-#                          padding_right: int, padding_top: int, padding_bottom: int) -> np.array:
-#    """
-#    returns a glyph according the parameters
-#
-#    :param class_id: The class id (type of the glyph)
-#    :param glyph_width: width of the glyph
-#    :param glyph_height: height of the glyph
-#    :param glyph_angle: angle of the glyph
-#    :param padding_left: padding along the horizontal axis, padding on the left side of the glyph center
-#    :param padding_right: padding along the horizontal axis, padding on the right side of the glyph center
-#    :param padding_top: padding along vertical axis, padding above the glyph
-#    :param padding_bottom: padding along vertical axis, padding below the glyph
-#    :return: numpy array with the glyph
-#    """
-#    print("Class ID:", class_id, "Width:", glyph_width, "Height:", glyph_height, "Angle:", glyph_angle, "Padding Left:",
-#          padding_left, "Padding Right:", padding_right, "Padding Top:", padding_top, "Padding Bottom", padding_bottom,
-#          "Array Size:", padding_left + padding_right, "x", padding_top + padding_bottom)
-#    return np.zeros((padding_left + padding_right, padding_top + padding_bottom))
-
 def get_roi(img, bbox):
     area_size = (np.sqrt(bbox[2] ** 2 + bbox[3] ** 2)) / 2 + 20
     x_min, x_max = int(max(0, np.floor(bbox[0] - area_size))), int(min(img.shape[1], np.ceil(bbox[0] + area_size)))
@@ -266,14 +246,12 @@ def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video
     x_min, x_max = max(int(np.min(poly[::2]) - padding[1]), 0), min(int(np.max(poly[::2]) + padding[1]),
                                                                     img_np.shape[1])
     img_roi = img_np[y_min:y_max, x_min:x_max]
-    img_roi = 255 - img_roi  # invert
+    #img_roi = 255 - img_roi  # invert
 
     best_box, best_overlap = None, -1
     glyph = GlyphGenerator()
 
     orig_angle = bbox[4]
-    orig_height = round(abs(bbox[2] * math.sin(orig_angle)) + abs(bbox[3] * math.cos(orig_angle)))
-    orig_width = round(abs(bbox[2] * math.cos(orig_angle)) + abs(bbox[3] * math.sin(orig_angle)))
     angles = _create_search_list(orig_angle - 0.2, orig_angle + 0.2, 0.05)
 
     method = eval('cv.TM_CCORR_NORMED')
@@ -281,27 +259,26 @@ def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video
     count_angle_not_improved = 0
     for angle in angles:
 
-        proposed_glyph = glyph.get_transformed_glyph(cls, int(bbox[3]), int(bbox[2]), angle, padding_left=None,
+        proposed_glyph = glyph.get_transformed_glyph(cls, int(bbox[2]), int(bbox[3]), -angle, padding_left=None,
                                                      padding_right=None, padding_top=None, padding_bottom=None)
 
         img_roi_copy = img_roi.copy()
         try:
             res = cv.matchTemplate(img_roi_copy, proposed_glyph, method)
+            min_val, max_val, min_loc, max_loc = cv.minMaxLoc(res)
+            top_left = max_loc
         except cv2.error as e:
             print(e)
             print(cls, img_roi_copy.shape, proposed_glyph.shape)
-
-        min_val, max_val, min_loc, max_loc = cv.minMaxLoc(res)
-        top_left = max_loc
+            max_val = -1
 
         if max_val > best_overlap:
             best_overlap = max_val
-            global_topleft = bbox[0:2] + (np.array(top_left) - np.array(padding))
-            w, h = np.array(proposed_glyph.shape[::-1])
-            print(global_topleft, (y_min, x_min))
-            best_box = tuple(global_topleft) + (int(bbox[2]), int(bbox[3]), angle)  # wrong! we need center not top left
+            center = (top_left[0] + proposed_glyph.shape[1] / 2, top_left[1] + proposed_glyph.shape[0] / 2)
+            global_center = (x_min + center[0], y_min + center[1])
+            best_box = tuple(global_center) + (int(bbox[2]), int(bbox[3]), angle)
 
-        if count_angle_not_improved > 3:
+        if count_angle_not_improved > 4:
             break
 
     return np.array(best_box)
@@ -383,14 +360,13 @@ def _process_sample(img: Image, sample, whitelist=[]):
         gt_bbox: np.ndarray = sample['gt'][:5].astype(np.float)
         # print(f"IoU [{cls}]: ")
     for glyph in get_glyphs(cls, prop_bbox, 0):
-        # new_glyph = process2(img, prop_bbox, glyph, cls)
+        #new_glyph = process2(img, prop_bbox, glyph, cls)
         new_glyph = process_simple(img, prop_bbox, glyph, cls)
 
         derived_bbox = extract_bbox_from(glyph, prop_bbox, cls)
 
         if isinstance(new_glyph, np.ndarray):
             new_bbox = new_glyph
-            # print(sample['proposal'], new_bbox)
         else:
             new_bbox = extract_bbox_from(new_glyph, prop_bbox, cls)
 
@@ -407,15 +383,6 @@ def _process_single(img: Image, samples, whitelist=[], n_workers=5):
     bboxes, jobs = [], []
 
     img = np.array(img.convert('L'))
-
-    # with ThreadPoolExecutor(max_workers=n_workers) as executor:
-    #    for sample in samples:
-    #        future = executor.submit(_process_sample, img, sample, whitelist)
-    #        jobs.append(future)
-    #
-    #    for future in concurrent.futures.as_completed(jobs):
-    #        bboxes.append(future.result())
-
     for sample in samples:
         bboxes.append(_process_sample(img, sample, whitelist))
 

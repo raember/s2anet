@@ -63,7 +63,7 @@ def _postprocess_bboxes(img, boxes, labels):
                                                               whitelist=["key", "clef", "accidental", "notehead"])
     new_boxes = np.zeros(boxes.shape)
     new_boxes[..., :5] = np.stack(processed_proposals)
-    if new_boxes.shape[2] == 6:
+    if new_boxes.shape[1] == 6:
         # copy scores
         new_boxes[..., 5] = boxes[..., 5]
     return new_boxes
