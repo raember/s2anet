@@ -16,6 +16,7 @@ import numpy as np
 import pandas
 import torch
 import torch.distributed as dist
+from PIL.Image import Image
 from dateutil.parser import parse
 from matplotlib import pyplot as plt
 from mmcv import DataLoader, Config
@@ -23,13 +24,98 @@ from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import get_dist_info, load_checkpoint
 from pandas import DataFrame
 
-from DeepScoresV2_s2anet.omr_prototype_alignment import render
+from DeepScoresV2_s2anet.omr_prototype_alignment import prototype_alignment, render
 from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single, bbox2result
 from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
-from tools.detection_service import _postprocess_bboxes
+
+
+DEEPSCORES_TEST_SET = {
+    'type': 'DeepScoresV2Dataset',
+    'ann_file': 'data/deep_scores_dense/deepscores_test.json',
+    'img_prefix': 'data/deep_scores_dense/images/',
+    'pipeline': [
+        {'type': 'LoadImageFromFile'},
+        {
+            'type': 'MultiScaleFlipAug',
+            'img_scale': 0.5,
+            'flip': False,
+            'transforms': [
+                {'type': 'RotatedResize', 'img_scale': 0.5, 'keep_ratio': True},
+                {'type': 'RotatedRandomFlip'},
+                {'type': 'Normalize', 'mean': [240, 240, 240], 'std': [57, 57, 57], 'to_rgb': False},
+                {'type': 'Pad', 'size_divisor': 32},
+                {'type': 'ImageToTensor', 'keys': ['img']},
+                {'type': 'Collect', 'keys': ['img']}
+            ]
+        }
+    ],
+    'use_oriented_bboxes': True
+}
+
+IMSLP_TEST_SET = {
+    'type': 'DeepScoresV2Dataset',
+    'ann_file': 'data/deep_scores_dense/imslp_test.json',
+    'img_prefix': 'data/deep_scores_dense/images/',
+    'pipeline': [
+        {'type': 'LoadImageFromFile'},
+        {
+            'type': 'MultiScaleFlipAug',
+            'img_scale': 1.0,
+            'flip': False,
+            'transforms': [
+                {'type': 'RotatedResize', 'img_scale': 1.0, 'keep_ratio': True},
+                {'type': 'RotatedRandomFlip'},
+                {'type': 'Normalize', 'mean': [240, 240, 240], 'std': [57, 57, 57], 'to_rgb': False},
+                {'type': 'Pad', 'size_divisor': 32},
+                {'type': 'ImageToTensor', 'keys': ['img']},
+                {'type': 'Collect', 'keys': ['img']}
+            ]
+        }
+    ],
+    'use_oriented_bboxes': True
+}
+TEST_SETS = [DEEPSCORES_TEST_SET, IMSLP_TEST_SET]
+
+class_names = (
+    'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
+    'clefUnpitchedPercussion', 'clef8', 'clef15', 'timeSig0', 'timeSig1', 'timeSig2', 'timeSig3', 'timeSig4',
+    'timeSig5', 'timeSig6', 'timeSig7', 'timeSig8', 'timeSig9', 'timeSigCommon', 'timeSigCutCommon',
+    'noteheadBlackOnLine', 'noteheadBlackOnLineSmall', 'noteheadBlackInSpace', 'noteheadBlackInSpaceSmall',
+    'noteheadHalfOnLine', 'noteheadHalfOnLineSmall', 'noteheadHalfInSpace', 'noteheadHalfInSpaceSmall',
+    'noteheadWholeOnLine', 'noteheadWholeOnLineSmall', 'noteheadWholeInSpace', 'noteheadWholeInSpaceSmall',
+    'noteheadDoubleWholeOnLine', 'noteheadDoubleWholeOnLineSmall', 'noteheadDoubleWholeInSpace',
+    'noteheadDoubleWholeInSpaceSmall', 'augmentationDot', 'stem', 'tremolo1', 'tremolo2', 'tremolo3', 'tremolo4',
+    'tremolo5', 'flag8thUp', 'flag8thUpSmall', 'flag16thUp', 'flag32ndUp', 'flag64thUp', 'flag128thUp', 'flag8thDown',
+    'flag8thDownSmall', 'flag16thDown', 'flag32ndDown', 'flag64thDown', 'flag128thDown', 'accidentalFlat',
+    'accidentalFlatSmall', 'accidentalNatural', 'accidentalNaturalSmall', 'accidentalSharp', 'accidentalSharpSmall',
+    'accidentalDoubleSharp', 'accidentalDoubleFlat', 'keyFlat', 'keyNatural', 'keySharp', 'articAccentAbove',
+    'articAccentBelow', 'articStaccatoAbove', 'articStaccatoBelow', 'articTenutoAbove', 'articTenutoBelow',
+    'articStaccatissimoAbove', 'articStaccatissimoBelow', 'articMarcatoAbove', 'articMarcatoBelow', 'fermataAbove',
+    'fermataBelow', 'caesura', 'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th',
+    'rest32nd', 'rest64th', 'rest128th', 'restHNr', 'dynamicP', 'dynamicM', 'dynamicF', 'dynamicS', 'dynamicZ',
+    'dynamicR', 'graceNoteAcciaccaturaStemUp', 'graceNoteAppoggiaturaStemUp', 'graceNoteAcciaccaturaStemDown',
+    'graceNoteAppoggiaturaStemDown', 'ornamentTrill', 'ornamentTurn', 'ornamentTurnInverted', 'ornamentMordent',
+    'stringsDownBow', 'stringsUpBow', 'arpeggiato', 'keyboardPedalPed', 'keyboardPedalUp', 'tuplet3', 'tuplet6',
+    'fingering0', 'fingering1', 'fingering2', 'fingering3', 'fingering4', 'fingering5', 'slur', 'beam', 'tie',
+    'restHBar', 'dynamicCrescendoHairpin', 'dynamicDiminuendoHairpin', 'tuplet1', 'tuplet2', 'tuplet4', 'tuplet5',
+    'tuplet7', 'tuplet8', 'tuplet9', 'tupletBracket', 'staff', 'ottavaBracket'
+)
+
+
+def _postprocess_bboxes(img, boxes, labels):
+    img = Image.fromarray(img)
+    proposal_list = [{'proposal': np.append(box[:5], class_names[int(label) + 1])} for box, label in zip(boxes, labels)]
+    processed_proposals = prototype_alignment._process_single(img, proposal_list,
+                                                              whitelist=["key", "clef", "accidental", "notehead"])
+    new_boxes = np.zeros(boxes.shape)
+    new_boxes[..., :5] = np.stack(processed_proposals)
+    if new_boxes.shape[1] == 6:
+        # copy scores
+        new_boxes[..., 5] = boxes[..., 5]
+    return new_boxes
 
 def _post_process_bbox_list(img, bbox_list, cfg):
     img = img.cpu().numpy().astype("uint8")
@@ -203,13 +289,6 @@ def parse_args():
         help='Use cached results/metrics/evaluations instead of recalculating'
     )
     parser.add_argument(
-        '--overlap', '-o',
-        choices=[0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
-        default=0.5,
-        type=float,
-        help='Overlap to choose the metrics from (default: 0.5)'
-    )
-    parser.add_argument(
         '--postprocess',
         action='store_true',
         default=False,
@@ -241,17 +320,18 @@ def config_from_str(cfg_str: str, path: Path = None) -> Config:
 
 
 @lru_cache()
-def get_test_sets(config: Config, dataset_type: str, distributed: bool, *test_sets: Path) -> List[DataLoader]:
+def get_test_set(test_config: str) -> DataLoader:
+    cfg = json.loads(test_config)
+    print(f"=> Loading {Path(cfg['ann_file']).name} ({cfg['type']})")
+    return build_dataset(cfg)
+
+def get_test_sets(*test_configs: Config, workers_per_gpu: int = 4, imgs_per_gpu: int = 4, distributed: bool = False) -> List[DataLoader]:
     data_loaders = []
-    for path in test_sets:
-        assert path.exists(), f"Test set does not exist at {str(path)}"
-        tds = config.data.test.deepcopy()
-        tds.ann_file = str(path)
-        tds.type = dataset_type
+    for test_config in test_configs:
         data_loaders.append(build_dataloader(
-            build_dataset(tds),
-            imgs_per_gpu=1,
-            workers_per_gpu=config.data.workers_per_gpu,
+            get_test_set(json.dumps(test_config)),
+            imgs_per_gpu=imgs_per_gpu,
+            workers_per_gpu=workers_per_gpu,
             dist=distributed,
             shuffle=False
         ))
@@ -288,11 +368,6 @@ def main():
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
-    if args.test_sets is not None:
-        test_sets = list(map(Path, args.test_sets))
-    else:
-        test_sets = [Path(args.test_sets)]
-
     out_folder = Path('eval')
     proposals_fp = Path(args.out)
     if args.json_out:
@@ -300,7 +375,7 @@ def main():
 
     index = []
     stats = {'samples': []}
-    stats.update({key: [] for key in get_test_sets(cfg, cfg.dataset_type, distributed, *test_sets)[0].dataset.CLASSES})
+    stats.update({key: [] for key in get_test_sets(*TEST_SETS)[0].dataset.CLASSES})
 
     # Make sure we only use the best epochs for each config
     checkpoints = {}
@@ -375,7 +450,17 @@ def main():
             new_chkpnt.unlink()
         new_chkpnt.symlink_to(os.path.relpath(checkpoint_file, new_chkpnt.parent))
 
-        for data_loader in get_test_sets(cfg, chkp_cfg.data.test.type, distributed, *test_sets):
+        test_sets = []
+        for test_set in TEST_SETS:
+            new_test_set = test_set.copy()
+            new_test_set['type'] = chkp_cfg.data.test.type
+            test_sets.append(new_test_set)
+
+        for data_loader in get_test_sets(
+                *test_sets,
+                workers_per_gpu=chkp_cfg.data.workers_per_gpu,
+                imgs_per_gpu=chkp_cfg.data.imgs_per_gpu,
+                distributed=distributed):
             if not got_all_ds_names:
                 dataset_names.append(data_loader.dataset.obb.dataset_info['description'])
             stats['samples'].append(len(data_loader.dataset.img_ids))
