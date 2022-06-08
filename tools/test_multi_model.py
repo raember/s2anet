@@ -418,17 +418,6 @@ def main():
     got_all_ds_names = False
     dataset_names = []
     for config_file, (checkpoint_file, checkpoint, model) in checkpoints.items():
-        # # build the model and load checkpoint
-        # model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-        # fp16_cfg = cfg.get('fp16', None)
-        # if fp16_cfg is not None:
-        #     wrap_fp16_model(model)
-        #
-        # outputs_m[checkpoint_file] = {}
-        # try:
-        #     checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
-        # except RuntimeError as e:
-        #     raise Exception(f"Failed loading checkpoint {str(checkpoint_file)}: {e}")
         checkpoint_file = Path(checkpoint_file)
         cfg_str = checkpoint['meta']['config']
         chkp_cfg = config_from_str(cfg_str)
