@@ -254,8 +254,6 @@ def parse_args():
     parser.add_argument('config', help='test config file path')
     parser.add_argument('--checkpoints', nargs='+',
                         help='checkpoint files', required=True)
-    parser.add_argument('--test-sets', nargs='+',
-                        help='test set paths')
     parser.add_argument('--out', help='output result file')
     parser.add_argument(
         '--json_out',
