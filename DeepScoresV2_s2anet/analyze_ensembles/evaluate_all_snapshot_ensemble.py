@@ -1,46 +1,59 @@
 import argparse
 import copy
+import re
 from argparse import Namespace
 from pathlib import Path
-import re
+
+import mmcv
+
 from DeepScoresV2_s2anet import analyze_errors
 from DeepScoresV2_s2anet.analyze_ensembles import snapshot_overlap, draw_WBF_for_multi_model, \
     compare_dsv2_metrics_multi_model
 from tools import test_multi_model
 
-
 parser = argparse.ArgumentParser(description='Evaluate Snapshot Ensemble')
 parser.add_argument('config', help='test config file path')
 parser.add_argument('--checkpoints', nargs='+',
                     help='checkpoint files (use like --checkpoints file1 file2 file3 ...', required=True)
-
 parser.add_argument(
     '--out',
     type=str,
     default="eval",
-    help="Pth to the output folder")
+    help="Path to the output folder")
 parser.add_argument(
     '--data',
     choices=['coco', 'dota', 'dota_large', 'dota_hbb', 'hrsc2016', 'voc', 'dota_1024', 'dsv2'],
     default='dsv2',
     type=str,
     help='eval dataset type')
+parser.add_argument(
+    '--postprocess',
+    action='store_true',
+    default=False,
+    help='post-process the results'
+)
+parser.add_argument(
+    '--round',
+    action='store_true',
+    default=False,
+    help='round the results (similar to detection service)'
+)
 args = parser.parse_args()
 
 BASE_PATH = Path(args.out)
 
+
 def run_test_multi_model():
     def get_args():
         args_ = copy.deepcopy(args)
-        args_.data = 'dsv2'
         args_.out = str(BASE_PATH / 'multi_model_test.pkl')
-        args_.json_out = None
+        args_.json_out = 'result.json'
         args_.launcher = 'none'
         args_.show = False
         args_.eval = []
-        args_.test_sets = None
         args_.cache = None
         args_.overlap = 0.5
+        args_.test_sets = [str(mmcv.Config.fromfile(args.config).data.test['ann_file'])]
         return args_
 
     test_multi_model.parse_args = get_args
@@ -55,6 +68,7 @@ def _get_result_jsons():
         return l
 
     return sort_str_with_int([str(x) for x in list(BASE_PATH.rglob("result.json"))])
+
 
 def run_snapshot_overlap():
     result_jsons = _get_result_jsons()
@@ -87,7 +101,6 @@ def run_snapshot_overlap_reduced():
 
     snapshot_overlap.parse_args = get_args
     snapshot_overlap.main()
-
 
 
 def run_WBF():
@@ -144,4 +157,3 @@ if __name__ == '__main__':
     run_WBF()
     run_compare_metrics()
     run_analyze_errors()
-

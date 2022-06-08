@@ -253,7 +253,7 @@ def visualize_ensemble(obb,
         for props in debug_proposals:
             obb.load_proposals(props)
             if obb.proposals is not None:
-                obb.proposals = postprocess_proposals(obb.proposals)
+                # obb.proposals = postprocess_proposals(obb.proposals)
 
                 prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
 
