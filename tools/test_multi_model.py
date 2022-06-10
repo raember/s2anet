@@ -323,7 +323,7 @@ def get_test_set(test_config: str) -> DataLoader:
     print(f"=> Loading {Path(cfg['ann_file']).name} ({cfg['type']})")
     return build_dataset(cfg)
 
-def get_test_sets(*test_configs: Config, workers_per_gpu: int = 4, imgs_per_gpu: int = 4, distributed: bool = False) -> List[DataLoader]:
+def get_test_sets(*test_configs: Config, workers_per_gpu: int = 4, imgs_per_gpu: int = 1, distributed: bool = False) -> List[DataLoader]:
     data_loaders = []
     for test_config in test_configs:
         data_loaders.append(build_dataloader(
