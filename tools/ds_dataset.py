@@ -50,8 +50,9 @@ if __name__ == '__main__':
     anns_id = anns.ann_info.shape[0]
     for img_file, ann_file in NEW_ANNS.items():
         img = Image.open(img_file)
-        scale = WIDTH / img.width
-        img = img.resize((int(WIDTH), int(scale * img.height)), Image.NEAREST)
+        scale = 1.0
+        # scale = WIDTH / img.width
+        # img = img.resize((int(WIDTH), int(scale * img.height)), Image.NEAREST)
         ann_file = Path(ann_file)
         assert ann_file.exists()
         new_anns = {}
