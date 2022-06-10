@@ -627,7 +627,7 @@ def main():
             im_fp = out_folder / f'AP_{name.replace(" ", "_")}_{overlap:.2f}.png'
             plt.savefig(im_fp)
             print(f'===> Saved plot to {str(im_fp)}')
-            plt.show()
+            #plt.show()
 
 
 if __name__ == '__main__':
