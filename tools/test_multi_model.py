@@ -453,20 +453,25 @@ def main():
                 err2(f"!!! Failed loading checkpoint \033[1m{str(checkpoint_file)}\033[m{ERR}: {e}")
                 continue
 
-            cfg_str = checkpoint['meta']['config']
-            chkp_cfg = config_from_str(cfg_str)
-            config_file = Path(chkp_cfg.filename)
-            parents = [config_file.name]
-            for parent in config_file.parents:
-                parents.append(parent.name)
-                if parent.name == 'configs':
-                    break
-                if parent.name == '/':
-                    raise Exception("Did not find configs dir")
-            config_file = Path(*reversed(parents))
-            msg3(f"Original config: \033[1m{config_file.name}\033[m (epoch: \033[1m{checkpoint['meta']['epoch']}\033[m)")
+            if 'config' in checkpoint['meta'].keys():
+                cfg_str = checkpoint['meta']['config']
+                chkp_cfg = config_from_str(cfg_str)
+                config_file = Path(chkp_cfg.filename)
+                parents = [config_file.name]
+                for parent in config_file.parents:
+                    parents.append(parent.name)
+                    if parent.name == 'configs':
+                        break
+                    if parent.name == '/':
+                        raise Exception("Did not find configs dir")
+                config_file = Path(*reversed(parents))
+                msg3(f"Original config: \033[1m{config_file.name}\033[m (epoch: \033[1m{checkpoint['meta']['epoch']}\033[m)")
+                checkpoint_id = config_file.name
+            else:
+                warn3("No original config found")
+                checkpoint_id = f"{checkpoint_file.parent.parent.name}_{checkpoint_file.parent.name}"
 
-            other_ckpnt_file, other_ckpnt, other_model = checkpoints.get(config_file.name, (None, None, None))
+            other_ckpnt_file, other_ckpnt, other_model = checkpoints.get(checkpoint_id, (None, None, None))
             if other_ckpnt is not None:
                 # Select the model of the same config with the highest epoch
                 if int(checkpoint['meta']['epoch']) >= int(other_ckpnt['meta']['epoch']):
@@ -474,7 +479,7 @@ def main():
                 else:
                     checkpoint_file, checkpoint, model = other_ckpnt_file, other_ckpnt, other_model
                     warn4(f"Ignored model with same config: epoch\033[1m {other_ckpnt['meta']['epoch']}\033[m <= \033[1m{checkpoint['meta']['epoch']}\033[m")
-            checkpoints[config_file.name] = checkpoint_file, checkpoint, model
+            checkpoints[checkpoint_id] = checkpoint_file, checkpoint, model
         elif checkpoint_file.is_dir():
             # Multimodel
             msg2(f"Pre-loading multi-models in \033[1m{str(checkpoint_file)}\033[m")
@@ -489,22 +494,36 @@ def main():
     metrics = {}
     got_all_ds_names = False
     dataset_names = []
-    for config_file, (checkpoint_file, checkpoint, model) in checkpoints.items():
+    for checkpoint_id, (checkpoint_file, checkpoint, model) in checkpoints.items():
         checkpoint_file = Path(checkpoint_file)
-        cfg_str = checkpoint['meta']['config']
-        chkp_cfg = config_from_str(cfg_str)
-        config_file = Path(chkp_cfg.filename)
-        assert config_file.suffix == '.py'
-        epoch = checkpoint['meta']['epoch']
-        time = parse(checkpoint['meta']['time'])
-        print('#' * 30)
-        msg1(f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m (\033[1m{epoch}\033[m epochs, created: {str(time)})")
-        chkp_folder = out_folder / f"{config_file.stem}_epoch_{epoch}"
-        chkp_folder.mkdir(parents=True, exist_ok=True)
-        # Write checkpoint config to file
-        with open(chkp_folder / config_file.name, 'w') as fp:
-            fp.write(f"# {cfg_str}")
-        msg2(f"Extracted original configuration to \033[1m{config_file.name}\033[m")
+        chkp_cfg = None
+        if 'config' in checkpoint['meta'].keys():
+            cfg_str = checkpoint['meta']['config']
+            chkp_cfg = config_from_str(cfg_str)
+            config_file = Path(chkp_cfg.filename)
+            assert config_file.suffix == '.py'
+            epoch = checkpoint['meta']['epoch']
+            time = parse(checkpoint['meta']['time'])
+            print('#' * 30)
+            msg1(f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m (\033[1m{epoch}\033[m epochs, created: {str(time)})")
+            checkpoint_id = f"{config_file.stem}_epoch_{epoch}"
+            chkp_folder = out_folder / checkpoint_id
+            chkp_folder.mkdir(parents=True, exist_ok=True)
+            # Write checkpoint config to file
+            with open(chkp_folder / config_file.name, 'w') as fp:
+                fp.write(f"# {cfg_str}")
+            msg2(f"Extracted original configuration to \033[1m{config_file.name}\033[m")
+        else:
+            msg1(f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m")
+            suffix = checkpoint_file.stem.split('_')[-1]
+            epoch_str = ''
+            if suffix.isdigit():
+                epoch = int(suffix)
+                warn2(f"Assuming epoch to be {epoch}")
+                epoch_str = f"_epoch_{epoch}"
+            checkpoint_id = checkpoint_id + epoch_str
+            chkp_folder = out_folder / checkpoint_id
+            chkp_folder.mkdir(parents=True, exist_ok=True)
 
         new_chkpnt = chkp_folder / checkpoint_file.name
         if new_chkpnt.is_symlink():
@@ -512,22 +531,25 @@ def main():
         new_chkpnt.symlink_to(os.path.relpath(checkpoint_file, new_chkpnt.parent))
 
         test_sets = []
+        workers_per_gpu = 4
+        if chkp_cfg is not None:
+            workers_per_gpu = chkp_cfg.data.workers_per_gpu
         for test_set in TEST_SETS:
             new_test_set = test_set.copy()
-            new_test_set['type'] = chkp_cfg.data.test.type
+            if chkp_cfg is not None:
+                new_test_set['type'] = chkp_cfg.data.test.type
             test_sets.append(new_test_set)
 
         for data_loader in get_test_sets(
                 *test_sets,
-                workers_per_gpu=chkp_cfg.data.workers_per_gpu,
-                # imgs_per_gpu=chkp_cfg.data.imgs_per_gpu,
+                workers_per_gpu=workers_per_gpu,
                 distributed=distributed):
             if not got_all_ds_names:
                 dataset_names.append(data_loader.dataset.obb.dataset_info['description'])
             stats['samples'].append(len(data_loader.dataset.img_ids))
             ann_file = Path(data_loader.dataset.ann_file)
             msg2(f"Selecting dataset: \033[1m{ann_file.stem}\033[m")
-            index.append(f"{config_file.stem}_epoch_{epoch} - {ann_file.stem}")
+            index.append(f"{checkpoint_id} - {ann_file.stem}")
             result_folder = chkp_folder / ann_file.stem
             result_folder.mkdir(exist_ok=True)
 
