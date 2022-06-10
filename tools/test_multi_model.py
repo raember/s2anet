@@ -446,7 +446,7 @@ def main():
         for data_loader in get_test_sets(
                 *test_sets,
                 workers_per_gpu=chkp_cfg.data.workers_per_gpu,
-                imgs_per_gpu=chkp_cfg.data.imgs_per_gpu,
+                # imgs_per_gpu=chkp_cfg.data.imgs_per_gpu,
                 distributed=distributed):
             if not got_all_ds_names:
                 dataset_names.append(data_loader.dataset.obb.dataset_info['description'])
