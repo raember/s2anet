@@ -105,6 +105,63 @@ class_names = (
 )
 
 
+GREEN = 32
+YELLOW = 33
+BLUE = 34
+RED = 31
+
+
+def msg(s: str, level: int, color: int):
+    if level == 0:
+        print(f"\033[1;{color}m=>\033[m {s}\033[m")
+    else:
+        print(f"  \033[1;{color}m{'-' * level}>\033[m {s}\033[m")
+
+def msg1(s: str):
+    msg(s, 0, GREEN)
+
+def msg2(s: str):
+    msg(s, 1, BLUE)
+
+def msg3(s: str):
+    msg(s, 2, BLUE)
+
+def msg4(s: str):
+    msg(s, 3, BLUE)
+
+WARN = f"\033[1;{YELLOW}m"
+def warn(s: str, level: int):
+    msg(f"{WARN}{s}\033[m", level, YELLOW)
+
+def warn1(s: str):
+    warn(s, 0)
+
+def warn2(s: str):
+    warn(s, 1)
+
+def warn3(s: str):
+    warn(s, 2)
+
+def warn4(s: str):
+    warn(s, 3)
+
+ERR = f"\033[1;{RED}m"
+def err(s: str, level: int):
+    msg(f"{ERR}{s}\033[m", level, RED)
+
+def err1(s: str):
+    err(s, 0)
+
+def err2(s: str):
+    err(s, 1)
+
+def err3(s: str):
+    err(s, 2)
+
+def err4(s: str):
+    err(s, 3)
+
+
 def _postprocess_bboxes(img, boxes, labels):
     img = Image.fromarray(img)
     proposal_list = [{'proposal': np.append(box[:5], class_names[int(label) + 1])} for box, label in zip(boxes, labels)]
@@ -320,7 +377,7 @@ def config_from_str(cfg_str: str, path: Path = None) -> Config:
 @lru_cache()
 def get_test_set(test_config: str) -> DataLoader:
     cfg = json.loads(test_config)
-    print(f"=> Loading {Path(cfg['ann_file']).name} ({cfg['type']})")
+    msg2(f"Loading \033[1m{Path(cfg['ann_file']).name}\033[m ({cfg['type']})")
     return build_dataset(cfg)
 
 def get_test_sets(*test_configs: Config, workers_per_gpu: int = 4, imgs_per_gpu: int = 1, distributed: bool = False) -> List[DataLoader]:
@@ -373,41 +430,58 @@ def main():
 
     index = []
     stats = {'samples': []}
+    msg1("Loading basic test sets")
     stats.update({key: [] for key in get_test_sets(*TEST_SETS)[0].dataset.CLASSES})
 
     # Make sure we only use the best epochs for each config
+    msg1("Preprocessing checkpoints")
     checkpoints = {}
     for checkpoint_file in map(Path, args.checkpoints):
         if not checkpoint_file.exists():
-            print(f"!!! Checkpoint file {str(checkpoint_file)} does not exist")
+            warn2(f"!!! Checkpoint file \033[1m{str(checkpoint_file)}\033[m{WARN} does not exist")
             continue
-        model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-        fp16_cfg = cfg.get('fp16', None)
-        if fp16_cfg is not None:
-            wrap_fp16_model(model)
+        if checkpoint_file.is_file():
+            msg2(f"Pre-loading checkpoint \033[1m{str(checkpoint_file)}\033[m")
+            model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+            fp16_cfg = cfg.get('fp16', None)
+            if fp16_cfg is not None:
+                wrap_fp16_model(model)
 
-        try:
-            checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
-        except RuntimeError as e:
-            print(f"!!! Failed loading checkpoint {str(checkpoint_file)}: {e}")
-            continue
+            try:
+                checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
+            except RuntimeError as e:
+                err2(f"!!! Failed loading checkpoint \033[1m{str(checkpoint_file)}\033[m{ERR}: {e}")
+                continue
 
-        cfg_str = checkpoint['meta']['config']
-        chkp_cfg = config_from_str(cfg_str)
-        config_file = Path(chkp_cfg.filename)
-        parents = [config_file.name]
-        for parent in config_file.parents:
-            parents.append(parent.name)
-            if parent.name == 'configs':
-                break
-            if parent.name == '/':
-                raise Exception("Did not find configs dir")
-        config_file = Path(*reversed(parents))
+            cfg_str = checkpoint['meta']['config']
+            chkp_cfg = config_from_str(cfg_str)
+            config_file = Path(chkp_cfg.filename)
+            parents = [config_file.name]
+            for parent in config_file.parents:
+                parents.append(parent.name)
+                if parent.name == 'configs':
+                    break
+                if parent.name == '/':
+                    raise Exception("Did not find configs dir")
+            config_file = Path(*reversed(parents))
+            msg3(f"Original config: \033[1m{config_file.name}\033[m (epoch: \033[1m{checkpoint['meta']['epoch']}\033[m)")
 
-        other_ckpnt_file, other_ckpnt, other_model = checkpoints.get(str(config_file), (None, None, None))
-        if other_ckpnt is not None and int(other_ckpnt['meta']['epoch']) >= int(checkpoint['meta']['epoch']):
-            checkpoint_file, checkpoint, model = other_ckpnt_file, other_ckpnt, other_model
-        checkpoints[str(config_file)] = checkpoint_file, checkpoint, model
+            other_ckpnt_file, other_ckpnt, other_model = checkpoints.get(config_file.name, (None, None, None))
+            if other_ckpnt is not None:
+                # Select the model of the same config with the highest epoch
+                if int(checkpoint['meta']['epoch']) >= int(other_ckpnt['meta']['epoch']):
+                    warn4(f"Replaces model with same config: epoch \033[1m{other_ckpnt['meta']['epoch']}\033[m >= \033[1m{checkpoint['meta']['epoch']}\033[m")
+                else:
+                    checkpoint_file, checkpoint, model = other_ckpnt_file, other_ckpnt, other_model
+                    warn4(f"Ignored model with same config: epoch\033[1m {other_ckpnt['meta']['epoch']}\033[m <= \033[1m{checkpoint['meta']['epoch']}\033[m")
+            checkpoints[config_file.name] = checkpoint_file, checkpoint, model
+        elif checkpoint_file.is_dir():
+            # Multimodel
+            msg2(f"Pre-loading multi-models in \033[1m{str(checkpoint_file)}\033[m")
+            for multi_checkpoint_file in checkpoint_file.glob('*.pth'):
+                raise NotImplementedError()
+        else:
+            raise Exception(f"Checkpoint {str(checkpoint_file)} is neither a file nor a folder")
 
     overlaps = np.arange(0.1, 0.96, 0.05)
     overlaps_str = str(overlaps).replace("\n", "")
@@ -424,13 +498,13 @@ def main():
         epoch = checkpoint['meta']['epoch']
         time = parse(checkpoint['meta']['time'])
         print('#' * 30)
-        print(f"=> Loaded checkpoint {checkpoint_file.name} ({epoch} epochs, created: {str(time)})")
+        msg1(f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m (\033[1m{epoch}\033[m epochs, created: {str(time)})")
         chkp_folder = out_folder / f"{config_file.stem}_epoch_{epoch}"
         chkp_folder.mkdir(parents=True, exist_ok=True)
         # Write checkpoint config to file
         with open(chkp_folder / config_file.name, 'w') as fp:
             fp.write(f"# {cfg_str}")
-        print(f"==> Extracted original configuration to {config_file.name}")
+        msg2(f"Extracted original configuration to \033[1m{config_file.name}\033[m")
 
         new_chkpnt = chkp_folder / checkpoint_file.name
         if new_chkpnt.is_symlink():
@@ -452,7 +526,7 @@ def main():
                 dataset_names.append(data_loader.dataset.obb.dataset_info['description'])
             stats['samples'].append(len(data_loader.dataset.img_ids))
             ann_file = Path(data_loader.dataset.ann_file)
-            print(f"==> Selecting dataset: {ann_file.stem}")
+            msg2(f"Selecting dataset: \033[1m{ann_file.stem}\033[m")
             index.append(f"{config_file.stem}_epoch_{epoch} - {ann_file.stem}")
             result_folder = chkp_folder / ann_file.stem
             result_folder.mkdir(exist_ok=True)
@@ -468,7 +542,7 @@ def main():
             outputs_m[checkpoint_file] = {}
             if not pkl_fp.exists() or not args.cache:
                 pkl_fp.parent.mkdir(exist_ok=True)
-                print(f"===> Testing model on {ann_file.stem}")
+                msg3(f"Testing model on \033[1m{ann_file.stem}\033[m")
                 if not distributed:
                     model = MMDataParallel(model, device_ids=[0])
                     outputs_m[checkpoint_file][data_loader] = single_gpu_test(model, data_loader, args.show, cfg,
@@ -479,16 +553,15 @@ def main():
                                                                              args.postprocess, args.round)
                 print()  # The tests use ncurses and don't append a new line at the end
 
-                print(f'===> Writing proposals to {str(pkl_fp)}')
+                msg3(f'Writing proposals to \033[1m{str(pkl_fp)}\033[m')
                 mmcv.dump(outputs_m[checkpoint_file][data_loader], pkl_fp)
             else:
-                print(f'===> Reading proposals from {str(pkl_fp)}')
+                msg3(f'Reading proposals from \033[1m{str(pkl_fp)}\033[m')
                 outputs_m[checkpoint_file][data_loader] = mmcv.load(pkl_fp)
             eval_types = args.eval
             data_name = args.data
             if data_name == 'coco':
                 if eval_types:
-                    print('Starting evaluate {}'.format(' and '.join(eval_types)))
                     if eval_types == ['proposal_fast']:
                         result_file = args.out
                         coco_eval(result_file, eval_types, data_loader.dataset.coco)
@@ -498,7 +571,6 @@ def main():
                             coco_eval(result_files, eval_types, data_loader.dataset.coco)
                         else:
                             for name in outputs_m[checkpoint_file][data_loader][0]:
-                                print('\nEvaluating {}'.format(name))
                                 outputs_m[checkpoint_file][data_loader] = [out[name] for out in outputs_m[checkpoint_file][data_loader]]
                                 result_file = args.out + '.{}'.format(name)
                                 result_files = results2json(data_loader.dataset, outputs_m[checkpoint_file][data_loader],
@@ -521,18 +593,18 @@ def main():
                 if args.json_out is not None:
                     result_file = str(result_folder / args.json_out)
                 if not metrics_fp.exists() or not args.cache:
-                    print(f"### EVALUATE: {str(checkpoint_file)} ON {data_loader.dataset.ann_file} IN {str(result_folder)}")
+                    msg3(f"Evaluating: \033[1m{str(checkpoint_file)}\033[m on \033[1m{data_loader.dataset.ann_file}\033[m in \033[1m{str(result_folder)}\033[m")
                     data_loader.dataset.evaluate(
                         outputs_m[checkpoint_file][data_loader],
                         result_json_filename=result_file,
                         work_dir=str(result_folder),
                         iou_thrs=overlaps
                     )  # Extremely slow...
-                print(f'===> Reading calculated metrics from {str(metrics_fp)}')
+                msg3(f'Reading calculated metrics from \033[1m{str(metrics_fp)}\033[m')
                 metrics = mmcv.load(metrics_fp)
 
                 if result_file is not None and not (result_folder / 'proposal_stats.csv').exists():
-                    print(f"===> Calculating statistics for results")
+                    msg3(f"Calculating statistics for results")
                     with open(result_file, 'r') as fp:
                         proposals = json.load(fp)
                     prop_stats = {}
@@ -550,7 +622,7 @@ def main():
                     csv_data = pandas.DataFrame(prop_data, index=('occurrences', 'avg', 'std')).transpose()
                     csv_data.to_csv(result_folder / 'proposal_stats.csv')
 
-            print(f'===> Compiling metrics with overlaps {overlaps_str}')
+            msg3(f'Compiling metrics with overlaps \033[1m{overlaps_str}\033[m')
             for cls, overlap_metrics in metrics.items():
                 for overlap in overlaps:
                     overlap_metrics[overlap] = overlap_metrics[overlap].get('ap', np.NaN)
@@ -563,7 +635,7 @@ def main():
             if args.json_out and rank == 0:
                 result_file = result_folder / args.json_out
                 if not result_file.with_suffix('.bbox.json').exists() or not args.cache:
-                    print(f"===> Saving predictions to {str(result_file.with_suffix('.*'))}")
+                    msg3(f"Saving predictions to \033[1m{str(result_file.with_suffix('.*'))}\033[m")
                     if not isinstance(outputs_m[checkpoint_file][data_loader][0], dict):
                         results2json(data_loader.dataset, outputs_m[checkpoint_file][data_loader], result_file.with_suffix(''))
                     else:
@@ -574,9 +646,9 @@ def main():
     print('#' * 30)
     print('#' * 30)
     print('#' * 30)
-    print(f"=> Evaluating stats")
+    msg1(f"Evaluating stats")
     for overlap in overlaps:
-        print(f"==> Processing stats for overlap = {overlap:.2f}")
+        msg2(f"Processing stats for overlap = \033[1m{overlap:.2f}\033[m")
         eval_fp = out_folder / f'eval_{overlap:.2f}.csv'
         overlap_stats = {}
         for cls, overlap_aps in stats.items():
@@ -587,7 +659,7 @@ def main():
                 for overlap_ap in overlap_aps:
                     overlap_stats[cls].append(overlap_ap.get(overlap, np.NaN))
         stat_df = DataFrame(overlap_stats, index=index)
-        print(f"==> Saving stats to {eval_fp}")
+        msg2(f"Saving stats to \033[1m{eval_fp}\033[m")
         stat_df.to_csv(eval_fp)
 
         print('=' * 30)
@@ -603,13 +675,13 @@ def main():
         n_datasets = len(dataset_names)
         chkpnt_names = [s.split(' - ')[0] for s in stat_df.index[::n_datasets]]
         for name, classes in CLASSES.items():
-            print(f"===> Plotting {name}")
+            msg3(f"Plotting \033[1m{name}\033[m")
             substats = stat_df[classes]
             all_aps = substats.to_numpy()
             # Only use columns where there is no NaN values
             non_nan_aps = all_aps.T[~np.isnan(all_aps.sum(axis=0))].T
             if non_nan_aps.shape[1] == 0:
-                print("    - No values to compare")
+                msg4("No values to compare")
                 continue
             mean_aps = non_nan_aps.mean(axis=1).reshape((len(chkpnt_names), n_datasets))
             fig, ax = plt.subplots(figsize=(15, 9))
@@ -626,7 +698,7 @@ def main():
             fig.tight_layout()
             im_fp = out_folder / f'AP_{name.replace(" ", "_")}_{overlap:.2f}.png'
             plt.savefig(im_fp)
-            print(f'===> Saved plot to {str(im_fp)}')
+            msg3(f'Saved plot to \033[1m{str(im_fp)}\033[m')
             #plt.show()
 
 
