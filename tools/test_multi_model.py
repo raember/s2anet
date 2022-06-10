@@ -410,7 +410,7 @@ def main():
         checkpoints[str(config_file)] = checkpoint_file, checkpoint, model
 
     overlaps = np.arange(0.1, 0.96, 0.05)
-    overlap = overlaps[np.isclose(overlaps, args.overlap)].tolist()[0]
+    overlaps_str = str(overlaps).replace("\n", "")
     outputs_m = {}
     metrics = {}
     got_all_ds_names = False
