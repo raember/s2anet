@@ -6,6 +6,7 @@ import os
 import os.path as osp
 import shutil
 import tempfile
+from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
 from typing import List
@@ -394,6 +395,75 @@ def get_test_sets(*test_configs: Config, workers_per_gpu: int = 4, imgs_per_gpu:
     return data_loaders
 
 
+def create_plots(stats: DataFrame, dataset_names: List[str], overlap: np.float, folder: Path):
+    print('=' * 30)
+    CLASSES = {
+        'clefs': {'clefG', 'clefCAlto', 'clefCTenor', 'clefF', 'clef8', 'clef15'},
+        'noteheads': {'noteheadBlackOnLine', 'noteheadBlackInSpace', 'noteheadHalfOnLine', 'noteheadHalfInSpace',
+                      'noteheadWholeOnLine', 'noteheadWholeInSpace', 'noteheadDoubleWholeOnLine',
+                      'noteheadDoubleWholeInSpace'},
+        'accidentals': {'accidentalFlat', 'accidentalNatural', 'accidentalSharp', 'accidentalDoubleSharp',
+                        'accidentalDoubleFlat'},
+        'keys': {'keyFlat', 'keyNatural', 'keySharp'},
+        'rests': {'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th', 'rest32nd',
+                  'rest64th', 'rest128th'},
+        'beams': {'beam'},
+        'all classes': set(class_names)
+    }
+    n_datasets = len(dataset_names)
+    chkpnt_names = [s.split(' - ')[0] for s in stats.index[::n_datasets]]
+    for name, classes in CLASSES.items():
+        msg3(f"Plotting \033[1m{name}\033[m")
+        substats = stats[classes]
+        all_aps = substats.to_numpy()
+        # Only use columns where there is no NaN values
+        non_nan_aps = all_aps.T[~np.isnan(all_aps.sum(axis=0))].T
+        if non_nan_aps.shape[1] == 0:
+            msg4("No values to compare")
+            continue
+        mean_aps = non_nan_aps.mean(axis=1).reshape((len(chkpnt_names), n_datasets))
+        fig, ax = plt.subplots(figsize=(15, 9))
+        X = np.arange(len(chkpnt_names))
+        incr = 0.4
+        center_offset = (incr * (len(dataset_names) - 1)) / 2
+        for i, (ds_name, col, mean_ap) in enumerate(
+                zip(dataset_names, itertools.cycle(['b', 'r', 'g', 'y', 'c', 'm']), mean_aps.T)):
+            r = ax.bar(X + incr * i - center_offset, mean_ap, color=col, width=incr,
+                       label=f'{ds_name} ({stats["samples"][i]} samples)')
+            ax.bar_label(r, padding=3)
+        ax.set_ylabel('AP')
+        ax.set_title(f'AP of {name} by model and training set (overlap = {overlap:.2f})')
+        plt.xticks(X, chkpnt_names, rotation=10, horizontalalignment='right', fontsize='small')
+        ax.legend()
+        fig.tight_layout()
+        im_fp = folder / f'AP_{name.replace(" ", "_")}_{overlap:.2f}.png'
+        plt.savefig(im_fp)
+        msg3(f'Saved plot to \033[1m{str(im_fp)}\033[m')
+        # plt.show()
+
+
+def compile_stats(stats: dict, overlap: np.float, index: list) -> DataFrame:
+    overlap_stats = {}
+    for cls, overlap_aps in stats.items():
+        if cls == 'samples':
+            overlap_stats['samples'] = stats['samples']
+        else:
+            overlap_stats[cls] = []
+            for overlap_ap in overlap_aps:
+                overlap_stats[cls].append(overlap_ap.get(overlap, np.NaN))
+    return DataFrame(overlap_stats, index=index)
+
+
+def plot_stats(overlaps: np.ndarray, folder: Path, stats: dict, index: list, dataset_names: list):
+    for overlap in overlaps:
+        msg2(f"Processing stats for overlap = \033[1m{overlap:.2f}\033[m")
+        eval_fp = folder / f'eval_{overlap:.2f}.csv'
+        stat_df = compile_stats(stats, overlap, index)
+        msg2(f"Saving stats to \033[1m{eval_fp}\033[m")
+        stat_df.to_csv(eval_fp)
+        create_plots(stat_df, dataset_names, overlap, folder)
+
+
 def main():
     args = parse_args()
 
@@ -541,6 +611,7 @@ def main():
                 new_test_set['type'] = chkp_cfg.data.test.type
             test_sets.append(new_test_set)
 
+        sub_stats = defaultdict(list)
         for data_loader in get_test_sets(
                 *test_sets,
                 workers_per_gpu=workers_per_gpu,
@@ -652,6 +723,8 @@ def main():
                 metrics[cls] = overlap_metrics
             for cls in data_loader.dataset.CLASSES:
                 stats[cls].append(metrics.get(cls, {}))
+            for cls, metrics in stats.items():
+                sub_stats[cls].append(metrics[-1])
 
             # Save predictions in the COCO json format
             rank, _ = get_dist_info()
@@ -665,64 +738,13 @@ def main():
                         for name in outputs_m[checkpoint_file][data_loader][0]:
                             outputs_ = [out[name] for out in outputs_m[checkpoint_file][data_loader]]
                             results2json(data_loader.dataset, outputs_, result_file.with_suffix(f'.{name}{result_file.suffix}'))
+        plot_stats(overlaps, chkp_folder, sub_stats, index, dataset_names)
         got_all_ds_names = True
     print('#' * 30)
     print('#' * 30)
     print('#' * 30)
     msg1(f"Evaluating stats")
-    for overlap in overlaps:
-        msg2(f"Processing stats for overlap = \033[1m{overlap:.2f}\033[m")
-        eval_fp = out_folder / f'eval_{overlap:.2f}.csv'
-        overlap_stats = {}
-        for cls, overlap_aps in stats.items():
-            if cls == 'samples':
-                overlap_stats['samples'] = stats['samples']
-            else:
-                overlap_stats[cls] = []
-                for overlap_ap in overlap_aps:
-                    overlap_stats[cls].append(overlap_ap.get(overlap, np.NaN))
-        stat_df = DataFrame(overlap_stats, index=index)
-        msg2(f"Saving stats to \033[1m{eval_fp}\033[m")
-        stat_df.to_csv(eval_fp)
-
-        print('=' * 30)
-        CLASSES = {
-            'clefs': {'clefG', 'clefCAlto', 'clefCTenor', 'clefF', 'clef8', 'clef15'},
-            'noteheads': {'noteheadBlackOnLine', 'noteheadBlackInSpace', 'noteheadHalfOnLine', 'noteheadHalfInSpace', 'noteheadWholeOnLine', 'noteheadWholeInSpace', 'noteheadDoubleWholeOnLine','noteheadDoubleWholeInSpace'},
-            'accidentals': {'accidentalFlat', 'accidentalNatural', 'accidentalSharp', 'accidentalDoubleSharp', 'accidentalDoubleFlat'},
-            'keys': {'keyFlat', 'keyNatural', 'keySharp'},
-            'rests': {'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th', 'rest32nd', 'rest64th', 'rest128th'},
-            'beams': {'beam'},
-            'all classes': set(class_names)
-        }
-        n_datasets = len(dataset_names)
-        chkpnt_names = [s.split(' - ')[0] for s in stat_df.index[::n_datasets]]
-        for name, classes in CLASSES.items():
-            msg3(f"Plotting \033[1m{name}\033[m")
-            substats = stat_df[classes]
-            all_aps = substats.to_numpy()
-            # Only use columns where there is no NaN values
-            non_nan_aps = all_aps.T[~np.isnan(all_aps.sum(axis=0))].T
-            if non_nan_aps.shape[1] == 0:
-                msg4("No values to compare")
-                continue
-            mean_aps = non_nan_aps.mean(axis=1).reshape((len(chkpnt_names), n_datasets))
-            fig, ax = plt.subplots(figsize=(15, 9))
-            X = np.arange(len(chkpnt_names))
-            incr = 0.4
-            center_offset = (incr * (len(dataset_names) - 1))/2
-            for i, (ds_name, col, mean_ap) in enumerate(zip(dataset_names, itertools.cycle(['b', 'r', 'g', 'y', 'c', 'm']), mean_aps.T)):
-                r = ax.bar(X + incr * i - center_offset, mean_ap, color=col, width=incr, label=f'{ds_name} ({stat_df["samples"][i]} samples)')
-                ax.bar_label(r, padding=3)
-            ax.set_ylabel('AP')
-            ax.set_title(f'AP of {name} by model and training set (overlap = {overlap:.2f})')
-            plt.xticks(X, chkpnt_names, rotation=10, horizontalalignment='right', fontsize='small')
-            ax.legend()
-            fig.tight_layout()
-            im_fp = out_folder / f'AP_{name.replace(" ", "_")}_{overlap:.2f}.png'
-            plt.savefig(im_fp)
-            msg3(f'Saved plot to \033[1m{str(im_fp)}\033[m')
-            #plt.show()
+    plot_stats(overlaps, out_folder, stats, index, dataset_names)
 
 
 if __name__ == '__main__':
