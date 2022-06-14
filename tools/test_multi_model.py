@@ -345,13 +345,13 @@ def parse_args():
         help='Use cached results/metrics/evaluations instead of recalculating'
     )
     parser.add_argument(
-        '--postprocess',
+        '--postprocess', '-p',
         action='store_true',
         default=False,
         help='post-process the results'
     )
     parser.add_argument(
-        '--round',
+        '--round', '-r',
         action='store_true',
         default=False,
         help='round the results (similar to detection service)'
