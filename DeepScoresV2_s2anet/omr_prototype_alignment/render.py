@@ -165,28 +165,28 @@ def fill_cache():
     if not CACHE_PATH.exists():
         CACHE_PATH.mkdir()
 
-        for name, params in zip(class_names, thresholds.values()):
-            if len(params) == 0:
-                continue
-            l1 = list(params[2]) if isinstance(params[2], tuple) else [params[2]]
-            l2 = list(params[3]) if isinstance(params[2], tuple) else [params[3]]
-            size = max(l1 + l2)
-            png_data = Render(
-                class_name=name, height=size, width=size,
-                csv_path=str(BASE_PATH / 'data' / 'name_uni.csv')).render(
-                str(BASE_PATH / 'data' / 'Bravura.svg'), save_svg=False, save_png=False)
+    for name, params in zip(class_names, thresholds.values()):
+        if len(params) == 0:
+            continue
+        l1 = list(params[2]) if isinstance(params[2], tuple) else [params[2]]
+        l2 = list(params[3]) if isinstance(params[2], tuple) else [params[3]]
+        size = max(l1 + l2)
+        png_data = Render(
+            class_name=name, height=size, width=size,
+            csv_path=str(BASE_PATH / 'data' / 'name_uni.csv')).render(
+            str(BASE_PATH / 'data' / 'Bravura.svg'), save_svg=False, save_png=False)
 
-            with BytesIO(png_data) as bio:
-                img = PImage.open(bio)
-                img.load()
-                img = img.transpose(PImage.FLIP_TOP_BOTTOM)
-                if name in needs_flip:
-                    img = flip(img)
+        with BytesIO(png_data) as bio:
+            img = PImage.open(bio)
+            img.load()
+            img = img.transpose(PImage.FLIP_TOP_BOTTOM)
+            if name in needs_flip:
+                img = flip(img)
 
-                img = np.array(img)[..., 3]
-                img = remove_padding(img)
+            img = np.array(img)[..., 3]
+            img = remove_padding(img)
 
-                np.save(CACHE_PATH / name, img)
+            np.save(CACHE_PATH / name, img)
 
 
 if __name__ == '__main__':
