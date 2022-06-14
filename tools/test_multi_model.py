@@ -16,6 +16,7 @@ import numpy as np
 import pandas
 import torch
 import torch.distributed as dist
+from PIL import Image as PImage
 from PIL.Image import Image
 from dateutil.parser import parse
 from matplotlib import pyplot as plt
@@ -163,7 +164,7 @@ def err4(s: str):
 
 
 def _postprocess_bboxes(img, boxes, labels):
-    img = Image.fromarray(img)
+    img = PImage.fromarray(img)
     proposal_list = [{'proposal': np.append(box[:5], class_names[int(label) + 1])} for box, label in zip(boxes, labels)]
     processed_proposals = prototype_alignment._process_single(img, proposal_list,
                                                               whitelist=["key", "clef", "accidental", "notehead"])
