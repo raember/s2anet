@@ -16,6 +16,7 @@ import numpy as np
 import pandas
 import torch
 import torch.distributed as dist
+from PIL.Image import Image
 from dateutil.parser import parse
 from matplotlib import pyplot as plt
 from mmcv import DataLoader, Config
@@ -23,13 +24,155 @@ from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import get_dist_info, load_checkpoint
 from pandas import DataFrame
 
-from DeepScoresV2_s2anet.omr_prototype_alignment import render
+from DeepScoresV2_s2anet.omr_prototype_alignment import prototype_alignment, render
 from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single, bbox2result
 from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
-from tools.detection_service import _postprocess_bboxes
+
+
+DEEPSCORES_TEST_SET = {
+    'type': 'DeepScoresV2Dataset',
+    'ann_file': 'data/deep_scores_dense/deepscores_test.json',
+    'img_prefix': 'data/deep_scores_dense/images/',
+    'pipeline': [
+        {'type': 'LoadImageFromFile'},
+        {
+            'type': 'MultiScaleFlipAug',
+            'img_scale': 0.5,
+            'flip': False,
+            'transforms': [
+                {'type': 'RotatedResize', 'img_scale': 0.5, 'keep_ratio': True},
+                {'type': 'RotatedRandomFlip'},
+                {'type': 'Normalize', 'mean': [240, 240, 240], 'std': [57, 57, 57], 'to_rgb': False},
+                {'type': 'Pad', 'size_divisor': 32},
+                {'type': 'ImageToTensor', 'keys': ['img']},
+                {'type': 'Collect', 'keys': ['img']}
+            ]
+        }
+    ],
+    'use_oriented_bboxes': True
+}
+
+IMSLP_TEST_SET = {
+    'type': 'DeepScoresV2Dataset',
+    'ann_file': 'data/deep_scores_dense/imslp_test.json',
+    'img_prefix': 'data/deep_scores_dense/images/',
+    'pipeline': [
+        {'type': 'LoadImageFromFile'},
+        {
+            'type': 'MultiScaleFlipAug',
+            'img_scale': 1.0,
+            'flip': False,
+            'transforms': [
+                {'type': 'RotatedResize', 'img_scale': 1.0, 'keep_ratio': True},
+                {'type': 'RotatedRandomFlip'},
+                {'type': 'Normalize', 'mean': [240, 240, 240], 'std': [57, 57, 57], 'to_rgb': False},
+                {'type': 'Pad', 'size_divisor': 32},
+                {'type': 'ImageToTensor', 'keys': ['img']},
+                {'type': 'Collect', 'keys': ['img']}
+            ]
+        }
+    ],
+    'use_oriented_bboxes': True
+}
+TEST_SETS = [DEEPSCORES_TEST_SET, IMSLP_TEST_SET]
+
+class_names = (
+    'brace', 'ledgerLine', 'repeatDot', 'segno', 'coda', 'clefG', 'clefCAlto', 'clefCTenor', 'clefF',
+    'clefUnpitchedPercussion', 'clef8', 'clef15', 'timeSig0', 'timeSig1', 'timeSig2', 'timeSig3', 'timeSig4',
+    'timeSig5', 'timeSig6', 'timeSig7', 'timeSig8', 'timeSig9', 'timeSigCommon', 'timeSigCutCommon',
+    'noteheadBlackOnLine', 'noteheadBlackOnLineSmall', 'noteheadBlackInSpace', 'noteheadBlackInSpaceSmall',
+    'noteheadHalfOnLine', 'noteheadHalfOnLineSmall', 'noteheadHalfInSpace', 'noteheadHalfInSpaceSmall',
+    'noteheadWholeOnLine', 'noteheadWholeOnLineSmall', 'noteheadWholeInSpace', 'noteheadWholeInSpaceSmall',
+    'noteheadDoubleWholeOnLine', 'noteheadDoubleWholeOnLineSmall', 'noteheadDoubleWholeInSpace',
+    'noteheadDoubleWholeInSpaceSmall', 'augmentationDot', 'stem', 'tremolo1', 'tremolo2', 'tremolo3', 'tremolo4',
+    'tremolo5', 'flag8thUp', 'flag8thUpSmall', 'flag16thUp', 'flag32ndUp', 'flag64thUp', 'flag128thUp', 'flag8thDown',
+    'flag8thDownSmall', 'flag16thDown', 'flag32ndDown', 'flag64thDown', 'flag128thDown', 'accidentalFlat',
+    'accidentalFlatSmall', 'accidentalNatural', 'accidentalNaturalSmall', 'accidentalSharp', 'accidentalSharpSmall',
+    'accidentalDoubleSharp', 'accidentalDoubleFlat', 'keyFlat', 'keyNatural', 'keySharp', 'articAccentAbove',
+    'articAccentBelow', 'articStaccatoAbove', 'articStaccatoBelow', 'articTenutoAbove', 'articTenutoBelow',
+    'articStaccatissimoAbove', 'articStaccatissimoBelow', 'articMarcatoAbove', 'articMarcatoBelow', 'fermataAbove',
+    'fermataBelow', 'caesura', 'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th',
+    'rest32nd', 'rest64th', 'rest128th', 'restHNr', 'dynamicP', 'dynamicM', 'dynamicF', 'dynamicS', 'dynamicZ',
+    'dynamicR', 'graceNoteAcciaccaturaStemUp', 'graceNoteAppoggiaturaStemUp', 'graceNoteAcciaccaturaStemDown',
+    'graceNoteAppoggiaturaStemDown', 'ornamentTrill', 'ornamentTurn', 'ornamentTurnInverted', 'ornamentMordent',
+    'stringsDownBow', 'stringsUpBow', 'arpeggiato', 'keyboardPedalPed', 'keyboardPedalUp', 'tuplet3', 'tuplet6',
+    'fingering0', 'fingering1', 'fingering2', 'fingering3', 'fingering4', 'fingering5', 'slur', 'beam', 'tie',
+    'restHBar', 'dynamicCrescendoHairpin', 'dynamicDiminuendoHairpin', 'tuplet1', 'tuplet2', 'tuplet4', 'tuplet5',
+    'tuplet7', 'tuplet8', 'tuplet9', 'tupletBracket', 'staff', 'ottavaBracket'
+)
+
+
+GREEN = 32
+YELLOW = 33
+BLUE = 34
+RED = 31
+
+
+def msg(s: str, level: int, color: int):
+    if level == 0:
+        print(f"\033[1;{color}m=>\033[m {s}\033[m")
+    else:
+        print(f"  \033[1;{color}m{'-' * level}>\033[m {s}\033[m")
+
+def msg1(s: str):
+    msg(s, 0, GREEN)
+
+def msg2(s: str):
+    msg(s, 1, BLUE)
+
+def msg3(s: str):
+    msg(s, 2, BLUE)
+
+def msg4(s: str):
+    msg(s, 3, BLUE)
+
+WARN = f"\033[1;{YELLOW}m"
+def warn(s: str, level: int):
+    msg(f"{WARN}{s}\033[m", level, YELLOW)
+
+def warn1(s: str):
+    warn(s, 0)
+
+def warn2(s: str):
+    warn(s, 1)
+
+def warn3(s: str):
+    warn(s, 2)
+
+def warn4(s: str):
+    warn(s, 3)
+
+ERR = f"\033[1;{RED}m"
+def err(s: str, level: int):
+    msg(f"{ERR}{s}\033[m", level, RED)
+
+def err1(s: str):
+    err(s, 0)
+
+def err2(s: str):
+    err(s, 1)
+
+def err3(s: str):
+    err(s, 2)
+
+def err4(s: str):
+    err(s, 3)
+
+
+def _postprocess_bboxes(img, boxes, labels):
+    img = Image.fromarray(img)
+    proposal_list = [{'proposal': np.append(box[:5], class_names[int(label) + 1])} for box, label in zip(boxes, labels)]
+    processed_proposals = prototype_alignment._process_single(img, proposal_list,
+                                                              whitelist=["key", "clef", "accidental", "notehead"])
+    new_boxes = np.zeros(boxes.shape)
+    new_boxes[..., :5] = np.stack(processed_proposals)
+    if new_boxes.shape[1] == 6:
+        # copy scores
+        new_boxes[..., 5] = boxes[..., 5]
+    return new_boxes
 
 def _post_process_bbox_list(img, bbox_list, cfg):
     img = img.cpu().numpy().astype("uint8")
@@ -168,8 +311,6 @@ def parse_args():
     parser.add_argument('config', help='test config file path')
     parser.add_argument('--checkpoints', nargs='+',
                         help='checkpoint files', required=True)
-    parser.add_argument('--test-sets', nargs='+',
-                        help='test set paths')
     parser.add_argument('--out', help='output result file')
     parser.add_argument(
         '--json_out',
@@ -203,13 +344,6 @@ def parse_args():
         help='Use cached results/metrics/evaluations instead of recalculating'
     )
     parser.add_argument(
-        '--overlap', '-o',
-        choices=[0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
-        default=0.5,
-        type=float,
-        help='Overlap to choose the metrics from (default: 0.5)'
-    )
-    parser.add_argument(
         '--postprocess',
         action='store_true',
         default=False,
@@ -241,17 +375,18 @@ def config_from_str(cfg_str: str, path: Path = None) -> Config:
 
 
 @lru_cache()
-def get_test_sets(config: Config, dataset_type: str, distributed: bool, *test_sets: Path) -> List[DataLoader]:
+def get_test_set(test_config: str) -> DataLoader:
+    cfg = json.loads(test_config)
+    msg2(f"Loading \033[1m{Path(cfg['ann_file']).name}\033[m ({cfg['type']})")
+    return build_dataset(cfg)
+
+def get_test_sets(*test_configs: Config, workers_per_gpu: int = 4, imgs_per_gpu: int = 1, distributed: bool = False) -> List[DataLoader]:
     data_loaders = []
-    for path in test_sets:
-        assert path.exists(), f"Test set does not exist at {str(path)}"
-        tds = config.data.test.deepcopy()
-        tds.ann_file = str(path)
-        tds.type = dataset_type
+    for test_config in test_configs:
         data_loaders.append(build_dataloader(
-            build_dataset(tds),
-            imgs_per_gpu=1,
-            workers_per_gpu=config.data.workers_per_gpu,
+            get_test_set(json.dumps(test_config)),
+            imgs_per_gpu=imgs_per_gpu,
+            workers_per_gpu=workers_per_gpu,
             dist=distributed,
             shuffle=False
         ))
@@ -288,11 +423,6 @@ def main():
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
-    if args.test_sets is not None:
-        test_sets = list(map(Path, args.test_sets))
-    else:
-        test_sets = [Path(args.test_sets)]
-
     out_folder = Path('eval')
     proposals_fp = Path(args.out)
     if args.json_out:
@@ -300,88 +430,126 @@ def main():
 
     index = []
     stats = {'samples': []}
-    stats.update({key: [] for key in get_test_sets(cfg, cfg.dataset_type, distributed, *test_sets)[0].dataset.CLASSES})
+    msg1("Loading basic test sets")
+    stats.update({key: [] for key in get_test_sets(*TEST_SETS)[0].dataset.CLASSES})
 
     # Make sure we only use the best epochs for each config
+    msg1("Preprocessing checkpoints")
     checkpoints = {}
     for checkpoint_file in map(Path, args.checkpoints):
         if not checkpoint_file.exists():
-            print(f"!!! Checkpoint file {str(checkpoint_file)} does not exist")
+            warn2(f"!!! Checkpoint file \033[1m{str(checkpoint_file)}\033[m{WARN} does not exist")
             continue
-        model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-        fp16_cfg = cfg.get('fp16', None)
-        if fp16_cfg is not None:
-            wrap_fp16_model(model)
+        if checkpoint_file.is_file():
+            msg2(f"Pre-loading checkpoint \033[1m{str(checkpoint_file)}\033[m")
+            model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+            fp16_cfg = cfg.get('fp16', None)
+            if fp16_cfg is not None:
+                wrap_fp16_model(model)
 
-        try:
-            checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
-        except RuntimeError as e:
-            print(f"!!! Failed loading checkpoint {str(checkpoint_file)}: {e}")
-            continue
+            try:
+                checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
+            except RuntimeError as e:
+                err2(f"!!! Failed loading checkpoint \033[1m{str(checkpoint_file)}\033[m{ERR}: {e}")
+                continue
 
-        cfg_str = checkpoint['meta']['config']
-        chkp_cfg = config_from_str(cfg_str)
-        config_file = Path(chkp_cfg.filename)
-        parents = [config_file.name]
-        for parent in config_file.parents:
-            parents.append(parent.name)
-            if parent.name == 'configs':
-                break
-            if parent.name == '/':
-                raise Exception("Did not find configs dir")
-        config_file = Path(*reversed(parents))
+            if 'config' in checkpoint['meta'].keys():
+                cfg_str = checkpoint['meta']['config']
+                chkp_cfg = config_from_str(cfg_str)
+                config_file = Path(chkp_cfg.filename)
+                parents = [config_file.name]
+                for parent in config_file.parents:
+                    parents.append(parent.name)
+                    if parent.name == 'configs':
+                        break
+                    if parent.name == '/':
+                        raise Exception("Did not find configs dir")
+                config_file = Path(*reversed(parents))
+                msg3(f"Original config: \033[1m{config_file.name}\033[m (epoch: \033[1m{checkpoint['meta']['epoch']}\033[m)")
+                checkpoint_id = config_file.name
+            else:
+                warn3("No original config found")
+                checkpoint_id = f"{checkpoint_file.parent.parent.name}_{checkpoint_file.parent.name}"
 
-        other_ckpnt_file, other_ckpnt, other_model = checkpoints.get(str(config_file), (None, None, None))
-        if other_ckpnt is not None and int(other_ckpnt['meta']['epoch']) >= int(checkpoint['meta']['epoch']):
-            checkpoint_file, checkpoint, model = other_ckpnt_file, other_ckpnt, other_model
-        checkpoints[str(config_file)] = checkpoint_file, checkpoint, model
+            other_ckpnt_file, other_ckpnt, other_model = checkpoints.get(checkpoint_id, (None, None, None))
+            if other_ckpnt is not None:
+                # Select the model of the same config with the highest epoch
+                if int(checkpoint['meta']['epoch']) >= int(other_ckpnt['meta']['epoch']):
+                    warn4(f"Replaces model with same config: epoch \033[1m{other_ckpnt['meta']['epoch']}\033[m >= \033[1m{checkpoint['meta']['epoch']}\033[m")
+                else:
+                    checkpoint_file, checkpoint, model = other_ckpnt_file, other_ckpnt, other_model
+                    warn4(f"Ignored model with same config: epoch\033[1m {other_ckpnt['meta']['epoch']}\033[m <= \033[1m{checkpoint['meta']['epoch']}\033[m")
+            checkpoints[checkpoint_id] = checkpoint_file, checkpoint, model
+        elif checkpoint_file.is_dir():
+            # Multimodel
+            msg2(f"Pre-loading multi-models in \033[1m{str(checkpoint_file)}\033[m")
+            for multi_checkpoint_file in checkpoint_file.glob('*.pth'):
+                raise NotImplementedError()
+        else:
+            raise Exception(f"Checkpoint {str(checkpoint_file)} is neither a file nor a folder")
 
     overlaps = np.arange(0.1, 0.96, 0.05)
-    overlap = overlaps[np.isclose(overlaps, args.overlap)].tolist()[0]
+    overlaps_str = str(overlaps).replace("\n", "")
     outputs_m = {}
     metrics = {}
     got_all_ds_names = False
     dataset_names = []
-    for config_file, (checkpoint_file, checkpoint, model) in checkpoints.items():
-        # # build the model and load checkpoint
-        # model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-        # fp16_cfg = cfg.get('fp16', None)
-        # if fp16_cfg is not None:
-        #     wrap_fp16_model(model)
-        #
-        # outputs_m[checkpoint_file] = {}
-        # try:
-        #     checkpoint = load_checkpoint(model, str(checkpoint_file), map_location='cpu')
-        # except RuntimeError as e:
-        #     raise Exception(f"Failed loading checkpoint {str(checkpoint_file)}: {e}")
+    for checkpoint_id, (checkpoint_file, checkpoint, model) in checkpoints.items():
         checkpoint_file = Path(checkpoint_file)
-        cfg_str = checkpoint['meta']['config']
-        chkp_cfg = config_from_str(cfg_str)
-        config_file = Path(chkp_cfg.filename)
-        assert config_file.suffix == '.py'
-        epoch = checkpoint['meta']['epoch']
-        time = parse(checkpoint['meta']['time'])
-        print('#' * 30)
-        print(f"=> Loaded checkpoint {checkpoint_file.name} ({epoch} epochs, created: {str(time)})")
-        chkp_folder = out_folder / f"{config_file.stem}_epoch_{epoch}"
-        chkp_folder.mkdir(parents=True, exist_ok=True)
-        # Write checkpoint config to file
-        with open(chkp_folder / config_file.name, 'w') as fp:
-            fp.write(f"# {cfg_str}")
-        print(f"==> Extracted original configuration to {config_file.name}")
+        chkp_cfg = None
+        if 'config' in checkpoint['meta'].keys():
+            cfg_str = checkpoint['meta']['config']
+            chkp_cfg = config_from_str(cfg_str)
+            config_file = Path(chkp_cfg.filename)
+            assert config_file.suffix == '.py'
+            epoch = checkpoint['meta']['epoch']
+            time = parse(checkpoint['meta']['time'])
+            print('#' * 30)
+            msg1(f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m (\033[1m{epoch}\033[m epochs, created: {str(time)})")
+            checkpoint_id = f"{config_file.stem}_epoch_{epoch}"
+            chkp_folder = out_folder / checkpoint_id
+            chkp_folder.mkdir(parents=True, exist_ok=True)
+            # Write checkpoint config to file
+            with open(chkp_folder / config_file.name, 'w') as fp:
+                fp.write(f"# {cfg_str}")
+            msg2(f"Extracted original configuration to \033[1m{config_file.name}\033[m")
+        else:
+            msg1(f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m")
+            suffix = checkpoint_file.stem.split('_')[-1]
+            epoch_str = ''
+            if suffix.isdigit():
+                epoch = int(suffix)
+                warn2(f"Assuming epoch to be {epoch}")
+                epoch_str = f"_epoch_{epoch}"
+            checkpoint_id = checkpoint_id + epoch_str
+            chkp_folder = out_folder / checkpoint_id
+            chkp_folder.mkdir(parents=True, exist_ok=True)
 
         new_chkpnt = chkp_folder / checkpoint_file.name
         if new_chkpnt.is_symlink():
             new_chkpnt.unlink()
         new_chkpnt.symlink_to(os.path.relpath(checkpoint_file, new_chkpnt.parent))
 
-        for data_loader in get_test_sets(cfg, chkp_cfg.data.test.type, distributed, *test_sets):
+        test_sets = []
+        workers_per_gpu = 4
+        if chkp_cfg is not None:
+            workers_per_gpu = chkp_cfg.data.workers_per_gpu
+        for test_set in TEST_SETS:
+            new_test_set = test_set.copy()
+            if chkp_cfg is not None:
+                new_test_set['type'] = chkp_cfg.data.test.type
+            test_sets.append(new_test_set)
+
+        for data_loader in get_test_sets(
+                *test_sets,
+                workers_per_gpu=workers_per_gpu,
+                distributed=distributed):
             if not got_all_ds_names:
                 dataset_names.append(data_loader.dataset.obb.dataset_info['description'])
             stats['samples'].append(len(data_loader.dataset.img_ids))
             ann_file = Path(data_loader.dataset.ann_file)
-            print(f"==> Selecting dataset: {ann_file.stem}")
-            index.append(f"{config_file.stem}_epoch_{epoch} - {ann_file.stem}")
+            msg2(f"Selecting dataset: \033[1m{ann_file.stem}\033[m")
+            index.append(f"{checkpoint_id} - {ann_file.stem}")
             result_folder = chkp_folder / ann_file.stem
             result_folder.mkdir(exist_ok=True)
 
@@ -396,7 +564,7 @@ def main():
             outputs_m[checkpoint_file] = {}
             if not pkl_fp.exists() or not args.cache:
                 pkl_fp.parent.mkdir(exist_ok=True)
-                print(f"===> Testing model on {ann_file.stem}")
+                msg3(f"Testing model on \033[1m{ann_file.stem}\033[m")
                 if not distributed:
                     model = MMDataParallel(model, device_ids=[0])
                     outputs_m[checkpoint_file][data_loader] = single_gpu_test(model, data_loader, args.show, cfg,
@@ -407,16 +575,15 @@ def main():
                                                                              args.postprocess, args.round)
                 print()  # The tests use ncurses and don't append a new line at the end
 
-                print(f'===> Writing proposals to {str(pkl_fp)}')
+                msg3(f'Writing proposals to \033[1m{str(pkl_fp)}\033[m')
                 mmcv.dump(outputs_m[checkpoint_file][data_loader], pkl_fp)
             else:
-                print(f'===> Reading proposals from {str(pkl_fp)}')
+                msg3(f'Reading proposals from \033[1m{str(pkl_fp)}\033[m')
                 outputs_m[checkpoint_file][data_loader] = mmcv.load(pkl_fp)
             eval_types = args.eval
             data_name = args.data
             if data_name == 'coco':
                 if eval_types:
-                    print('Starting evaluate {}'.format(' and '.join(eval_types)))
                     if eval_types == ['proposal_fast']:
                         result_file = args.out
                         coco_eval(result_file, eval_types, data_loader.dataset.coco)
@@ -426,7 +593,6 @@ def main():
                             coco_eval(result_files, eval_types, data_loader.dataset.coco)
                         else:
                             for name in outputs_m[checkpoint_file][data_loader][0]:
-                                print('\nEvaluating {}'.format(name))
                                 outputs_m[checkpoint_file][data_loader] = [out[name] for out in outputs_m[checkpoint_file][data_loader]]
                                 result_file = args.out + '.{}'.format(name)
                                 result_files = results2json(data_loader.dataset, outputs_m[checkpoint_file][data_loader],
@@ -449,18 +615,18 @@ def main():
                 if args.json_out is not None:
                     result_file = str(result_folder / args.json_out)
                 if not metrics_fp.exists() or not args.cache:
-                    print(f"### EVALUATE: {str(checkpoint_file)} ON {data_loader.dataset.ann_file} IN {str(result_folder)}")
+                    msg3(f"Evaluating: \033[1m{str(checkpoint_file)}\033[m on \033[1m{data_loader.dataset.ann_file}\033[m in \033[1m{str(result_folder)}\033[m")
                     data_loader.dataset.evaluate(
                         outputs_m[checkpoint_file][data_loader],
                         result_json_filename=result_file,
                         work_dir=str(result_folder),
                         iou_thrs=overlaps
                     )  # Extremely slow...
-                print(f'===> Reading calculated metrics from {str(metrics_fp)}')
+                msg3(f'Reading calculated metrics from \033[1m{str(metrics_fp)}\033[m')
                 metrics = mmcv.load(metrics_fp)
 
                 if result_file is not None and not (result_folder / 'proposal_stats.csv').exists():
-                    print(f"===> Calculating statistics for results")
+                    msg3(f"Calculating statistics for results")
                     with open(result_file, 'r') as fp:
                         proposals = json.load(fp)
                     prop_stats = {}
@@ -478,16 +644,20 @@ def main():
                     csv_data = pandas.DataFrame(prop_data, index=('occurrences', 'avg', 'std')).transpose()
                     csv_data.to_csv(result_folder / 'proposal_stats.csv')
 
-            print(f'===> Compiling metrics with overlap {args.overlap}')
+            msg3(f'Compiling metrics with overlaps \033[1m{overlaps_str}\033[m')
+            for cls, overlap_metrics in metrics.items():
+                for overlap in overlaps:
+                    overlap_metrics[overlap] = overlap_metrics[overlap].get('ap', np.NaN)
+                metrics[cls] = overlap_metrics
             for cls in data_loader.dataset.CLASSES:
-                stats[cls].append(metrics.get(cls, {}).get(overlap, {}).get('ap', np.NaN))
+                stats[cls].append(metrics.get(cls, {}))
 
             # Save predictions in the COCO json format
             rank, _ = get_dist_info()
             if args.json_out and rank == 0:
                 result_file = result_folder / args.json_out
                 if not result_file.with_suffix('.bbox.json').exists() or not args.cache:
-                    print(f"===> Saving predictions to {str(result_file.with_suffix('.*'))}")
+                    msg3(f"Saving predictions to \033[1m{str(result_file.with_suffix('.*'))}\033[m")
                     if not isinstance(outputs_m[checkpoint_file][data_loader][0], dict):
                         results2json(data_loader.dataset, outputs_m[checkpoint_file][data_loader], result_file.with_suffix(''))
                     else:
@@ -495,49 +665,63 @@ def main():
                             outputs_ = [out[name] for out in outputs_m[checkpoint_file][data_loader]]
                             results2json(data_loader.dataset, outputs_, result_file.with_suffix(f'.{name}{result_file.suffix}'))
         got_all_ds_names = True
-    eval_fp = out_folder / 'eval.csv'
-    print(f"=> Saving stats to {eval_fp}")
-    stat_df = DataFrame(stats, index=index)
-    stat_df.to_csv(eval_fp)
+    print('#' * 30)
+    print('#' * 30)
+    print('#' * 30)
+    msg1(f"Evaluating stats")
+    for overlap in overlaps:
+        msg2(f"Processing stats for overlap = \033[1m{overlap:.2f}\033[m")
+        eval_fp = out_folder / f'eval_{overlap:.2f}.csv'
+        overlap_stats = {}
+        for cls, overlap_aps in stats.items():
+            if cls == 'samples':
+                overlap_stats['samples'] = stats['samples']
+            else:
+                overlap_stats[cls] = []
+                for overlap_ap in overlap_aps:
+                    overlap_stats[cls].append(overlap_ap.get(overlap, np.NaN))
+        stat_df = DataFrame(overlap_stats, index=index)
+        msg2(f"Saving stats to \033[1m{eval_fp}\033[m")
+        stat_df.to_csv(eval_fp)
 
-    print('=' * 30)
-    CLASSES = {
-        'clefs': {'clefG', 'clefCAlto', 'clefCTenor', 'clefF', 'clef8', 'clef15'},
-        'noteheads': {'noteheadBlackOnLine', 'noteheadBlackInSpace', 'noteheadHalfOnLine', 'noteheadHalfInSpace', 'noteheadWholeOnLine', 'noteheadWholeInSpace', 'noteheadDoubleWholeOnLine','noteheadDoubleWholeInSpace'},
-        'accidentals': {'accidentalFlat', 'accidentalNatural', 'accidentalSharp', 'accidentalDoubleSharp', 'accidentalDoubleFlat'},
-        'keys': {'keyFlat', 'keyNatural', 'keySharp'},
-        'rests': {'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th', 'rest32nd', 'rest64th', 'rest128th'},
-        'beams': {'beam'},
-        'all classes': set(data_loader.dataset.CLASSES)
-    }
-    n_datasets = len(dataset_names)
-    chkpnt_names = [s.split(' - ')[0] for s in stat_df.index[::n_datasets]]
-    for name, classes in CLASSES.items():
-        print(f"==> Plotting {name}")
-        substats = stat_df[classes]
-        all_aps = substats.to_numpy()
-        # Only use columns where there is no NaN values
-        non_nan_aps = all_aps.T[~np.isnan(all_aps.sum(axis=0))].T
-        if non_nan_aps.shape[1] == 0:
-            print("    - No values to compare")
-            continue
-        mean_aps = non_nan_aps.mean(axis=1).reshape((len(chkpnt_names), n_datasets))
-        fig, ax = plt.subplots(figsize=(15, 9))
-        X = np.arange(len(chkpnt_names))
-        incr = 1.0/(len(chkpnt_names)+1)
-        center_offset = (incr * (len(dataset_names) - 1))/2
-        for i, (ds_name, col, mean_ap) in enumerate(zip(dataset_names, itertools.cycle(['b', 'r', 'g', 'y', 'c', 'm']), mean_aps.T)):
-            r = ax.bar(X + incr * i - center_offset, mean_ap, color=col, width=incr, label=f'{ds_name} ({stat_df["samples"][i]} samples)')
-            ax.bar_label(r, padding=3)
-        ax.set_ylabel('AP')
-        ax.set_title(f'AP of {name} by model and training set')
-        plt.xticks(X, chkpnt_names, rotation=10, horizontalalignment='right', fontsize='small')
-        ax.legend()
-        fig.tight_layout()
-        im_fp = out_folder / f'AP_{name.replace(" ", "_")}.png'
-        plt.savefig(im_fp)
-        print(f'===> Saved plot to {str(im_fp)}')
-        plt.show()
+        print('=' * 30)
+        CLASSES = {
+            'clefs': {'clefG', 'clefCAlto', 'clefCTenor', 'clefF', 'clef8', 'clef15'},
+            'noteheads': {'noteheadBlackOnLine', 'noteheadBlackInSpace', 'noteheadHalfOnLine', 'noteheadHalfInSpace', 'noteheadWholeOnLine', 'noteheadWholeInSpace', 'noteheadDoubleWholeOnLine','noteheadDoubleWholeInSpace'},
+            'accidentals': {'accidentalFlat', 'accidentalNatural', 'accidentalSharp', 'accidentalDoubleSharp', 'accidentalDoubleFlat'},
+            'keys': {'keyFlat', 'keyNatural', 'keySharp'},
+            'rests': {'restDoubleWhole', 'restWhole', 'restHalf', 'restQuarter', 'rest8th', 'rest16th', 'rest32nd', 'rest64th', 'rest128th'},
+            'beams': {'beam'},
+            'all classes': set(class_names)
+        }
+        n_datasets = len(dataset_names)
+        chkpnt_names = [s.split(' - ')[0] for s in stat_df.index[::n_datasets]]
+        for name, classes in CLASSES.items():
+            msg3(f"Plotting \033[1m{name}\033[m")
+            substats = stat_df[classes]
+            all_aps = substats.to_numpy()
+            # Only use columns where there is no NaN values
+            non_nan_aps = all_aps.T[~np.isnan(all_aps.sum(axis=0))].T
+            if non_nan_aps.shape[1] == 0:
+                msg4("No values to compare")
+                continue
+            mean_aps = non_nan_aps.mean(axis=1).reshape((len(chkpnt_names), n_datasets))
+            fig, ax = plt.subplots(figsize=(15, 9))
+            X = np.arange(len(chkpnt_names))
+            incr = 0.4
+            center_offset = (incr * (len(dataset_names) - 1))/2
+            for i, (ds_name, col, mean_ap) in enumerate(zip(dataset_names, itertools.cycle(['b', 'r', 'g', 'y', 'c', 'm']), mean_aps.T)):
+                r = ax.bar(X + incr * i - center_offset, mean_ap, color=col, width=incr, label=f'{ds_name} ({stat_df["samples"][i]} samples)')
+                ax.bar_label(r, padding=3)
+            ax.set_ylabel('AP')
+            ax.set_title(f'AP of {name} by model and training set (overlap = {overlap:.2f})')
+            plt.xticks(X, chkpnt_names, rotation=10, horizontalalignment='right', fontsize='small')
+            ax.legend()
+            fig.tight_layout()
+            im_fp = out_folder / f'AP_{name.replace(" ", "_")}_{overlap:.2f}.png'
+            plt.savefig(im_fp)
+            msg3(f'Saved plot to \033[1m{str(im_fp)}\033[m')
+            #plt.show()
 
 
 if __name__ == '__main__':
