@@ -258,10 +258,10 @@ def visualize_ensemble(obb,
                 prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
 
                 for prop in prop_info.to_dict('records'):
-                    if prop['cat_id'] == 42 or prop['cat_id'] == 2:
-                        prop_oriented = len(prop['bbox']) == 8
-                        draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented, color='#d0d0d0', print_label=False,
-                                                   print_score=False, print_score_threshold=0.)
+                    #if prop['cat_id'] == 42 or prop['cat_id'] == 2:
+                    prop_oriented = len(prop['bbox']) == 8
+                    draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented, color='#d0d0d0', print_label=True,
+                                               print_score=True, print_score_threshold=0.5)
 
         obb.proposals = wbf_proposals
 
@@ -270,9 +270,9 @@ def visualize_ensemble(obb,
         prop_info = obb.get_img_props(idxs=img_idx, ids=img_id)
 
         for prop in prop_info.to_dict('records'):
-            if prop['cat_id'] == 42 or prop['cat_id'] == 2:
-                prop_oriented = len(prop['bbox']) == 8
-                draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented)
+            # if prop['cat_id'] == 42 or prop['cat_id'] == 2:
+            prop_oriented = len(prop['bbox']) == 8
+            draw = _draw_bbox_ensemble(obb, draw, prop, prop_oriented)
 
     if show:
         plt.figure(figsize=(25, 36))
@@ -280,6 +280,7 @@ def visualize_ensemble(obb,
         plt.tight_layout()
         plt.show()
         # img.show()
+        plt.close()
     if out_dir is not None:
         img.save(osp.join(out_dir, 'props_' + img_info['filename']))
 
@@ -503,7 +504,6 @@ def main():
         #proposals_WBF = postprocess_proposals(proposals_WBF)
         store_proposals(args, proposals_WBF)
 
-        proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < args.vis_thr].index)
         dataset = evaluate_wbf_performance(args, cfg, proposals_WBF)
 
         if args.s_cache is not None:
@@ -520,6 +520,7 @@ def main():
             proposals_WBF = data['proposals_WBF']
             dataset = data['dataset']
 
+        proposals_WBF = proposals_WBF.drop(proposals_WBF[proposals_WBF.score < args.vis_thr].index)
         visualize_proposals(args, dataset, proposals_WBF, debug=args.plot_proposals)
 
 
