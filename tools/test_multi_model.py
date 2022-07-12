@@ -1,4 +1,4 @@
-import argparse
+from argparse import ArgumentParser, Namespace
 import itertools
 import json
 import math
@@ -9,12 +9,13 @@ import tempfile
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Generator
 
 import cv2
 import mmcv
 import numpy as np
 import pandas
+import pandas as pd
 import torch
 import torch.distributed as dist
 from PIL import Image as PImage
@@ -27,12 +28,38 @@ from mmcv.runner import get_dist_info, load_checkpoint
 from pandas import DataFrame
 from torch.nn import Sequential
 
+from DeepScoresV2_s2anet.analyze_ensembles.draw_WBF_for_multi_model import BboxHelper, load_proposals
+from DeepScoresV2_s2anet.analyze_ensembles.wbf_rotated_boxes import rotated_weighted_boxes_fusion
 from DeepScoresV2_s2anet.omr_prototype_alignment import prototype_alignment, render
 from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single, bbox2result
 from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
+
+
+# models/dsv2_no_augment/DS_2022_04_26/epoch_2000.pth
+# models/dsv2/DS_2022_04_26/epoch_2000.pth
+# models/dsv2_finalize/DS_2022_05_27/epoch_200.pth
+# models/dsv2_finalize_snp/DS_2022_05_27/epoch_250.pth
+# models/dsv2hybrid/DS_2022_05_27/epoch_600.pth
+# models/dsv2hybrid_finalize_snp/DS_2022_05_27/epoch_150.pth
+# models/uda_aug/halfrez_crop_lr_d_0.001_pretrained/model_030.pth
+# models/uda_aug/halfrez_crop_lr0.0025/model_140.pth
+# models/uda_aug/halfrez_crop_lr_d_0.001_no-pretrained/model_030.pth
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_900.pth
+# models/uda_aug/halfrez_crop_adam/epoch_200.pth
+# models/uda_aug/imslp_04_11/model_030.pth
+# models/ensemble_cycle_length_20
+
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_800.pth
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_300.pth
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_700.pth
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_600.pth
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_200.pth
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_400.pth
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_500.pth
+# models/uda_aug/halfrez_crop_lr0.0075/model_det_100.pth
 
 
 DEEPSCORES_TEST_SET = {
@@ -310,11 +337,11 @@ def collect_results(result_part, size, tmpdir=None):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='MMDet test detector')
+    parser = ArgumentParser(description='MMDet test detector')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('--checkpoints', nargs='+',
                         help='checkpoint files', required=True)
-    parser.add_argument('--out', help='output result file')
+    parser.add_argument('--out', help='output result file', default='eval.pkl')
     parser.add_argument(
         '--json_out',
         help='output result file name without extension',
@@ -536,10 +563,13 @@ def preprocess_checkpoints(checkpoint_list: List[str], cfg: Config) -> dict:
     return checkpoints
 
 
-def prepare_folder(checkpoint_id: str, checkpoint, checkpoint_file: Path, out_folder: Path) -> Tuple[str, Path]:
+def prepare_folder(checkpoint_id: str, checkpoint, checkpoint_file: Path, out_folder: Path) -> Tuple[str, Path, dict, list]:
+    cfg_str, config_file = None, None
+    kwargs = {'workers_per_gpu': 4}
     if 'config' in checkpoint['meta'].keys():
         cfg_str = checkpoint['meta']['config']
         chkp_cfg = config_from_str(cfg_str)
+        kwargs['workers_per_gpu'] = chkp_cfg.data.workers_per_gpu
         config_file = Path(chkp_cfg.filename)
         assert config_file.suffix == '.py'
         epoch = checkpoint['meta']['epoch']
@@ -548,12 +578,6 @@ def prepare_folder(checkpoint_id: str, checkpoint, checkpoint_file: Path, out_fo
         msg1(
             f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m (\033[1m{epoch}\033[m epochs, created: {str(time)})")
         checkpoint_id = f"{config_file.stem}_epoch_{epoch}"
-        chkp_folder = out_folder / checkpoint_id
-        chkp_folder.mkdir(parents=True, exist_ok=True)
-        # Write checkpoint config to file
-        with open(chkp_folder / config_file.name, 'w') as fp:
-            fp.write(f"# {cfg_str}")
-        msg2(f"Extracted original configuration to \033[1m{config_file.name}\033[m")
     else:
         msg1(f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m")
         suffix = checkpoint_file.stem.split('_')[-1]
@@ -563,9 +587,28 @@ def prepare_folder(checkpoint_id: str, checkpoint, checkpoint_file: Path, out_fo
             warn2(f"Assuming epoch to be {epoch}")
             epoch_str = f"_epoch_{epoch}"
         checkpoint_id = checkpoint_id + epoch_str
-        chkp_folder = out_folder / checkpoint_id
-        chkp_folder.mkdir(parents=True, exist_ok=True)
-    return checkpoint_id, chkp_folder
+
+    chkp_folder = out_folder / checkpoint_id
+    chkp_folder.mkdir(parents=True, exist_ok=True)
+    if cfg_str is not None and config_file is not None:
+        with open(chkp_folder / config_file.name, 'w') as fp:
+            fp.write(f"# {cfg_str}")
+        msg2(f"Extracted original configuration to \033[1m{config_file.name}\033[m")
+
+    test_sets = []
+    for test_set in TEST_SETS:
+        new_test_set = test_set.copy()
+        if chkp_cfg is not None:
+            new_test_set['type'] = chkp_cfg.data.test.type
+        test_sets.append(new_test_set)
+
+    # Link original checkpoint
+    new_chkpnt = chkp_folder / checkpoint_file.name
+    if new_chkpnt.is_symlink():
+        new_chkpnt.unlink()
+    new_chkpnt.symlink_to(os.path.relpath(checkpoint_file, new_chkpnt.parent))
+
+    return checkpoint_id, chkp_folder, kwargs, test_sets
 
 
 def save_proposal_stats(proposals: dict, prop_stat_fp: Path, data_loader: DataLoader):
@@ -583,6 +626,111 @@ def save_proposal_stats(proposals: dict, prop_stat_fp: Path, data_loader: DataLo
         # print(f'[{i + 1}] {cat} ({len(angles)}): avg:{np.mean(angles):.02f}, std: {np.std(angles):.02f}')
     csv_data = pandas.DataFrame(prop_data, index=('occurrences', 'avg', 'std')).transpose()
     csv_data.to_csv(prop_stat_fp)
+
+
+def get_proposals(checkpoint: dict, cfg: Config, model: Sequential, data_loader: DataLoader, proposals_fp: Path, args: Namespace) -> list:
+    # old versions did not save class info in checkpoints, this workaround is
+    # for backward compatibility
+    if 'CLASSES' in checkpoint['meta']:
+        model.CLASSES = checkpoint['meta']['CLASSES']
+    else:
+        model.CLASSES = data_loader.dataset.CLASSES
+
+    if not proposals_fp.exists() or not args.cache:
+        proposals_fp.parent.mkdir(exist_ok=True)
+        msg3(f"Testing model on \033[1m{Path(data_loader.dataset.ann_file).stem}\033[m")
+        distributed = args.launcher != 'none'
+        if not distributed:
+            model = MMDataParallel(model, device_ids=[0])
+            output = single_gpu_test(model, data_loader, args.show, cfg, args.postprocess, args.round)
+        else:
+            model = MMDistributedDataParallel(model.cuda())
+            output = multi_gpu_test(model, data_loader, args.tmpdir, cfg, args.postprocess, args.round)
+        print()  # The tests use ncurses and don't append a new line at the end
+
+        msg3(f'Writing proposals to \033[1m{str(proposals_fp)}\033[m')
+        mmcv.dump(output, proposals_fp)
+        save_predictions(output, proposals_fp.with_name(args.json_out), data_loader, Namespace(cache=False))
+    else:
+        msg3(f'Reading proposals from \033[1m{str(proposals_fp)}\033[m')
+        output = mmcv.load(proposals_fp)
+    return output
+
+
+def save_predictions(predictions, result_file: Path, data_loader: DataLoader, args) -> Path:
+    # Save predictions in the COCO json format
+    rank, _ = get_dist_info()
+    if args.json_out and rank == 0:
+        #if not result_file.with_suffix('.bbox.json').exists() or not args.cache:
+        msg3(f"Saving predictions to \033[1m{str(result_file.with_suffix('.*'))}\033[m")
+        if not isinstance(predictions[0], dict):
+            result_file = result_file.with_suffix('')
+            if not result_file.with_suffix('.bbox.json').exists() or not args.cache:
+                results2json(data_loader.dataset, predictions, result_file)
+            result_file = result_file.with_suffix('.bbox.json')  # function sets custom suffix
+        else:
+            for name in predictions[0]:
+                result_file = result_file.with_suffix(f'.{name}{result_file.suffix}')
+                outputs_ = [out[name] for out in predictions]
+                if not result_file.exists() or not args.cache:
+                    results2json(data_loader.dataset, outputs_, result_file)
+    return result_file
+
+
+def evaluate_proposals(proposals, cfg: Config, checkpoint_file: Path, overlaps: np.ndarray, data_loader: DataLoader, result_folder: Path, args) -> list:
+    eval_types = args.eval
+    data_name = args.data
+    if data_name == 'coco':
+        if eval_types:
+            if eval_types == ['proposal_fast']:
+                result_file = args.out
+                coco_eval(result_file, eval_types, data_loader.dataset.coco)
+            else:
+                if not isinstance(proposals[0], dict):
+                    result_files = results2json(data_loader.dataset, proposals, args.out)
+                    coco_eval(result_files, eval_types, data_loader.dataset.coco)
+                else:
+                    for name in proposals[0]:
+                        proposals = [out[name] for out in proposals]
+                        result_file = args.out + '.{}'.format(name)
+                        result_files = results2json(data_loader.dataset, proposals, result_file)
+                        coco_eval(result_files, eval_types, data_loader.dataset.coco)
+    elif data_name in ['dota', 'hrsc2016']:
+        eval_kwargs = cfg.get('evaluation', {}).copy()
+        work_dir = osp.dirname(args.out)
+        metrics = data_loader.dataset.evaluate(proposals, work_dir=work_dir, **eval_kwargs)
+    elif data_name in ['dsv2']:
+        from mmdet.core import outputs_rotated_box_to_poly_np
+
+        for page in proposals:
+            page.insert(0, np.array([]))
+
+        proposals = outputs_rotated_box_to_poly_np(proposals)
+
+        metrics_fp = result_folder / "dsv2_metrics.pkl"
+        result_file = None
+        if args.json_out is not None:
+            result_file = result_folder / args.json_out
+        needs_to_be_exported = False
+        if not metrics_fp.exists() or not args.cache:
+            msg3(
+                f"Evaluating: \033[1m{str(checkpoint_file)}\033[m on \033[1m{data_loader.dataset.ann_file}\033[m in \033[1m{str(result_folder)}\033[m")
+            data_loader.dataset.evaluate(
+                proposals,
+                result_json_filename=str(result_file) if result_file is not None else None,
+                work_dir=str(result_folder),
+                iou_thrs=overlaps
+            )  # Extremely slow...
+            needs_to_be_exported = True
+        msg3(f'Reading calculated metrics from \033[1m{str(metrics_fp)}\033[m')
+        metrics = mmcv.load(metrics_fp)
+
+        prop_stat_fp = result_folder / 'proposal_stats.csv'
+        if (result_file is not None and not prop_stat_fp.exists()) or needs_to_be_exported:
+            msg3(f"Calculating statistics for results -> {prop_stat_fp.name}")
+            with open(result_file, 'r') as fp:
+                save_proposal_stats(json.load(fp), prop_stat_fp, data_loader)
+    return metrics
 
 
 def eval_checkpoint(
@@ -636,33 +784,11 @@ def eval_checkpoint(
         result_folder = chkp_folder / ann_file.stem
         result_folder.mkdir(exist_ok=True)
 
-        # old versions did not save class info in checkpoints, this workaround is
-        # for backward compatibility
-        if 'CLASSES' in checkpoint['meta']:
-            model.CLASSES = checkpoint['meta']['CLASSES']
-        else:
-            model.CLASSES = data_loader.dataset.CLASSES
-
-        pkl_fp = result_folder / proposals_fp
         outputs_m[checkpoint_file] = {}
-        if not pkl_fp.exists() or not args.cache:
-            pkl_fp.parent.mkdir(exist_ok=True)
-            msg3(f"Testing model on \033[1m{ann_file.stem}\033[m")
-            if not distributed:
-                model = MMDataParallel(model, device_ids=[0])
-                outputs_m[checkpoint_file][data_loader] = single_gpu_test(model, data_loader, args.show, cfg,
-                                                                          args.postprocess, args.round)
-            else:
-                model = MMDistributedDataParallel(model.cuda())
-                outputs_m[checkpoint_file][data_loader] = multi_gpu_test(model, data_loader, args.tmpdir, cfg,
-                                                                         args.postprocess, args.round)
-            print()  # The tests use ncurses and don't append a new line at the end
+        outputs_m[checkpoint_file][data_loader] = get_proposals(checkpoint, cfg, model, data_loader, result_folder / proposals_fp, distributed, args)
 
-            msg3(f'Writing proposals to \033[1m{str(pkl_fp)}\033[m')
-            mmcv.dump(outputs_m[checkpoint_file][data_loader], pkl_fp)
-        else:
-            msg3(f'Reading proposals from \033[1m{str(pkl_fp)}\033[m')
-            outputs_m[checkpoint_file][data_loader] = mmcv.load(pkl_fp)
+
+        metrics = evaluate_proposals(outputs_m[checkpoint_file][data_loader], cfg, checkpoint_file, overlaps, data_loader, result_folder, args)
         eval_types = args.eval
         data_name = args.data
         if data_name == 'coco':
@@ -696,29 +822,29 @@ def eval_checkpoint(
             outputs_m[checkpoint_file][data_loader] = outputs_rotated_box_to_poly_np(
                 outputs_m[checkpoint_file][data_loader])
 
-            metrics_fp = result_folder / "dsv2_metrics.pkl"
-            result_file = None
-            if args.json_out is not None:
-                result_file = result_folder / args.json_out
-            needs_to_be_exported = False
-            if not metrics_fp.exists() or not args.cache:
-                msg3(
-                    f"Evaluating: \033[1m{str(checkpoint_file)}\033[m on \033[1m{data_loader.dataset.ann_file}\033[m in \033[1m{str(result_folder)}\033[m")
-                data_loader.dataset.evaluate(
-                    outputs_m[checkpoint_file][data_loader],
-                    result_json_filename=str(result_file) if result_file is not None else None,
-                    work_dir=str(result_folder),
-                    iou_thrs=overlaps
-                )  # Extremely slow...
-                needs_to_be_exported = True
-            msg3(f'Reading calculated metrics from \033[1m{str(metrics_fp)}\033[m')
-            metrics = mmcv.load(metrics_fp)
+        metrics_fp = result_folder / "dsv2_metrics.pkl"
+        result_file = None
+        if args.json_out is not None:
+            result_file = result_folder / args.json_out
+        needs_to_be_exported = False
+        if not metrics_fp.exists() or not args.cache:
+            msg3(
+                f"Evaluating: \033[1m{str(checkpoint_file)}\033[m on \033[1m{data_loader.dataset.ann_file}\033[m in \033[1m{str(result_folder)}\033[m")
+            data_loader.dataset.evaluate(
+                outputs_m[checkpoint_file][data_loader],
+                result_json_filename=str(result_file) if result_file is not None else None,
+                work_dir=str(result_folder),
+                iou_thrs=overlaps
+            )  # Extremely slow...
+            needs_to_be_exported = True
+        msg3(f'Reading calculated metrics from \033[1m{str(metrics_fp)}\033[m')
+        metrics = mmcv.load(metrics_fp)
 
-            prop_stat_fp = result_folder / 'proposal_stats.csv'
-            if (result_file is not None and not prop_stat_fp.exists()) or needs_to_be_exported:
-                msg3(f"Calculating statistics for results -> {prop_stat_fp.name}")
-                with open(result_file, 'r') as fp:
-                    save_proposal_stats(json.load(fp), prop_stat_fp, data_loader)
+        prop_stat_fp = result_folder / 'proposal_stats.csv'
+        if (result_file is not None and not prop_stat_fp.exists()) or needs_to_be_exported:
+            msg3(f"Calculating statistics for results -> {prop_stat_fp.name}")
+            with open(result_file, 'r') as fp:
+                save_proposal_stats(json.load(fp), prop_stat_fp, data_loader)
 
         msg3(f'Compiling metrics with overlaps \033[1m{overlaps_str}\033[m')
         for cls, overlap_metrics in metrics.items():
@@ -731,22 +857,144 @@ def eval_checkpoint(
             sub_stats[cls].append(metrics[-1])
             stats[cls].append(metrics[-1])
 
-        # Save predictions in the COCO json format
-        rank, _ = get_dist_info()
-        if args.json_out and rank == 0:
-            result_file = result_folder / args.json_out
-            if not result_file.with_suffix('.bbox.json').exists() or not args.cache:
-                msg3(f"Saving predictions to \033[1m{str(result_file.with_suffix('.*'))}\033[m")
-                if not isinstance(outputs_m[checkpoint_file][data_loader][0], dict):
-                    results2json(data_loader.dataset, outputs_m[checkpoint_file][data_loader],
-                                 result_file.with_suffix(''))
-                else:
-                    for name in outputs_m[checkpoint_file][data_loader][0]:
-                        outputs_ = [out[name] for out in outputs_m[checkpoint_file][data_loader]]
-                        results2json(data_loader.dataset, outputs_,
-                                     result_file.with_suffix(f'.{name}{result_file.suffix}'))
+        save_predictions(outputs_m[checkpoint_file][data_loader], result_folder / args.json_out, data_loader, args)
     plot_stats(overlaps, chkp_folder, sub_stats, sub_index, dataset_names)
     index.extend(sub_index)  # We need the meta index for the meta plots (duh)
+
+
+def evaluate_results(outputs: list, result_folder: Path, data_loader: DataLoader, checkpoint_id: str, overlaps: np.ndarray, stats: dict, args: Namespace):
+    overlaps_str = str(overlaps).replace("\n", "")
+    metrics_fp = result_folder / "dsv2_metrics.pkl"
+    result_file = None
+    if args.json_out is not None:
+        result_file = result_folder / args.json_out
+    needs_to_be_exported = False
+    if not metrics_fp.exists() or not args.cache:
+        msg3(
+            f"Evaluating: \033[1m{str(checkpoint_id)}\033[m on \033[1m{data_loader.dataset.ann_file}\033[m in \033[1m{str(result_folder)}\033[m")
+        data_loader.dataset.evaluate(
+            outputs,
+            result_json_filename=str(result_file) if result_file is not None else None,
+            work_dir=str(result_folder),
+            iou_thrs=overlaps
+        )  # Extremely slow...
+        needs_to_be_exported = True
+    msg3(f'Reading calculated metrics from \033[1m{str(metrics_fp)}\033[m')
+    metrics = mmcv.load(metrics_fp)
+
+    prop_stat_fp = result_folder / 'proposal_stats.csv'
+    if (result_file is not None and not prop_stat_fp.exists()) or needs_to_be_exported:
+        msg3(f"Calculating statistics for results -> {prop_stat_fp.name}")
+        with open(result_file, 'r') as fp:
+            save_proposal_stats(json.load(fp), prop_stat_fp, data_loader)
+
+    msg3(f'Compiling metrics with overlaps \033[1m{overlaps_str}\033[m')
+    for cls, overlap_metrics in metrics.items():
+        for overlap in overlaps:
+            overlap_metrics[overlap] = overlap_metrics[overlap].get('ap', np.NaN)
+        metrics[cls] = overlap_metrics
+    for cls in data_loader.dataset.CLASSES:
+        stats[cls].append(metrics.get(cls, {}))
+    for cls, metrics in stats.items():
+        stats[cls].append(metrics[-1])
+    save_predictions(outputs, result_folder / args.json_out, data_loader, args)
+
+
+def test_checkpoint(
+        main_config,
+        model,
+        checkpoint_id: str,
+        checkpoint_file: Path,
+        checkpoint: dict,
+        out_folder: Path,
+        proposals_fp: Path,
+        distributed: bool,
+        args
+) -> Generator[Tuple[str, DataLoader, list], None, None]:
+    checkpoint_id, chkp_folder, test_set_kwargs, test_sets = prepare_folder(checkpoint_id, checkpoint, checkpoint_file, out_folder)
+    test_set_kwargs['distributed'] = distributed
+    for data_loader in get_test_sets(*test_sets, **test_set_kwargs):
+        ann_file = Path(data_loader.dataset.ann_file)
+        index = f"{checkpoint_id} - {ann_file.stem}"
+        msg2(f"Selecting dataset: \033[1m{ann_file.stem}\033[m")
+        result_folder = chkp_folder / ann_file.stem
+        result_folder.mkdir(exist_ok=True)
+
+        outputs = get_proposals(checkpoint, main_config, model, data_loader, result_folder / proposals_fp, distributed, args)
+        yield index, data_loader, outputs, result_folder / proposals_fp
+
+        # metrics = evaluate_proposals(outputs_m[checkpoint_file][data_loader], cfg, checkpoint_file, overlaps, data_loader, result_folder, args)
+        # eval_types = args.eval
+        # data_name = args.data
+        # assert data_name in ['dsv2']
+        # from mmdet.core import outputs_rotated_box_to_poly_np
+        #
+        # for page in outputs_m[checkpoint_file][data_loader]:
+        #     page.insert(0, np.array([]))
+        #
+        # outputs_m[checkpoint_file][data_loader] = outputs_rotated_box_to_poly_np(outputs_m[checkpoint_file][data_loader])
+
+def infer_checkpoint(checkpoint: dict, main_config: Config, model: Sequential, data_loader: DataLoader, folder: Path,
+                     args: Namespace) -> Tuple[list, Path, Path]:
+    ann_file = Path(data_loader.dataset.ann_file)
+    msg2(f"Running checkpoint on dataset: \033[1m{ann_file.stem}\033[m")
+    result_folder = folder / ann_file.stem
+    result_folder.mkdir(exist_ok=True)
+    eval_fp = result_folder / args.out
+    outputs = get_proposals(checkpoint, main_config, model, data_loader, eval_fp, args)
+    return outputs, eval_fp, save_predictions(outputs, result_folder / args.json_out, data_loader, args)
+
+
+def evaluate_outputs(outputs):
+    pass
+
+
+def prepocess_WBF(props):
+    for i, row in props.iterrows():
+        if row.cat_id == 42 or row.cat_id == 2:
+            # 2 is stem, 42 is ledgerLine
+            props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
+
+def weighted_box_fusion(boxes_list: list, scores_list: list, labels_list: list, img_idx_list: list, iou_thr: float):
+    # Calculate proposals_WBF
+    max_img_idx = max([max(i) for i in img_idx_list])
+    # TODO: use different threshold for ledger line and stem (e.g. 0.01)
+    skip_box_thr = 0.00001  # Skips proposals if score < thr; However, nms is applied when using routine in test_BE.py and score_thr from config applies already.
+    # score_thr: value is set below; skips visualization if fused score is below score_thr
+    weights = None  # Could weight proposals from a specific ensemble member
+    proposals_WBF = []
+    # rotated_weighted_boxes mixes boxes from different images during calculation.
+    # Thus, execute it on proposals of each image seperately, then concatenate results.
+    for i in range(max_img_idx + 1):
+        # s: select_proposals_by_img_idx
+        s = [img_idx == i for img_idx in img_idx_list]
+        boxes_list_i = [list(itertools.compress(boxes_list[j], s[j])) for j in
+                        range(len(boxes_list))]
+        scores_list_i = [list(itertools.compress(scores_list[j], s[j])) for j in
+                         range(len(scores_list))]
+        labels_list_i = [list(itertools.compress(labels_list[j], s[j])) for j in
+                         range(len(labels_list))]
+        img_idx_list_i = [list(itertools.compress(img_idx_list[j], s[j])) for j in
+                          range(len(img_idx_list))]
+
+        boxes, scores, labels = rotated_weighted_boxes_fusion(boxes_list_i,
+                                                              scores_list_i,
+                                                              labels_list_i,
+                                                              weights=weights,
+                                                              iou_thr=iou_thr,
+                                                              skip_box_thr=skip_box_thr)
+
+        boxes = pd.Series(list(boxes))
+        labels = pd.Series(list(labels)).astype(int)
+        img_idxs = pd.Series(itertools.chain(*img_idx_list_i))
+        scores = pd.Series(list(scores))
+        zipped = list(zip(boxes, labels, img_idxs, scores))
+
+        proposals_WBF_i = pd.DataFrame(zipped, columns=['bbox', 'cat_id', 'img_idx',
+                                                        'score'])
+        proposals_WBF.append(proposals_WBF_i)
+
+    return pd.concat(proposals_WBF)
 
 
 def main():
@@ -797,26 +1045,64 @@ def main():
     checkpoints = preprocess_checkpoints(args.checkpoints, cfg)
 
     overlaps = np.arange(0.1, 0.96, 0.05)
-    outputs_m = {}
+    outputs_m = defaultdict(dict)
     metrics = {}
     for checkpoint_id, checkpoint_data in checkpoints.items():
         if isinstance(checkpoint_data, tuple):
             checkpoint_file, checkpoint, model = checkpoint_data
-            eval_checkpoint(cfg, model, checkpoint_id, checkpoint_file, checkpoint, out_folder, proposals_fp, overlaps, stats, index, dataset_names, outputs_m, metrics, distributed, args)
+            outputs = {}
+            sub_stats = defaultdict(list)
+            checkpoint_id, chkp_folder, test_set_kwargs, test_sets = prepare_folder(checkpoint_id, checkpoint, checkpoint_file, out_folder)
+            test_set_kwargs['distributed'] = distributed
+            for data_loader in get_test_sets(*test_sets, **test_set_kwargs):
+                ann_file = Path(data_loader.dataset.ann_file)
+                index.append(f"{checkpoint_id} - {ann_file.stem}")
+                output, _, _ = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
+                outputs[data_loader] = output
+                sub_stats['samples'].append(len(data_loader.dataset.img_ids))
+                # Evaluate results
+                evaluate_results(output, out_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
+                outputs_m[checkpoint_id][data_loader] = output
+            for cls, aps in sub_stats.items():
+                stats[cls].extend(aps)
         elif isinstance(checkpoint_data, list):
             mm_index = []
             mm_stats = {'samples': []}
-            mm_stats.update({key: [] for key in tmp_test_sets[0].dataset.CLASSES})
-            mm_outputs_m = {}
-            mm_metrics = {}
-            mm_folder = out_folder / checkpoint_id
-            mm_folder.mkdir(parents=True, exist_ok=True)
-            for checkpoint_sub_id, checkpoint_file, checkpoint, model in checkpoint_data:
-                # TODO: Get the data necessary for WBF
-                eval_checkpoint(cfg, model, checkpoint_sub_id, checkpoint_file, checkpoint, mm_folder, proposals_fp, overlaps, mm_stats, mm_index, dataset_names, mm_outputs_m, mm_metrics, distributed, args)
-            # TODO: Perform WBF
-            plot_stats(overlaps, mm_folder, mm_stats, mm_index, dataset_names)
-            # TODO: Merge results of WBF into stats and update index
+            sub_stats = defaultdict(list)
+            ensemble_folder = out_folder / checkpoint_id
+            ensemble_folder.mkdir(parents=True, exist_ok=True)
+            test_set_kwargs = {
+                'workers_per_gpu': 4,
+                'distributed': distributed,
+            }
+            for data_loader in get_test_sets(*TEST_SETS, **test_set_kwargs):
+                ann_file = Path(data_loader.dataset.ann_file)
+                wbf_glob_dir = ensemble_folder / ann_file.stem
+                wbf_glob_dir.mkdir(exist_ok=True)
+                for checkpoint_sub_id, checkpoint_file, checkpoint, model in checkpoint_data:
+                    checkpoint_sub_id, chkp_folder, _, test_sets = prepare_folder(checkpoint_sub_id, checkpoint, checkpoint_file, ensemble_folder)
+                    idx = f"{checkpoint_sub_id} - {ann_file.stem}"
+                    output, eval_fp, res_file = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
+
+                    # When using the WBF load_proposals function, copy the results.json file into a special folder for
+                    # recursively finding the results.json files
+                    folder = wbf_glob_dir / checkpoint_sub_id
+                    folder.mkdir(exist_ok=True)
+                    shutil.copyfile(res_file, folder / 'result.json')
+                sub_stats['samples'].append(len(data_loader.dataset.img_ids))
+                mm_index.append(f"{checkpoint_id} - {ann_file.stem}")
+                index.append(f"{checkpoint_id} - {ann_file.stem}")
+                for overlap in overlaps:
+                    proposal_fp = ensemble_folder / f"wbf_proposals_{overlap}.pkl"
+                    if not proposal_fp.exists():
+                        wbf_proposals: DataFrame = load_proposals(Namespace(inp=wbf_glob_dir), data_loader.dataset, iou_thr=overlap)
+                        wbf_proposals.to_pickle(proposal_fp)
+                    else:
+                        wbf_proposals: DataFrame = pd.read_pickle(proposal_fp)
+                    # TODO: Transform WBF proposals back into output matrices
+                    outputs_m[checkpoint_id][data_loader] = []
+                evaluate_results(outputs_m[checkpoint_id][data_loader], out_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
+            plot_stats(overlaps, ensemble_folder, mm_stats, mm_index, dataset_names)
     print('#' * 30)
     print('#' * 30)
     print('#' * 30)
