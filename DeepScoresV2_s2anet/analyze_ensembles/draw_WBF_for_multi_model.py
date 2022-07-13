@@ -375,10 +375,10 @@ def load_proposals(args, dataset, iou_thr=0.1):
 
         #### WBF Preprocessing
         props = dataset.obb.proposals
-        for i, row in props.iterrows():
-            if row.cat_id == 42 or row.cat_id == 2:
-                # 2 is stem, 42 is ledgerLine
-                props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
+        # for i, row in props.iterrows():
+        #     if row.cat_id == 42 or row.cat_id == 2:
+        #         # 2 is stem, 42 is ledgerLine
+        #         props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
 
         boxes_list.append(props['bbox'].to_list())
         scores_list.append(list(map(float, props['score'].to_list())))
