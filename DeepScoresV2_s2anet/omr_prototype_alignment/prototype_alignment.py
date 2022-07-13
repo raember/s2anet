@@ -162,78 +162,8 @@ def _create_search_list(lower, upper, stepsize=1):
     return [ab for a, b in zip(list_1[::-1], list_2) for ab in (a, b)]
 
 
-def process2(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False) -> Image:
-    if len(bbox) == 0:
-        return
 
-    img_roi, (y_off, x_off) = get_roi(img_np, bbox)
-
-    orig_angle = bbox[4]
-
-    best_glyph, best_overlap = None, -1
-
-    angles = _create_search_list(orig_angle - 0.2, orig_angle + 0.2, 0.05)
-    x_shifts = _create_search_list(img_roi.shape[0] // 2 - 5, img_roi.shape[0] // 2 + 5)
-    y_shifts = _create_search_list(img_roi.shape[1] // 2 - 5, img_roi.shape[1] // 2 + 5)
-
-
-    assert len(x_shifts) > 0 and len(y_shifts) > 0
-
-    imgs, i = [], 0
-
-    count_angle_not_improved = 0
-    for angle in angles:
-        count_xshift_not_improved = 0
-        for x_shift in x_shifts:
-            count_yshift_not_improved = 0
-            for y_shift in y_shifts:
-
-                padding_left = x_shift
-                padding_right = img_roi.shape[1] - padding_left
-                padding_top = y_shift
-                padding_bottom = img_roi.shape[0] - padding_top
-
-                proposed_glyph = GLYPH_GEN.get_transformed_glyph(cls, int(bbox[3]), int(bbox[2]), angle, padding_left,
-                                                                 padding_right, padding_top, padding_bottom)
-
-                if store_video and i % 100 == 0:
-                    img = img_roi.copy()
-                    img = img * 1
-                    img[proposed_glyph] = 2
-                    imgs.append(img)
-                i += 1
-
-                overlap = np.average(img_roi[proposed_glyph])
-                if overlap > best_overlap:
-                    best_overlap = overlap
-                    best_glyph = proposed_glyph
-                    best_box = np.array([x_off+x_shift, y_off+y_shift, bbox[2], bbox[3], angle])
-                    count_angle_not_improved, count_xshift_not_improved, count_yshift_not_improved = 0, 0, 0
-
-                if count_yshift_not_improved > 2:
-                    break
-            if count_xshift_not_improved > 2:
-                break
-        if count_angle_not_improved > 3:
-            break
-
-    if store_video:
-        img = img_roi.copy()
-        img = img * 1
-        img[best_glyph] = 2
-        imgs.append(img)
-        generate_video(imgs)
-
-        plt.figure()
-        plt.imshow(img, cmap=cm.jet)
-        plt.grid()
-        plt.savefig(Path("process2_debugging") / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.png")
-        plt.close()
-
-    return best_box
-
-
-def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video: bool = False, padding=20) -> Image:
+def process_simple(img_np, bbox: np.ndarray, cls: str):
     if len(bbox) == 0:
         return
 
@@ -259,8 +189,12 @@ def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video
     count_angle_not_improved = 0
     for angle in angles:
 
-        proposed_glyph = glyph.get_transformed_glyph(cls, int(bbox[2]), int(bbox[3]), -angle, padding_left=None,
-                                                     padding_right=None, padding_top=None, padding_bottom=None)
+        try:
+            proposed_glyph = glyph.get_transformed_glyph(cls, int(bbox[2]), int(bbox[3]), -angle, padding_left=None,
+                                                         padding_right=None, padding_top=None, padding_bottom=None)
+        except cv2.error as e:
+            print(e)
+            continue
 
         img_roi_copy = img_roi.copy()
         try:
@@ -281,26 +215,12 @@ def process_simple(img_np, bbox: np.ndarray, glyph: Image, cls: str, store_video
         if count_angle_not_improved > 4:
             break
 
+        if best_box is None:
+            best_box = bbox
+
     return np.array(best_box)
 
 
-def process(img: Image, bbox: np.ndarray, glyph: Image, cls: str) -> Image:
-    if len(bbox) == 0:
-        return
-
-    img_np = np.array(img.convert('L')) < 128
-    w, h = glyph.size
-    x, y, _, _, _ = bbox
-    w2 = w / 2
-    h2 = h / 2
-    img_roi = img_np[int(y - h2):int(y + h2), int(x - w2):int(x + w2)]
-
-    mask_np = np.array(glyph) > 0
-    mask_np = np.flipud(mask_np)
-    y_pad, x_pad = img_roi.shape[0] - mask_np.shape[0], img_roi.shape[1] - mask_np.shape[1]
-    mask_np = np.pad(mask_np, ((int(np.ceil(y_pad / 2)), y_pad // 2), (int(np.ceil(x_pad / 2)), x_pad // 2)))
-    new_mask = optical_flow_merging(img_roi, mask_np)
-    return PImage.fromarray(binary_erosion(new_mask))
 
 
 def bbox_to_polygon(bbox: np.ndarray) -> Polygon:
@@ -356,30 +276,11 @@ def _process_sample(img: Image, sample, whitelist=[]):
         if len([x for x in whitelist if x in cls]) < 1:
             return sample['proposal'][:-1]
 
-    if 'gt' in sample:
-        gt_bbox: np.ndarray = sample['gt'][:5].astype(np.float)
-        # print(f"IoU [{cls}]: ")
-    for glyph in get_glyphs(cls, prop_bbox, 0):
-        #new_glyph = process2(img, prop_bbox, glyph, cls)
-        new_glyph = process_simple(img, prop_bbox, glyph, cls)
-
-        derived_bbox = extract_bbox_from(glyph, prop_bbox, cls)
-
-        if isinstance(new_glyph, np.ndarray):
-            new_bbox = new_glyph
-        else:
-            new_bbox = extract_bbox_from(new_glyph, prop_bbox, cls)
-
-        if 'gt' in sample:
-            iou = calc_loss(gt_bbox, new_bbox)
-            base_iou = calc_loss(gt_bbox, derived_bbox)
-            # visualize(img, prop_bbox, gt_bbox, glyph, new_bbox, new_glyph)
-            # print(f", {iou:.3} (baseline: {base_iou:.3})", end='')
-            # print()
-        return new_bbox
+    new_bbox = process_simple(img, prop_bbox, cls)
+    return new_bbox
 
 
-def _process_single(img: Image, samples, whitelist=[], n_workers=5):
+def _process_single(img: Image, samples, whitelist=[]):
     bboxes, jobs = [], []
 
     img = np.array(img.convert('L'))
