@@ -32,7 +32,8 @@ from DeepScoresV2_s2anet.analyze_ensembles.draw_WBF_for_multi_model import BboxH
 from DeepScoresV2_s2anet.analyze_ensembles.wbf_rotated_boxes import rotated_weighted_boxes_fusion
 from DeepScoresV2_s2anet.omr_prototype_alignment import prototype_alignment, render
 from mmdet.apis import init_dist
-from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single, bbox2result
+from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single, bbox2result, \
+    outputs_rotated_box_to_poly_np
 from mmdet.core import rotated_box_to_poly_np
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
@@ -650,14 +651,14 @@ def get_proposals(checkpoint: dict, cfg: Config, model: Sequential, data_loader:
 
         msg3(f'Writing proposals to \033[1m{str(proposals_fp)}\033[m')
         mmcv.dump(output, proposals_fp)
-        save_predictions(output, proposals_fp.with_name(args.json_out), data_loader, Namespace(cache=False))
+        save_predictions(output, proposals_fp.with_name(args.json_out), data_loader, args)
     else:
         msg3(f'Reading proposals from \033[1m{str(proposals_fp)}\033[m')
         output = mmcv.load(proposals_fp)
     return output
 
 
-def save_predictions(predictions, result_file: Path, data_loader: DataLoader, args) -> Path:
+def save_predictions(predictions, result_file: Path, data_loader: DataLoader, args):
     # Save predictions in the COCO json format
     rank, _ = get_dist_info()
     if args.json_out and rank == 0:
@@ -674,7 +675,7 @@ def save_predictions(predictions, result_file: Path, data_loader: DataLoader, ar
                 outputs_ = [out[name] for out in predictions]
                 if not result_file.exists() or not args.cache:
                     results2json(data_loader.dataset, outputs_, result_file)
-    return result_file
+        data_loader.dataset.write_results_json(outputs_rotated_box_to_poly_np(predictions), filename=str(result_file.with_name(args.json_out)))
 
 
 def evaluate_proposals(proposals, cfg: Config, checkpoint_file: Path, overlaps: np.ndarray, data_loader: DataLoader, result_folder: Path, args) -> list:
@@ -935,14 +936,14 @@ def test_checkpoint(
         # outputs_m[checkpoint_file][data_loader] = outputs_rotated_box_to_poly_np(outputs_m[checkpoint_file][data_loader])
 
 def infer_checkpoint(checkpoint: dict, main_config: Config, model: Sequential, data_loader: DataLoader, folder: Path,
-                     args: Namespace) -> Tuple[list, Path, Path]:
+                     args: Namespace) -> Tuple[list, Path]:
     ann_file = Path(data_loader.dataset.ann_file)
     msg2(f"Running checkpoint on dataset: \033[1m{ann_file.stem}\033[m")
     result_folder = folder / ann_file.stem
     result_folder.mkdir(exist_ok=True)
     eval_fp = result_folder / args.out
     outputs = get_proposals(checkpoint, main_config, model, data_loader, eval_fp, args)
-    return outputs, eval_fp, save_predictions(outputs, result_folder / args.json_out, data_loader, args)
+    return outputs, eval_fp
 
 
 def evaluate_outputs(outputs):
@@ -955,47 +956,25 @@ def prepocess_WBF(props):
             # 2 is stem, 42 is ledgerLine
             props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
 
-def weighted_box_fusion(boxes_list: list, scores_list: list, labels_list: list, img_idx_list: list, iou_thr: float):
-    # Calculate proposals_WBF
-    max_img_idx = max([max(i) for i in img_idx_list])
-    # TODO: use different threshold for ledger line and stem (e.g. 0.01)
-    skip_box_thr = 0.00001  # Skips proposals if score < thr; However, nms is applied when using routine in test_BE.py and score_thr from config applies already.
-    # score_thr: value is set below; skips visualization if fused score is below score_thr
-    weights = None  # Could weight proposals from a specific ensemble member
-    proposals_WBF = []
-    # rotated_weighted_boxes mixes boxes from different images during calculation.
-    # Thus, execute it on proposals of each image seperately, then concatenate results.
-    for i in range(max_img_idx + 1):
-        # s: select_proposals_by_img_idx
-        s = [img_idx == i for img_idx in img_idx_list]
-        boxes_list_i = [list(itertools.compress(boxes_list[j], s[j])) for j in
-                        range(len(boxes_list))]
-        scores_list_i = [list(itertools.compress(scores_list[j], s[j])) for j in
-                         range(len(scores_list))]
-        labels_list_i = [list(itertools.compress(labels_list[j], s[j])) for j in
-                         range(len(labels_list))]
-        img_idx_list_i = [list(itertools.compress(img_idx_list[j], s[j])) for j in
-                          range(len(img_idx_list))]
-
-        boxes, scores, labels = rotated_weighted_boxes_fusion(boxes_list_i,
-                                                              scores_list_i,
-                                                              labels_list_i,
-                                                              weights=weights,
-                                                              iou_thr=iou_thr,
-                                                              skip_box_thr=skip_box_thr)
-
-        boxes = pd.Series(list(boxes))
-        labels = pd.Series(list(labels)).astype(int)
-        img_idxs = pd.Series(itertools.chain(*img_idx_list_i))
-        scores = pd.Series(list(scores))
-        zipped = list(zip(boxes, labels, img_idxs, scores))
-
-        proposals_WBF_i = pd.DataFrame(zipped, columns=['bbox', 'cat_id', 'img_idx',
-                                                        'score'])
-        proposals_WBF.append(proposals_WBF_i)
-
-    return pd.concat(proposals_WBF)
-
+def wbf_proposals_to_output(proposals: pd.DataFrame) -> List[List[np.ndarray]]:
+    output = []
+    last_img_idx = 0
+    def new_sample():
+        sample_output = []
+        for _ in range(135):
+            sample_output.append(np.zeros((0, 6)))
+        output.append(sample_output)
+        return sample_output
+    sample_output = new_sample()
+    for bbox, cat_id, img_idx, score in proposals.values:
+        if img_idx != last_img_idx:
+            sample_output = new_sample()
+            last_img_idx = img_idx
+        bboxes: np.ndarray = sample_output[cat_id - 1]
+        #bbox = rotated_box_to_poly_np(bbox[:5])
+        bbox = np.concatenate([bbox, np.array([score])])
+        sample_output[cat_id - 1] = np.concatenate([bboxes.reshape((-1, 9)), bbox.reshape((1, 9))])
+    return output
 
 def main():
     args = parse_args()
@@ -1057,11 +1036,11 @@ def main():
             for data_loader in get_test_sets(*test_sets, **test_set_kwargs):
                 ann_file = Path(data_loader.dataset.ann_file)
                 index.append(f"{checkpoint_id} - {ann_file.stem}")
-                output, _, _ = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
+                output, _ = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
                 outputs[data_loader] = output
                 sub_stats['samples'].append(len(data_loader.dataset.img_ids))
                 # Evaluate results
-                evaluate_results(output, out_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
+                evaluate_results(output, chkp_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
                 outputs_m[checkpoint_id][data_loader] = output
             for cls, aps in sub_stats.items():
                 stats[cls].extend(aps)
@@ -1082,27 +1061,30 @@ def main():
                 for checkpoint_sub_id, checkpoint_file, checkpoint, model in checkpoint_data:
                     checkpoint_sub_id, chkp_folder, _, test_sets = prepare_folder(checkpoint_sub_id, checkpoint, checkpoint_file, ensemble_folder)
                     idx = f"{checkpoint_sub_id} - {ann_file.stem}"
-                    output, eval_fp, res_file = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
+                    output, eval_fp = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
 
                     # When using the WBF load_proposals function, copy the results.json file into a special folder for
                     # recursively finding the results.json files
                     folder = wbf_glob_dir / checkpoint_sub_id
                     folder.mkdir(exist_ok=True)
-                    shutil.copyfile(res_file, folder / 'result.json')
+                    shutil.copyfile(chkp_folder / ann_file.stem / args.json_out, folder / 'result.json')
                 sub_stats['samples'].append(len(data_loader.dataset.img_ids))
                 mm_index.append(f"{checkpoint_id} - {ann_file.stem}")
                 index.append(f"{checkpoint_id} - {ann_file.stem}")
-                for overlap in overlaps:
-                    proposal_fp = ensemble_folder / f"wbf_proposals_{overlap}.pkl"
-                    if not proposal_fp.exists():
-                        wbf_proposals: DataFrame = load_proposals(Namespace(inp=wbf_glob_dir), data_loader.dataset, iou_thr=overlap)
-                        wbf_proposals.to_pickle(proposal_fp)
-                    else:
-                        wbf_proposals: DataFrame = pd.read_pickle(proposal_fp)
-                    # TODO: Transform WBF proposals back into output matrices
-                    outputs_m[checkpoint_id][data_loader] = []
-                evaluate_results(outputs_m[checkpoint_id][data_loader], out_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
-            plot_stats(overlaps, ensemble_folder, mm_stats, mm_index, dataset_names)
+                proposal_fp = ensemble_folder / f"wbf_proposals.pkl"
+                if not proposal_fp.exists():
+                    msg2("Running weighted box fusion")
+                    wbf_proposals: DataFrame = load_proposals(Namespace(inp=wbf_glob_dir), data_loader.dataset, iou_thr=0.3)
+                    wbf_proposals.to_pickle(proposal_fp)
+                else:
+                    msg2("Loading weighted box fusion results")
+                    wbf_proposals: DataFrame = pd.read_pickle(proposal_fp)
+                # TODO: Transform WBF proposals back into output matrices
+                output2 = wbf_proposals_to_output(wbf_proposals)
+                outputs_m[checkpoint_id][data_loader] = output2
+                evaluate_results(outputs_m[checkpoint_id][data_loader], ensemble_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
+            for cls, aps in sub_stats.items():
+                stats[cls].extend(aps)
     print('#' * 30)
     print('#' * 30)
     print('#' * 30)
