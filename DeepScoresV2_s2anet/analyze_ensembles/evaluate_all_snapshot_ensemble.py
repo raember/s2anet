@@ -145,15 +145,15 @@ def run_analyze_errors():
 
 if __name__ == '__main__':
     if BASE_PATH.exists() and any(BASE_PATH.iterdir()):
-        r = input("'eval' folder is not empty - continue? [y/N]")
-        if str(r) != "y" or str(r) != "yes":
-            exit()
+       r = input("'eval' folder is not empty - continue? [y/N]")
+       if str(r) != "y" or str(r) != "yes":
+           exit()
 
     run_test_multi_model()
-    if len(_get_result_jsons()) <= 20:
-        run_snapshot_overlap()
-    else:
-        run_snapshot_overlap_reduced()
+    #if len(_get_result_jsons()) <= 20:
+    #    run_snapshot_overlap()
+    #else:
+    #    run_snapshot_overlap_reduced()
     run_WBF()
     run_compare_metrics()
     run_analyze_errors()
