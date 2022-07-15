@@ -675,12 +675,15 @@ def save_predictions(predictions, result_file: Path, data_loader: DataLoader, ar
                 outputs_ = [out[name] for out in predictions]
                 if not result_file.exists() or not args.cache:
                     results2json(data_loader.dataset, outputs_, result_file)
-        data_loader.dataset.write_results_json(outputs_rotated_box_to_poly_np(predictions), filename=str(result_file.with_name(args.json_out)))
+        standard_results_fp = result_file.with_name(args.json_out)
+        if not standard_results_fp.exists() or not args.cache:
+            data_loader.dataset.write_results_json(outputs_rotated_box_to_poly_np(predictions), filename=str(standard_results_fp))
 
 
 def evaluate_proposals(proposals, cfg: Config, checkpoint_file: Path, overlaps: np.ndarray, data_loader: DataLoader, result_folder: Path, args) -> list:
     eval_types = args.eval
     data_name = args.data
+    ensure_8_tuple(proposals)
     if data_name == 'coco':
         if eval_types:
             if eval_types == ['proposal_fast']:
@@ -866,6 +869,7 @@ def eval_checkpoint(
 def evaluate_results(outputs: list, result_folder: Path, data_loader: DataLoader, checkpoint_id: str, overlaps: np.ndarray, stats: dict, args: Namespace):
     overlaps_str = str(overlaps).replace("\n", "")
     metrics_fp = result_folder / "dsv2_metrics.pkl"
+    result_folder = result_folder / Path(data_loader.dataset.ann_file).stem
     result_file = None
     if args.json_out is not None:
         result_file = result_folder / args.json_out
@@ -874,7 +878,7 @@ def evaluate_results(outputs: list, result_folder: Path, data_loader: DataLoader
         msg3(
             f"Evaluating: \033[1m{str(checkpoint_id)}\033[m on \033[1m{data_loader.dataset.ann_file}\033[m in \033[1m{str(result_folder)}\033[m")
         data_loader.dataset.evaluate(
-            outputs,
+            ensure_8_tuple(outputs),
             result_json_filename=str(result_file) if result_file is not None else None,
             work_dir=str(result_folder),
             iou_thrs=overlaps
@@ -896,8 +900,8 @@ def evaluate_results(outputs: list, result_folder: Path, data_loader: DataLoader
         metrics[cls] = overlap_metrics
     for cls in data_loader.dataset.CLASSES:
         stats[cls].append(metrics.get(cls, {}))
-    for cls, metrics in stats.items():
-        stats[cls].append(metrics[-1])
+    # for cls, metrics in stats.items():
+    #     stats[cls].append(metrics[-1])
     save_predictions(outputs, result_folder / args.json_out, data_loader, args)
 
 
@@ -946,10 +950,6 @@ def infer_checkpoint(checkpoint: dict, main_config: Config, model: Sequential, d
     return outputs, eval_fp
 
 
-def evaluate_outputs(outputs):
-    pass
-
-
 def prepocess_WBF(props):
     for i, row in props.iterrows():
         if row.cat_id == 42 or row.cat_id == 2:
@@ -975,6 +975,16 @@ def wbf_proposals_to_output(proposals: pd.DataFrame) -> List[List[np.ndarray]]:
         bbox = np.concatenate([bbox, np.array([score])])
         sample_output[cat_id - 1] = np.concatenate([bboxes.reshape((-1, 9)), bbox.reshape((1, 9))])
     return output
+
+def ensure_8_tuple(outputs: List[List[np.ndarray]]) -> List[List[np.ndarray]]:
+    for sample in outputs:
+        for i, cls in enumerate(sample):
+            if cls.shape[0] == 0:
+                cls = cls.reshape((0, 9))
+            elif cls.shape[1] == 6:
+                cls = np.concatenate([rotated_box_to_poly_np(cls[:,:5]), cls[:,5].reshape(-1, 1)], axis=1)
+            sample[i] = cls
+    return outputs
 
 def main():
     args = parse_args()
@@ -1082,7 +1092,9 @@ def main():
                 # TODO: Transform WBF proposals back into output matrices
                 output2 = wbf_proposals_to_output(wbf_proposals)
                 outputs_m[checkpoint_id][data_loader] = output2
+                args.cache = False
                 evaluate_results(outputs_m[checkpoint_id][data_loader], ensemble_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
+                args.cache = True
             for cls, aps in sub_stats.items():
                 stats[cls].extend(aps)
     print('#' * 30)

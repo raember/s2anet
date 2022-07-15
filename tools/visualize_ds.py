@@ -1,4 +1,6 @@
 from datetime import datetime
+from pathlib import Path
+
 import colorcet as cc
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageFont
@@ -76,10 +78,11 @@ def draw_bbox(self, draw, ann, color, oriented, annotation_set=None,
 
     return draw
 
-ann = OBBAnns('../scanned_ds/ili_scores.json')
+ann = OBBAnns('data/deep_scores_dense/imslp_test.json')
 ann.load_annotations()
-data_root = '../scanned_ds'
-out_dir = 'out_ili'
+data_root = 'data/deep_scores_dense'
+out_dir = Path('out_imslp_test')
+out_dir.mkdir(exist_ok=True)
 annotation_set = 'deepscores'
 annotation_set = ann.annotation_sets.index(annotation_set)
 ann.chosen_ann_set = ann.chosen_ann_set[annotation_set]

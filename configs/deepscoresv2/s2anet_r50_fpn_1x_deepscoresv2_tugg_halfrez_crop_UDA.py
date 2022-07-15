@@ -50,7 +50,15 @@ model = dict(
             loss_weight=1.0),
         loss_odm_bbox=dict(
             type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
-        stats_file='stats.json'
+        loss_stat=dict(
+            type='StatisticalLoss',
+            stats_file='stats.json'),
+        nms=dict(
+            nms_pre=5000,
+            min_bbox_size=0,
+            score_thr=0.3,
+            nms=dict(type='nms_rotated', iou_thr=0.1),
+            max_per_img=1000)
     ))
 # training and testing settings
 train_cfg = dict(
@@ -107,16 +115,17 @@ train_pipeline = [
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'], meta_keys=(
+        'filename', 'ori_shape', 'img_shape', 'pad_shape', 'scale_factor', 'flip', 'img_norm_cfg', 'angle')),
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=0.5,
+        img_scale=1.0,
         flip=False,
         transforms=[
-            dict(type='RotatedResize', img_scale=0.5, keep_ratio=True),
+            dict(type='RotatedResize', img_scale=1.0, keep_ratio=True),
             dict(type='RotatedRandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
@@ -171,13 +180,14 @@ wandb_cfg = dict(
     entity="raember",
     project='s2anet_scoreaug',
     dryrun=False,
-    name_prefix = "tugg_halfrez_crop_"
+    name_prefix = "tugg_halfrez_crop_",
+    mode='online'
 )
 
 
 
 # runtime settings
-total_epochs = 500
+total_epochs = 1000
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None

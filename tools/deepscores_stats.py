@@ -181,7 +181,7 @@ dataset_train = DeepScoresV2Dataset(
     use_oriented_bboxes=True,
 )
 dataset_test = DeepScoresV2Dataset(
-    ann_file='deepscores_test.json',
+    ann_file='imslp_test.json',
     img_prefix='data/deep_scores_dense/images/',
     pipeline=pipeline,
     use_oriented_bboxes=True,
