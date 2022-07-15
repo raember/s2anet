@@ -1089,7 +1089,6 @@ def main():
                 else:
                     msg2("Loading weighted box fusion results")
                     wbf_proposals: DataFrame = pd.read_pickle(proposal_fp)
-                # TODO: Transform WBF proposals back into output matrices
                 output2 = wbf_proposals_to_output(wbf_proposals)
                 outputs_m[checkpoint_id][data_loader] = output2
                 args.cache = False
