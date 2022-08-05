@@ -31,6 +31,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
     # parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop.py')
     parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/ghos_uda.py')
+    parser.add_argument('--imslp_dir', help='the dir where imslp is stored', default='data/imslp_dataset/')
     parser.add_argument('--work_dir', help='the dir to save logs and models', default='models/uda_test_model_june/pretrained')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from', default = 'models/deepscoresV2_tugg_halfrez_crop_epoch250.pth')
@@ -112,8 +113,8 @@ def main():
 
     data_transform = transforms.Compose([ToTensor()])
     imslp_dataset = ImslpDataset(split_file
-                                 ='data/imslp_dataset/train_test_split/train_list_no_landscape.txt',
-                                 root_dir='data/imslp_dataset/images/', transform=data_transform)
+                                 =args.imslp_dir+'train_list_no_landscape.txt',
+                                 root_dir=args.imslp_dir+'images/', transform=data_transform)
     dataloader_tgt = DataLoader(imslp_dataset,batch_size=4, shuffle=True,num_workers=2)
 
     # Model Loading Happens Here
