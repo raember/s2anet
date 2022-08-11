@@ -868,11 +868,11 @@ def eval_checkpoint(
 
 def evaluate_results(outputs: list, result_folder: Path, data_loader: DataLoader, checkpoint_id: str, overlaps: np.ndarray, stats: dict, args: Namespace):
     overlaps_str = str(overlaps).replace("\n", "")
-    metrics_fp = result_folder / "dsv2_metrics.pkl"
     result_folder = result_folder / Path(data_loader.dataset.ann_file).stem
     result_file = None
     if args.json_out is not None:
         result_file = result_folder / args.json_out
+    metrics_fp = result_folder / "dsv2_metrics.pkl"
     needs_to_be_exported = False
     if not metrics_fp.exists() or not args.cache:
         msg3(
@@ -1047,6 +1047,9 @@ def main():
                 ann_file = Path(data_loader.dataset.ann_file)
                 index.append(f"{checkpoint_id} - {ann_file.stem}")
                 output, _ = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
+                for page in output:
+                    page.insert(0, np.array([]))
+
                 outputs[data_loader] = output
                 sub_stats['samples'].append(len(data_loader.dataset.img_ids))
                 # Evaluate results
