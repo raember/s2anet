@@ -1084,8 +1084,6 @@ def main():
                     checkpoint_sub_id, chkp_folder, _, test_sets = prepare_folder(checkpoint_sub_id, checkpoint, checkpoint_file, ensemble_folder)
                     idx = f"{checkpoint_sub_id} - {ann_file.stem}"
                     output, eval_fp = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
-                    for page in output:
-                        page.insert(0, np.array([]))
 
                     # When using the WBF load_proposals function, copy the results.json file into a special folder for
                     # recursively finding the results.json files
@@ -1107,6 +1105,8 @@ def main():
                     msg2("Loading weighted box fusion results")
                     wbf_proposals: DataFrame = pd.read_pickle(proposal_fp)
                 output2 = wbf_proposals_to_output(wbf_proposals)
+                for page in output2:
+                    page.insert(0, np.array([]))
                 outputs_m[checkpoint_id][data_loader] = output2
                 evaluate_results(outputs_m[checkpoint_id][data_loader], ensemble_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
             for cls, aps in sub_stats.items():
