@@ -225,7 +225,7 @@ class DeepScoresV2Dataset(CocoDataset):
                                        out_dir=out_dir
                                        )
 
-        print(metric_results)
+        #print(metric_results)
         return metric_results
 
 area_thr_def = (1, 1.0)

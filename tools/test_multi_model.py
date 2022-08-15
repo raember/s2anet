@@ -425,7 +425,7 @@ def get_test_sets(*test_configs: Config, workers_per_gpu: int = 4, imgs_per_gpu:
 
 
 def create_plots(stats: DataFrame, dataset_names: List[str], overlap: np.float, folder: Path):
-    print('=' * 30)
+    msg3("Plotting classes")
     CLASSES = {
         'clefs': {'clefG', 'clefCAlto', 'clefCTenor', 'clefF', 'clef8', 'clef15'},
         'noteheads': {'noteheadBlackOnLine', 'noteheadBlackInSpace', 'noteheadHalfOnLine', 'noteheadHalfInSpace',
@@ -444,13 +444,12 @@ def create_plots(stats: DataFrame, dataset_names: List[str], overlap: np.float, 
     for name, classes in CLASSES.items():
         im_fp = folder / f'AP_{name.replace(" ", "_")}_{overlap:.2f}.png'
         im_fp.unlink(missing_ok=True)
-        msg3(f"Plotting \033[1m{name}\033[m")
         sub_stats = stats[list(classes)]
         all_aps = sub_stats.to_numpy()
         # Only use columns where there is no NaN values
         non_nan_aps = all_aps.T[~np.isnan(all_aps.sum(axis=0))].T
         if non_nan_aps.shape[1] == 0:
-            err4("No values to compare")
+            err4(f"{name}: No values to compare")
             continue
         mean_aps = non_nan_aps.mean(axis=1).reshape((len(chkpnt_names), n_datasets))
         fig, ax = plt.subplots(figsize=(15, 9))
@@ -490,7 +489,6 @@ def plot_stats(overlaps: np.ndarray, folder: Path, stats: dict, index: list, dat
         msg2(f"Processing stats for overlap = \033[1m{overlap:.2f}\033[m")
         eval_fp = folder / f'eval_{overlap:.2f}.csv'
         stat_df = compile_stats(stats, overlap, index)
-        msg2(f"Saving stats to \033[1m{eval_fp}\033[m")
         stat_df.to_csv(eval_fp)
         create_plots(stat_df, dataset_names, overlap, folder)
 
@@ -1067,6 +1065,7 @@ def main():
                 outputs_m[checkpoint_id][data_loader] = output
             for cls, aps in sub_stats.items():
                 stats[cls].extend(aps)
+            compile_stats(sub_stats, 0.5, index[-len(test_sets):]).to_csv(chkp_folder / "stats.csv")
         elif isinstance(checkpoint_data, list):
             mm_index = []
             mm_stats = {'samples': []}
@@ -1092,26 +1091,27 @@ def main():
                     # recursively finding the results.json files
                     folder = wbf_glob_dir / checkpoint_sub_id
                     folder.mkdir(exist_ok=True)
-                    save_predictions(output, (folder / 'result.json'), data_loader, args)
-
+                    shutil.copyfile(chkp_folder / ann_file.stem / args.json_out, folder / 'result.json')
                 sub_stats['samples'].append(len(data_loader.dataset.img_ids))
                 mm_index.append(f"{checkpoint_id} - {ann_file.stem}")
                 index.append(f"{checkpoint_id} - {ann_file.stem}")
-                proposal_fp = ensemble_folder / f"wbf_proposals.pkl"
-                if not proposal_fp.exists():
+                proposal_fp = wbf_glob_dir / f"wbf_proposals.pkl"
+                if not (proposal_fp.exists() and args.cache):
                     msg2("Running weighted box fusion")
                     wbf_proposals: DataFrame = load_proposals(Namespace(inp=wbf_glob_dir), data_loader.dataset, iou_thr=0.3)
                     wbf_proposals.to_pickle(proposal_fp)
+                    # Delete so the evaluation runs through
+                    (wbf_glob_dir / "dsv2_metrics.pkl").unlink(missing_ok=True)
+                    shutil.rmtree(wbf_glob_dir / "visualized_proposals", ignore_errors=True)
                 else:
                     msg2("Loading weighted box fusion results")
                     wbf_proposals: DataFrame = pd.read_pickle(proposal_fp)
                 output2 = wbf_proposals_to_output(wbf_proposals)
                 outputs_m[checkpoint_id][data_loader] = output2
-                args.cache = False
                 evaluate_results(outputs_m[checkpoint_id][data_loader], ensemble_folder, data_loader, checkpoint_id, overlaps, sub_stats, args)
-                args.cache = True
             for cls, aps in sub_stats.items():
                 stats[cls].extend(aps)
+            compile_stats(sub_stats, 0.5, index[-len(TEST_SETS):]).to_csv(ensemble_folder / "stats.csv")
     print('#' * 30)
     print('#' * 30)
     print('#' * 30)
