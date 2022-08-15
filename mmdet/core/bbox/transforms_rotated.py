@@ -226,8 +226,16 @@ def rotated_box_to_poly_single(rrect):
 def outputs_rotated_box_to_poly_np(outputs):
     for i, page in enumerate(outputs):
         for ii, cla in enumerate(page):
-            if len(cla) > 0:
-                page[ii] = rotated_box_to_poly_np(cla)
+            if len(cla) > 0 and (cla.shape[1] == 5 or cla.shape[1] == 6):
+                if cla.shape[1] == 6:
+                    scores = cla[..., -1:]
+                    boxes = cla[..., :-1]
+                    boxes_poly = rotated_box_to_poly_np(boxes)
+                    result = np.concatenate((boxes_poly, scores), axis=1)
+                else:
+                    result = rotated_box_to_poly_np(cla)
+
+                page[ii] = result
     return outputs
 
 def rotated_box_to_poly_np(rrects):
@@ -236,6 +244,7 @@ def rotated_box_to_poly_np(rrects):
     to
     poly:[x0,y0,x1,y1,x2,y2,x3,y3]
     """
+    assert rrects.shape[1] == 5
     polys = []
     for rrect in rrects:
         x_ctr, y_ctr, width, height, angle = rrect[:5]

@@ -362,7 +362,7 @@ class BboxHelper:
         return np.array([x1, y1, x2, y1, x2, y2, x1, y2])
 
 
-def load_proposals(args, dataset, iou_thr=0.1):
+def load_proposals(args, dataset, iou_thr=0.3):
     # iou_thr = 0.1 is the most important hyper parameter; IOU of proposal with fused box.
 
     boxes_list = []

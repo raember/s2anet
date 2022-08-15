@@ -949,32 +949,42 @@ def infer_checkpoint(checkpoint: dict, main_config: Config, model: Sequential, d
     outputs = get_proposals(checkpoint, main_config, model, data_loader, eval_fp, args)
     return outputs, eval_fp
 
-
-def prepocess_WBF(props):
-    for i, row in props.iterrows():
-        if row.cat_id == 42 or row.cat_id == 2:
-            # 2 is stem, 42 is ledgerLine
-            props.at[i, 'bbox'] = BboxHelper(row.bbox).get_sorted_angle_zero()
-
 def wbf_proposals_to_output(proposals: pd.DataFrame) -> List[List[np.ndarray]]:
-    output = []
-    last_img_idx = 0
-    def new_sample():
-        sample_output = []
-        for _ in range(135):
-            sample_output.append(np.zeros((0, 6)))
-        output.append(sample_output)
-        return sample_output
-    sample_output = new_sample()
-    for bbox, cat_id, img_idx, score in proposals.values:
-        if img_idx != last_img_idx:
-            sample_output = new_sample()
-            last_img_idx = img_idx
-        bboxes: np.ndarray = sample_output[cat_id - 1]
-        #bbox = rotated_box_to_poly_np(bbox[:5])
-        bbox = np.concatenate([bbox, np.array([score])])
-        sample_output[cat_id - 1] = np.concatenate([bboxes.reshape((-1, 9)), bbox.reshape((1, 9))])
-    return output
+    # output = []
+    # last_img_idx = 0
+    # def new_sample():
+    #     sample_output = []
+    #     for _ in range(135):
+    #         sample_output.append(np.zeros((0, 6)))
+    #     output.append(sample_output)
+    #     return sample_output
+    # sample_output = new_sample()
+    # for bbox, cat_id, img_idx, score in proposals.values:
+    #     if img_idx != last_img_idx:
+    #         sample_output = new_sample()
+    #         last_img_idx = img_idx
+    #     bboxes: np.ndarray = sample_output[cat_id - 1]
+    #     #bbox = rotated_box_to_poly_np(bbox[:5])
+    #     bbox = np.concatenate([bbox, np.array([score])])
+    #     sample_output[cat_id - 1] = np.concatenate([bboxes.reshape((-1, 9)), bbox.reshape((1, 9))])
+    # return output
+
+    # TODO: @embe: not sure, I still have to check this one -> I just copied it from Urs Code because something didn't work. Not sure if this is still required though
+
+    proposals_WBF_per_img = []
+    for img_idx in sorted(set(list(proposals.img_idx))):
+        props = proposals[proposals.img_idx == img_idx]
+        result_prop = [np.empty((0, 9))] * 136
+
+        for cat_id in sorted(set(list(props.cat_id))):
+            props_cat = props[props.cat_id == cat_id]
+            result_prop[cat_id - 1] = np.concatenate((np.array(list(props_cat.bbox)),
+                                                      np.array(list(props_cat.score)).reshape(
+                                                          (np.array(list(props_cat.score)).shape[0], 1))), axis=1)
+
+        proposals_WBF_per_img.append(result_prop)
+
+    return proposals_WBF_per_img
 
 def ensure_8_tuple(outputs: List[List[np.ndarray]]) -> List[List[np.ndarray]]:
     for sample in outputs:
@@ -1075,12 +1085,15 @@ def main():
                     checkpoint_sub_id, chkp_folder, _, test_sets = prepare_folder(checkpoint_sub_id, checkpoint, checkpoint_file, ensemble_folder)
                     idx = f"{checkpoint_sub_id} - {ann_file.stem}"
                     output, eval_fp = infer_checkpoint(checkpoint, cfg, model, data_loader, chkp_folder, args)
+                    for page in output:
+                        page.insert(0, np.array([]))
 
                     # When using the WBF load_proposals function, copy the results.json file into a special folder for
                     # recursively finding the results.json files
                     folder = wbf_glob_dir / checkpoint_sub_id
                     folder.mkdir(exist_ok=True)
-                    shutil.copyfile(chkp_folder / ann_file.stem / args.json_out, folder / 'result.json')
+                    save_predictions(output, (folder / 'result.json'), data_loader, args)
+
                 sub_stats['samples'].append(len(data_loader.dataset.img_ids))
                 mm_index.append(f"{checkpoint_id} - {ann_file.stem}")
                 index.append(f"{checkpoint_id} - {ann_file.stem}")
