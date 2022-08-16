@@ -255,7 +255,8 @@ class Pad(object):
 
     def _pad_img(self, results):
         if self.size is not None:
-            padded_img = mmcv.impad(results['img'], self.size)
+            # padded_img = mmcv.impad(results['img'], self.size)
+            padded_img = mmcv.impad(results['img'], shape=(1024, 1024), pad_val=0)
         elif self.size_divisor is not None:
             padded_img = mmcv.impad_to_multiple(
                 results['img'], self.size_divisor, pad_val=self.pad_val)
