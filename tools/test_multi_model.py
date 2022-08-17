@@ -579,6 +579,7 @@ def prepare_folder(checkpoint_id: str, checkpoint, checkpoint_file: Path, out_fo
         checkpoint_id = f"{config_file.stem}_epoch_{epoch}"
     else:
         msg1(f"Loaded checkpoint \033[1m{checkpoint_file.name}\033[m")
+        chkp_cfg = None
         suffix = checkpoint_file.stem.split('_')[-1]
         epoch_str = ''
         if suffix.isdigit():
