@@ -35,7 +35,7 @@ from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model, poly_to_rotated_box_single, bbox2result, \
     outputs_rotated_box_to_poly_np
 from mmdet.core import rotated_box_to_poly_np
-from mmdet.datasets import build_dataloader, build_dataset
+from mmdet.datasets import build_dataloader, build_dataset, DeepScoresV2Dataset
 from mmdet.models import build_detector
 
 
@@ -639,14 +639,17 @@ def get_proposals(checkpoint: dict, cfg: Config, model: Sequential, data_loader:
     if not proposals_fp.exists() or not args.cache:
         proposals_fp.parent.mkdir(exist_ok=True)
         msg3(f"Testing model on \033[1m{Path(data_loader.dataset.ann_file).stem}\033[m")
-        distributed = args.launcher != 'none'
-        if not distributed:
-            model = MMDataParallel(model, device_ids=[0])
-            output = single_gpu_test(model, data_loader, args.show, cfg, args.postprocess, args.round)
+        if isinstance(model, MockModel):
+            output = model.get_gt(data_loader.dataset)
         else:
-            model = MMDistributedDataParallel(model.cuda())
-            output = multi_gpu_test(model, data_loader, args.tmpdir, cfg, args.postprocess, args.round)
-        print()  # The tests use ncurses and don't append a new line at the end
+            distributed = args.launcher != 'none'
+            if not distributed:
+                model = MMDataParallel(model, device_ids=[0])
+                output = single_gpu_test(model, data_loader, args.show, cfg, args.postprocess, args.round)
+            else:
+                model = MMDistributedDataParallel(model.cuda())
+                output = multi_gpu_test(model, data_loader, args.tmpdir, cfg, args.postprocess, args.round)
+            print()  # The tests use ncurses and don't append a new line at the end
 
         msg3(f'Writing proposals to \033[1m{str(proposals_fp)}\033[m')
         mmcv.dump(output, proposals_fp)
@@ -775,6 +778,45 @@ def ensure_8_tuple(outputs: List[List[np.ndarray]]) -> List[List[np.ndarray]]:
             sample[i] = cls
     return outputs
 
+
+class MockModel(Sequential):
+    def __init__(self, acc: float):
+        super(MockModel, self).__init__()
+        self.acc = min(max(acc, 0.0), 1.0)
+
+    def get_gt(self, dataset: DeepScoresV2Dataset) -> List[List[np.ndarray]]:
+        msg3(f"Constructing {self.acc*100:.1f}% of ground truth as outputs")
+        output = []
+        prog_bar = mmcv.ProgressBar(len(dataset))
+        for meta, gt in dataset.obb:
+            new_gt = gt.copy()
+            num_selected = int(len(new_gt) * self.acc)
+            new_gt = new_gt[:num_selected]
+            new_gt = new_gt.assign(cat_id=new_gt['cat_id'].map(lambda x: x[0]))
+            sample = []
+            for cls in dataset.CLASSES[1:]:  # Since the model swallows the braces, and we add blank proposals for those, we have to omit braces here as well.
+                cls_id = class_names.index(cls) + 1
+                bboxes = np.array(new_gt[new_gt['cat_id'] == cls_id]['o_bbox'].tolist()).reshape((-1, 8))
+                scores = np.ones((bboxes.shape[0], 1))
+                sample.append(np.concatenate([bboxes, scores], axis=1))
+            output.append(sample)
+            prog_bar.update()
+        print()  # Progress bar doesn't break line
+        return output
+
+    def __call__(self, *args, **kwargs):
+        print(args)
+        for k, v in kwargs.items():
+            print(k, v)
+        return super(MockModel, self).__call__(*args, **kwargs)
+
+
+def create_mockup_model(acc: float) -> Tuple[Path, dict, Sequential]:
+    return Path(f"model_{acc:.2f}.pth"), {
+        'meta': {}
+    }, MockModel(acc)
+
+
 def main():
     args = parse_args()
 
@@ -821,6 +863,11 @@ def main():
 
     # Make sure we only use the best epochs for each config
     checkpoints = preprocess_checkpoints(args.checkpoints, cfg)
+    checkpoints = {
+        'mockup_50': create_mockup_model(0.5),
+        'mockup_100': create_mockup_model(1.0),
+        **checkpoints,
+    }
 
     overlaps = np.arange(0.1, 0.96, 0.05)
     outputs_m = defaultdict(dict)
