@@ -3,4 +3,7 @@
 
 . "$(dirname $0)/settings.sh"
 
-"$DOCKER_CMD" exec -it "${1:-$NAME}" /bin/zsh
+cmd=("$DOCKER_CMD" exec -it "${1:-$NAME}" /bin/zsh)
+echo "${cmd[@]}"
+read -p "[ENTER] to run" _
+"${cmd[@]}"

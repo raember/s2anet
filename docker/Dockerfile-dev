@@ -1,0 +1,24 @@
+FROM s2anet:latest
+
+# Install ssh (for remote debugging)
+# Note: Put your public-key file (renamed to authorized_keys) in the project root folder
+RUN apt-get update && apt-get install -y openssh-server openssh-client
+
+RUN mkdir /var/run/sshd
+RUN echo 'root:pw' | chpasswd
+RUN sed -i 's/#*PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
+
+# SSH login fix. Otherwise user is kicked off after login
+RUN sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
+
+ENV NOTVISIBLE "in users profile"
+RUN echo "export VISIBLE=now" >> /etc/profile
+
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D"]
+
+# Copy authorized keys
+RUN mkdir -p /root/.ssh
+ADD authorized_keys /root/.ssh/
+RUN chown root:root /root/.ssh/authorized_keys \
+    && chmod 600 /root/.ssh/authorized_keys
