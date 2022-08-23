@@ -653,7 +653,7 @@ def get_proposals(checkpoint: dict, cfg: Config, model: Sequential, data_loader:
 
         msg3(f'Writing proposals to \033[1m{str(proposals_fp)}\033[m')
         mmcv.dump(output, proposals_fp)
-        save_predictions(output, proposals_fp.with_name(args.json_out), data_loader, args)
+        #save_predictions(output, proposals_fp.with_name(args.json_out), data_loader, args)
     else:
         msg3(f'Reading proposals from \033[1m{str(proposals_fp)}\033[m')
         output = mmcv.load(proposals_fp)
@@ -789,16 +789,14 @@ class MockModel(Sequential):
         output = []
         prog_bar = mmcv.ProgressBar(len(dataset))
         for meta, gt in dataset.obb:
-            new_gt = gt.copy()
-            num_selected = int(len(new_gt) * self.acc)
-            new_gt = new_gt[:num_selected]
+            num_selected = int(len(gt) * self.acc)
+            new_gt = gt[:num_selected].copy()
             new_gt = new_gt.assign(cat_id=new_gt['cat_id'].map(lambda x: x[0]))
             sample = []
             for cls in dataset.CLASSES[1:]:  # Since the model swallows the braces, and we add blank proposals for those, we have to omit braces here as well.
-                cls_id = class_names.index(cls) + 1
+                cls_id = class_names.index(cls) + 1  # Class ids start at 1
                 bboxes = np.array(new_gt[new_gt['cat_id'] == cls_id]['o_bbox'].tolist()).reshape((-1, 8))
-                scores = np.ones((bboxes.shape[0], 1))
-                sample.append(np.concatenate([bboxes, scores], axis=1))
+                sample.append(bboxes)
             output.append(sample)
             prog_bar.update()
         print()  # Progress bar doesn't break line

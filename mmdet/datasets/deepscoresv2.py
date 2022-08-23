@@ -130,9 +130,9 @@ class DeepScoresV2Dataset(CocoDataset):
                     data = dict()
                     data['img_id'] = img_id
 
-                    if len(bboxes[i]) == 8:
-                        data['bbox'] = [str(nr) for nr in bboxes[i]]
-                        data['score'] = 1
+                    if len(bboxes[i]) in {8, 9}:
+                        data['bbox'] = [str(nr) for nr in bboxes[i][:8]]
+                        data['score'] = str(bboxes[i][-1]) if len(bboxes[i]) == 9 else 1
                     else:
                         data['bbox'] = [str(nr) for nr in bboxes[i][0:-1]]
                         data['score'] = str(bboxes[i][-1])
