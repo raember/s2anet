@@ -1,4 +1,5 @@
 from .base import BaseDetector
+from .base_da import BaseDetectorDA
 from .cascade_rcnn import CascadeRCNN
 from .cascade_s2anet import CascadeS2ANetDetector
 from .double_head_rcnn import DoubleHeadRCNN
@@ -14,14 +15,14 @@ from .mask_scoring_rcnn import MaskScoringRCNN
 from .reppoints_detector import RepPointsDetector
 from .retinanet import RetinaNet
 from .rpn import RPN
-from .s2anet import S2ANetDetector
-from .single_stage import SingleStageDetector
+from .s2anet import S2ANetDetector, S2ANetUDA
+from .single_stage import SingleStageDetector, SingleStageDetectorDA
 from .two_stage import TwoStageDetector
 
 __all__ = [
-    'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'RPN',
+    'BaseDetector','BaseDetectorDA', 'SingleStageDetector', 'SingleStageDetectorDA', 'TwoStageDetector', 'RPN',
     'FastRCNN', 'FasterRCNN', 'MaskRCNN', 'CascadeRCNN', 'HybridTaskCascade',
     'DoubleHeadRCNN', 'RetinaNet', 'FCOS', 'GridRCNN', 'MaskScoringRCNN',
     'RepPointsDetector', 'FOVEA',
-    'S2ANetDetector', 'FasterRCNNHBBOBB', 'CascadeS2ANetDetector'
+    'S2ANetDetector', 'S2ANetUDA', 'FasterRCNNHBBOBB', 'CascadeS2ANetDetector'
 ]
