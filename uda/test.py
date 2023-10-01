@@ -85,13 +85,10 @@ def collect_results(result_part, size, tmpdir=None):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
-    parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_ghos_halfrez_crop.py')
-    # parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/uda/model_020.pth')
-    # parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/deepscoresV2_tugg_halfrez_crop_epoch250.pth')
-    parser.add_argument('--checkpoint', help='checkpoint file', default = 'models/uda_test_model/model_000.pth')
-    parser.add_argument('--out', help='output result file', default = 'results/test_imslp/s2anet_no_aug/test_imslp.pkl')
-    parser.add_argument('--eval_folder', help='Evaluation folder', default = 'results/test_imslp/s2anet_no_aug')
-    parser.add_argument('--model_type', help='Type of model (Basic s2anet or UDA)', default = 's2anet')
+    parser.add_argument('--config', help='test config file path', default = '')
+    parser.add_argument('--checkpoint', help='checkpoint file', default = '')
+    parser.add_argument('--out', help='output result file', default = 'results/test_imslp/test_imslp.pkl')
+    parser.add_argument('--eval_folder', help='Evaluation folder', default = 'results/test_imslp/')
     parser.add_argument(
         '--json_out',
         help='output result file name without extension',
@@ -112,6 +109,9 @@ def parse_args():
         default='none',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--wandb', type=bool, default=True, help='Use weights and biases or not?')
+    parser.add_argument('--wandb_project', type=str, default='', help='wandb porject name')
+    parser.add_argument('--wandb_entity', type=str, default='', help='wandb entity name')
     # add dataset type for more dataset eval other than coco
     parser.add_argument(
         '--data',
@@ -125,8 +125,9 @@ def parse_args():
     return args
 
 def main():
-    wandb.init(project="uda", entity="adhirajghosh")
     args = parse_args()
+    if args.wandb:
+        wandb.init(project=args.wandb_project, entity=args.wandb_entity)
     args.show = False
     assert args.out or args.show or args.json_out, \
         ('Please specify at least one operation (save or show the results) '
@@ -171,17 +172,6 @@ def main():
 
     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
     model.CLASSES = checkpoint['meta']['CLASSES']
-    # print(checkpoint)
-    # if args.model_type == 's2anet':
-    #
-    #     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
-    #     model.CLASSES = checkpoint['meta']['CLASSES']
-    # elif args.model_type == 'uda':
-    #     checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
-    #     print(checkpoint.keys())
-    #     model_weights = strip_prefix_if_present(checkpoint['detector'], 'module.')
-    #     model.load_state_dict(model_weights)
-    #     model.CLASSES = dataset.CLASSES
 
     model = MMDataParallel(model, device_ids=[0])
     outputs = single_gpu_test(model, data_loader, args.show, cfg)
@@ -250,9 +240,6 @@ def main():
 
     # store as csv
     store_csv(dframes, args.eval_folder)
-
-
-
 
 if __name__ == '__main__':
     main()

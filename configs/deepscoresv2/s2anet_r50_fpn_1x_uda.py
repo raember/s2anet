@@ -166,13 +166,6 @@ log_config = dict(
         dict(type='WandbVisualLoggerHook'),
     ])
 
-# wandb settings
-# wandb_cfg = dict(
-#     entity="",
-#     project='s2anet_uda',
-#     dryrun=False,
-#     name_prefix = ""
-# )
 
 # runtime settings
 total_epochs = 500

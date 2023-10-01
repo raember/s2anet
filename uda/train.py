@@ -7,6 +7,7 @@ import os
 import os.path as osp
 import warnings
 import wandb
+import torch
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import LambdaLR
 from torchvision import transforms, utils
@@ -29,11 +30,10 @@ warnings.filterwarnings("ignore")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
-    # parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/s2anet_r50_fpn_1x_deepscoresv2_sage_halfrez_crop.py')
-    parser.add_argument('--config', help='test config file path', default = 'configs/deepscoresv2/ghos_uda.py')
-    parser.add_argument('--work_dir', help='the dir to save logs and models', default='models/uda_test_model_june/pretrained')
+    parser.add_argument('--config', help='test config file path', default = '')
+    parser.add_argument('--work_dir', help='the dir to save logs and models', default='')
     parser.add_argument(
-        '--resume_from', help='the checkpoint file to resume from', default = 'models/deepscoresV2_tugg_halfrez_crop_epoch250.pth')
+        '--resume_from', help='the checkpoint file to resume from', default = '')
         # '--resume_from', help='the checkpoint file to resume from', default = None)
     parser.add_argument(
         '--validate',
@@ -46,6 +46,9 @@ def parse_args():
         help='number of gpus to use '
              '(only applicable to non-distributed training)')
     parser.add_argument('--seed', type=int, default=None, help='random seed')
+    parser.add_argument('--wandb', type=bool, default=True, help='Use weights and biases or not?')
+    parser.add_argument('--wandb_project', type=str, default='', help='wandb porject name')
+    parser.add_argument('--wandb_entity', type=str, default='', help='wandb entity name')
     parser.add_argument(
         '--launcher',
         choices=['none', 'pytorch', 'slurm', 'mpi'],
@@ -63,9 +66,9 @@ def parse_args():
     return args
 
 def main():
-    # wandb.init(project="omr-uda", entity="adhirajghosh")
     args = parse_args()
-
+    if args.wandb:
+        wandb.init(project=args.wandb_project, entity=args.wandb_entity)
     cfg = Config.fromfile(args.config)
     num_epochs = cfg.total_epochs
     if cfg.get('cudnn_benchmark', False):
@@ -246,12 +249,12 @@ def main():
                     meters=str(meters),
                     lr=optimizer_s2anet.param_groups[0]["lr"],
                 ))
-
-                wandb.log({
-                    "Detection Loss ": loss_obj.item(),
-                    "Domain Transfer Loss": loss_transfer.item(),
-                    "Discriminator Loss": loss_discriminator.item(),
-                })
+                if args.wandb:
+                    wandb.log({
+                        "Detection Loss ": loss_obj.item(),
+                        "Domain Transfer Loss": loss_transfer.item(),
+                        "Discriminator Loss": loss_discriminator.item(),
+                    })
 
         meta = {}
         meta['epoch'] = epoch
