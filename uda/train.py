@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument('--work_dir', help='the dir to save logs and models', default='')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from', default = '')
-        # '--resume_from', help='the checkpoint file to resume from', default = None)
+    parser.add_argument('--imslp_dir', type=str, default='data/imslp_dataset/', help='where is the imslp dataset located?')
     parser.add_argument(
         '--validate',
         action='store_true',
@@ -80,7 +80,7 @@ def main():
                                 osp.splitext(osp.basename(args.config))[0])
     if not cfg.resume:
         args.resume_from = None
-        args.work_dir = 'models/uda_test_model_june/no_pretrained'
+        args.work_dir = 'models/no_pretrained'
     cfg.gpus = args.gpus
 
     if args.autoscale_lr:
@@ -116,8 +116,8 @@ def main():
 
     data_transform = transforms.Compose([ToTensor()])
     imslp_dataset = ImslpDataset(split_file
-                                 ='data/imslp_dataset/train_test_split/train_list_no_landscape.txt',
-                                 root_dir='data/imslp_dataset/images/', transform=data_transform)
+                                 =args.imslp_dir+'train_test_split/train_list_no_landscape.txt',
+                                 root_dir=args.imslp_dir+'images/', transform=data_transform)
     dataloader_tgt = DataLoader(imslp_dataset,batch_size=4, shuffle=True,num_workers=2)
 
     # Model Loading Happens Here
