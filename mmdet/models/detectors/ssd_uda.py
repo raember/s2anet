@@ -20,7 +20,7 @@ class SingleStageDetectorDA(BaseDetector):
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None):
-        super(SingleStageDetector, self).__init__()
+        super(SingleStageDetectorDA, self).__init__()
         self.backbone = builder.build_backbone(backbone)
         if neck is not None:
             self.neck = builder.build_neck(neck)

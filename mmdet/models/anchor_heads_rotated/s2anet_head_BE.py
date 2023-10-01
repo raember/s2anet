@@ -21,6 +21,7 @@ import debugging.visualization_tools as vt
 from mmcv.visualization import imshow_det_bboxes
 from mmcv.image import tensor2imgs
 
+
 @HEADS.register_module
 class S2ANetHeadBE(S2ANetHead):
 
@@ -50,7 +51,7 @@ class S2ANetHeadBE(S2ANetHead):
                     padding=1))
         # TODO test this:
         self.fam_reg = Ensemble_Conv2d(self.feat_channels, self.num_anchors * 5, 1)
-        self.fam_cls = Ensemble_Conv2d(self.feat_channels, self.num_anchors *self.cls_out_channels, 1)
+        self.fam_cls = Ensemble_Conv2d(self.feat_channels, self.num_anchors * self.cls_out_channels, 1)
 
         self.align_conv = AlignConv(self.feat_channels, self.feat_channels, kernel_size=3, anchor_num=self.num_anchors)
 
@@ -84,7 +85,7 @@ class S2ANetHeadBE(S2ANetHead):
         # TODO: test this
         self.odm_cls = Ensemble_Conv2d(
             self.feat_channels, self.num_anchors * self.cls_out_channels, 3, padding=1)
-        self.odm_reg = Ensemble_Conv2d(self.feat_channels, self.num_anchors *5, 3, padding=1)
+        self.odm_reg = Ensemble_Conv2d(self.feat_channels, self.num_anchors * 5, 3, padding=1)
 
     def init_weights(self):
         # Initializes all weights except those of the Ensemble_Conv2d() layers
@@ -93,7 +94,7 @@ class S2ANetHeadBE(S2ANetHead):
         for m in self.fam_cls_convs:
             normal_init(m.conv, std=0.01)
         bias_cls = bias_init_with_prob(0.01)
-        
+
         # Ensemble_Conv2d() layer weights are initialized within layer
         # normal_init(self.fam_reg, std=0.01)
         # normal_init(self.fam_cls, std=0.01, bias=bias_cls)
@@ -163,6 +164,7 @@ class S2ANetHeadBE(S2ANetHead):
 
         # All outputs have ensemble-compatible shape except refine_anchor
         return fam_cls_score, fam_bbox_pred, refine_anchor, odm_cls_score, odm_bbox_pred
+
     #
     # def forward(self, feats):
     #     return multi_apply(self.forward_single, feats, self.anchor_strides)
@@ -248,7 +250,7 @@ class S2ANetHeadBE(S2ANetHead):
     #     'fam_bbox_preds',
     #     'odm_cls_scores',
     #     'odm_bbox_preds'))
-    
+
     # TODO make loss ensemble-compatible
     def loss(self,
              fam_cls_scores,
@@ -307,15 +309,15 @@ class S2ANetHeadBE(S2ANetHead):
         m = fam_cls_scores[0].shape[0]
         losses_fam_cls_list = []
         losses_fam_bbox_list = []
-        for i in range(m): # TODO make it a parameter m
+        for i in range(m):  # TODO make it a parameter m
             fam_cls_scores_tmp = []
             for j in range(len(fam_cls_scores)):
-                fam_cls_scores_tmp.append(odm_cls_scores[j][i:i+1, :, :, :])
+                fam_cls_scores_tmp.append(odm_cls_scores[j][i:i + 1, :, :, :])
 
             fam_bbox_preds_tmp = []
             for j in range(len(fam_bbox_preds)):
-                fam_bbox_preds_tmp.append(odm_bbox_preds[j][i:i+1, :, :, :])
-                
+                fam_bbox_preds_tmp.append(odm_bbox_preds[j][i:i + 1, :, :, :])
+
             losses_fam_cls, losses_fam_bbox = multi_apply(
                 self.loss_fam_single,
                 fam_cls_scores_tmp,
@@ -366,15 +368,15 @@ class S2ANetHeadBE(S2ANetHead):
 
         losses_odm_cls_list = []
         losses_odm_bbox_list = []
-        for i in range(m): # TODO make it a parameter m
+        for i in range(m):  # TODO make it a parameter m
             odm_cls_scores_tmp = []
             for j in range(len(odm_cls_scores)):
-                odm_cls_scores_tmp.append(odm_cls_scores[j][i:i+1, :, :, :])
+                odm_cls_scores_tmp.append(odm_cls_scores[j][i:i + 1, :, :, :])
 
             odm_bbox_preds_tmp = []
             for j in range(len(odm_bbox_preds)):
-                odm_bbox_preds_tmp.append(odm_bbox_preds[j][i:i+1, :, :, :])
-                
+                odm_bbox_preds_tmp.append(odm_bbox_preds[j][i:i + 1, :, :, :])
+
             losses_odm_cls, losses_odm_bbox = multi_apply(
                 self.loss_odm_single,
                 odm_cls_scores_tmp,
@@ -389,45 +391,43 @@ class S2ANetHeadBE(S2ANetHead):
             losses_odm_cls_list.append(losses_odm_cls)
             losses_odm_bbox_list.append(losses_odm_bbox)
 
-
         # Clumsy loss-mean
-        
+
         losses_odm_cls = []
         for i in range(len(losses_odm_cls_list[0])):
             i_index_sum = 0
             for j in range(len(losses_odm_cls_list)):
                 i_index_sum += losses_odm_cls_list[j][i]
-            losses_odm_cls.append(i_index_sum/len(losses_odm_cls_list))
+            losses_odm_cls.append(i_index_sum / len(losses_odm_cls_list))
 
-        #losses_odm_cls = list(torch.tensor(losses_odm_cls_list, requires_grad=True, device='cuda').mean(dim=0))
+        # losses_odm_cls = list(torch.tensor(losses_odm_cls_list, requires_grad=True, device='cuda').mean(dim=0))
 
         losses_odm_bbox = []
         for i in range(len(losses_odm_bbox_list[0])):
             i_index_sum = 0
             for j in range(len(losses_odm_bbox_list)):
                 i_index_sum += losses_odm_bbox_list[j][i]
-            losses_odm_bbox.append(i_index_sum/len(losses_odm_bbox_list))
+            losses_odm_bbox.append(i_index_sum / len(losses_odm_bbox_list))
 
-        #losses_odm_bbox = list(torch.tensor(losses_odm_bbox_list, requires_grad=True, device='cuda').mean(dim=0))
+        # losses_odm_bbox = list(torch.tensor(losses_odm_bbox_list, requires_grad=True, device='cuda').mean(dim=0))
 
         losses_fam_cls = []
         for i in range(len(losses_fam_cls_list[0])):
             i_index_sum = 0
             for j in range(len(losses_fam_cls_list)):
                 i_index_sum += losses_fam_cls_list[j][i]
-            losses_fam_cls.append(i_index_sum/len(losses_fam_cls_list))
+            losses_fam_cls.append(i_index_sum / len(losses_fam_cls_list))
 
-        #losses_fam_cls = list(torch.tensor(losses_fam_cls_list, requires_grad=True, device='cuda').mean(dim=0))
+        # losses_fam_cls = list(torch.tensor(losses_fam_cls_list, requires_grad=True, device='cuda').mean(dim=0))
 
         losses_fam_bbox = []
         for i in range(len(losses_fam_bbox_list[0])):
             i_index_sum = 0
             for j in range(len(losses_fam_bbox_list)):
                 i_index_sum += losses_fam_bbox_list[j][i]
-            losses_fam_bbox.append(i_index_sum/len(losses_fam_bbox_list))
+            losses_fam_bbox.append(i_index_sum / len(losses_fam_bbox_list))
 
-        #losses_fam_bbox = list(torch.tensor(losses_fam_bbox_list, requires_grad=True, device='cuda').mean(dim=0))
-
+        # losses_fam_bbox = list(torch.tensor(losses_fam_bbox_list, requires_grad=True, device='cuda').mean(dim=0))
 
         self.last_vals = dict(
             gt_bboxes=gt_bboxes,
@@ -440,9 +440,9 @@ class S2ANetHeadBE(S2ANetHead):
             odm_bbox_preds=odm_bbox_preds,
         )
         if sum(losses_fam_cls) > 1E10 or \
-           sum(losses_fam_bbox) > 1E10 or \
-           sum(losses_odm_cls) > 1E10 or \
-           sum(losses_odm_bbox) > 1E10:
+                sum(losses_fam_bbox) > 1E10 or \
+                sum(losses_odm_cls) > 1E10 or \
+                sum(losses_odm_bbox) > 1E10:
             print("bad loss")
         return dict(loss_fam_cls=losses_fam_cls,
                     loss_fam_bbox=losses_fam_bbox,
@@ -656,7 +656,9 @@ class S2ANetHeadBE(S2ANetHead):
     #                                     [img_det]])
     #
     #     return [{"name": "stitched_img", "image": stitched}]
-        # Image.fromarray(stitched).show()
+    # Image.fromarray(stitched).show()
+
+
 # def bbox_decode(
 #         bbox_preds,
 #         anchors,
@@ -787,7 +789,7 @@ class Ensemble_Conv2d(nn.Module):
             self.gamma = nn.Parameter(torch.Tensor(num_models, out_channels))
         self.num_models = num_models
         if bias:
-            #self.bias = nn.Parameter(torch.Tensor(self.out_channels))
+            # self.bias = nn.Parameter(torch.Tensor(self.out_channels))
             self.bias = nn.Parameter(torch.Tensor(self.num_models, out_channels))
         else:
             self.register_parameter('bias', None)
@@ -798,7 +800,7 @@ class Ensemble_Conv2d(nn.Module):
         if self.constant_init:
             nn.init.constant_(self.alpha, 1.)
             if self.random_sign_init:
-                if self.probability  == -1:
+                if self.probability == -1:
                     with torch.no_grad():
                         factor = torch.ones(
                             self.num_models, device=self.alpha.device).bernoulli_(0.5)
@@ -807,12 +809,12 @@ class Ensemble_Conv2d(nn.Module):
                         if self.train_gamma:
                             self.gamma.fill_(1.)
                             self.gamma.data = (self.gamma.t() * factor).t()
-                elif self.probability  == -2:
+                elif self.probability == -2:
                     with torch.no_grad():
                         positives_num = self.num_models // 2
                         factor1 = torch.Tensor([1 for i in range(positives_num)])
                         factor2 = torch.Tensor(
-                            [-1 for i in range(self.num_models-positives_num)])
+                            [-1 for i in range(self.num_models - positives_num)])
                         factor = torch.cat([factor1, factor2]).to(self.alpha.device)
                         self.alpha.data = (self.alpha.t() * factor).t()
                         if self.train_gamma:
@@ -827,10 +829,10 @@ class Ensemble_Conv2d(nn.Module):
                             self.gamma.mul_(2).add_(-1)
         else:
             nn.init.normal_(self.alpha, mean=1., std=0.5)
-            #nn.init.normal_(self.alpha, mean=1., std=1)
+            # nn.init.normal_(self.alpha, mean=1., std=1)
             if self.train_gamma:
                 nn.init.normal_(self.gamma, mean=1., std=0.5)
-                #nn.init.normal_(self.gamma, mean=1., std=1)
+                # nn.init.normal_(self.gamma, mean=1., std=1)
             if self.random_sign_init:
                 with torch.no_grad():
                     alpha_coeff = torch.randint_like(self.alpha, low=0, high=2)
@@ -878,23 +880,23 @@ class Ensemble_Conv2d(nn.Module):
                 gamma = torch.cat([gamma, gamma[:extra]], dim=0)
                 if self.bias is not None:
                     bias = torch.cat([bias, bias[:extra]], dim=0)
-            result = self.conv(x*alpha)*gamma
+            result = self.conv(x * alpha) * gamma
 
-            #import time
-            #start_time = time.time()
-            #print('reshape takes {} s'.format(time.time()-start_time))
-            #start_time = time.time()
-            #print('conv and dot product takes {} s'.format(time.time()-start_time))
-            #alpha = self.alpha.repeat(1, num_examples_per_model).view(-1, self.in_channels)
-            #alpha.unsqueeze_(-1).unsqueeze_(-1)
-            #gamma = self.gamma.repeat(1, num_examples_per_model) .view(-1, self.out_channels)
-            #gamma.unsqueeze_(-1).unsqueeze_(-1)
-            #if self.bias is not None:
+            # import time
+            # start_time = time.time()
+            # print('reshape takes {} s'.format(time.time()-start_time))
+            # start_time = time.time()
+            # print('conv and dot product takes {} s'.format(time.time()-start_time))
+            # alpha = self.alpha.repeat(1, num_examples_per_model).view(-1, self.in_channels)
+            # alpha.unsqueeze_(-1).unsqueeze_(-1)
+            # gamma = self.gamma.repeat(1, num_examples_per_model) .view(-1, self.out_channels)
+            # gamma.unsqueeze_(-1).unsqueeze_(-1)
+            # if self.bias is not None:
             #    bias = self.bias.repeat(1, num_examples_per_model) .view(-1, self.out_channels)
             #    bias.unsqueeze_(-1).unsqueeze_(-1)
-            #result = self.conv(x*alpha)*gamma
-            #tmp = self.conv(x*torch.randn_like(x))
-            #result = torch.randn_like(tmp) * tmp
+            # result = self.conv(x*alpha)*gamma
+            # tmp = self.conv(x*torch.randn_like(x))
+            # result = torch.randn_like(tmp) * tmp
 
             return result + bias if self.bias is not None else result
         else:
@@ -910,9 +912,9 @@ class Ensemble_Conv2d(nn.Module):
                     [self.bias for i in range(num_examples_per_model)],
                     dim=1).view([-1, self.out_channels])
                 bias.unsqueeze_(-1).unsqueeze_(-1)
-            result = self.conv(x*alpha)
+            result = self.conv(x * alpha)
             return result + bias if self.bias is not None else result
-        
+
 
 # utility function to reshape batch ensemble layer inputs and targets
 # function from LP_BNN repo
